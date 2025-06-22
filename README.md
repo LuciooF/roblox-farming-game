@@ -146,15 +146,49 @@ The game uses Rodux for centralized state management with the following structur
 2. **New Equipment**: Add to shop data in `GameReducer.lua` and implement effects in `FarmingSystem.lua`
 3. **UI Components**: Create new React-lua components in `src/components/`
 
+## Testing
+
+The project includes comprehensive unit tests using TestEZ.
+
+### Running Tests
+
+1. **Install test dependencies**:
+   ```bash
+   wally install
+   ```
+
+2. **Run tests in Roblox Studio**:
+   - Sync the project with `rojo serve`
+   - Tests will run automatically when the server starts
+   - Or run manually: `_G.runFarmingGameTests()`
+
+3. **Test Coverage**:
+   - **GameReducer**: State management and action handling
+   - **FarmingSystem**: Plant growth, climate, and harvesting logic
+   - **PlayerDataManager**: Data persistence and inventory management
+
+### Test Structure
+
+```
+tests/
+├── GameReducer.spec.lua      # Rodux state management tests
+├── FarmingSystem.spec.lua    # Server-side farming logic tests
+├── PlayerDataManager.spec.lua # Data management tests
+├── init.server.lua          # Automatic test runner
+└── run_tests.lua            # Manual test runner
+```
+
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature-name`
 3. Make your changes
-4. Test thoroughly in Roblox Studio
-5. Commit your changes: `git commit -m "Add feature description"`
-6. Push to your branch: `git push origin feature-name`
-7. Create a Pull Request
+4. **Write tests** for new functionality
+5. **Run tests** to ensure nothing breaks: `_G.runFarmingGameTests()`
+6. Test thoroughly in Roblox Studio
+7. Commit your changes: `git commit -m "Add feature description"`
+8. Push to your branch: `git push origin feature-name`
+9. Create a Pull Request
 
 ## License
 

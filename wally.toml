@@ -11,6 +11,7 @@ react = "jsdotlua/react@^17.1.0"
 react-roblox = "jsdotlua/react-roblox@^17.1.0"
 
 [dev-dependencies]
+testez = "roblox/testez@^0.4.1"
 
 [server-dependencies]
 
