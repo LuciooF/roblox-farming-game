@@ -1,7 +1,7 @@
 -- Farm UI component
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Packages = ReplicatedStorage:WaitForChild("Packages")
-local React = require(Packages.React)
+local React = require(Packages.react)
 
 local function PlotButton(props)
     local plotId = props.plotId

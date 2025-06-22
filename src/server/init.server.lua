@@ -1,28 +1,24 @@
--- Main server initialization script
-print("Farming Game Server Starting...")
+-- Main server initialization script - 3D Farming Game (Modular)
+print("🌱 3D Farming Game Server Starting (New Modular System)...")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
--- Load shared modules
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+-- Load new modular farming system
+local FarmingSystem = require(script:WaitForChild("FarmingSystemNew"))
 
--- Server modules will be added here
-local FarmingSystem = require(script:WaitForChild("FarmingSystem"))
-local PlayerDataManager = require(script:WaitForChild("PlayerDataManager"))
-
--- Initialize farming system
+-- Initialize modular farming system
 FarmingSystem.initialize()
 
 -- Handle player connections
 Players.PlayerAdded:Connect(function(player)
-    print("Player joined:", player.Name)
-    PlayerDataManager.loadPlayerData(player)
+    print("Player joined the farm:", player.Name)
+    FarmingSystem.onPlayerJoined(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-    print("Player leaving:", player.Name)
-    PlayerDataManager.savePlayerData(player)
+    print("Player left the farm:", player.Name)
+    FarmingSystem.onPlayerLeft(player)
 end)
 
-print("Farming Game Server Ready!")
+print("🌱 3D Farming Game Server Ready (Modular)!")

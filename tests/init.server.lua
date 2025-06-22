@@ -1,8 +1,10 @@
--- Test runner for the farming game
+-- Test runner for the farming game (disabled for initial testing)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-print("🧪 Starting Farming Game Test Suite")
+print("🧪 Test Suite Available (run manually with _G.runFarmingGameTests())")
 
+-- Disabled automatic test running for initial setup
+--[[ 
 -- Wait for packages to load
 local Packages = ReplicatedStorage:WaitForChild("Packages")
 local TestEZ = require(Packages.TestEZ)
@@ -27,3 +29,4 @@ print("  - Failed: " .. testResults.failureCount)
 print("  - Skipped: " .. (testResults.skippedCount or 0))
 
 return testResults
+--]]

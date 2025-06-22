@@ -4,7 +4,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 local Packages = ReplicatedStorage:WaitForChild("Packages")
-local Promise = require(Packages.Promise)
+local Promise = require(Packages.promise)
 
 local FarmingSystem = {}
 

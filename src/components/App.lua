@@ -1,7 +1,7 @@
 -- Main App component
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Packages = ReplicatedStorage:WaitForChild("Packages")
-local React = require(Packages.React)
+local React = require(Packages.react)
 
 local Components = ReplicatedStorage:WaitForChild("Components")
 local FarmUI = require(Components:WaitForChild("FarmUI"))

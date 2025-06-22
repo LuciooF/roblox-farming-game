@@ -4,12 +4,22 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Packages = ReplicatedStorage:WaitForChild("Packages")
-local Promise = require(Packages.Promise)
+local Promise = require(Packages.promise)
 
 local PlayerDataManager = {}
 
--- DataStore reference
-local playerDataStore = DataStoreService:GetDataStore("PlayerData_v1")
+-- DataStore reference (Studio-safe)
+local playerDataStore
+local success, result = pcall(function()
+    return DataStoreService:GetDataStore("PlayerData_v1")
+end)
+
+if success then
+    playerDataStore = result
+    print("PlayerDataManager: DataStore connected")
+else
+    warn("PlayerDataManager: DataStore not available (Studio mode) - " .. tostring(result))
+end
 
 -- Cache for loaded player data
 local playerDataCache = {}
@@ -54,6 +64,16 @@ local defaultPlayerData = {
 function PlayerDataManager.loadPlayerData(player)
     return Promise.new(function(resolve, reject)
         local userId = tostring(player.UserId)
+        
+        -- Handle Studio mode (no DataStore)
+        if not playerDataStore then
+            print("Using default data for " .. player.Name .. " (Studio mode)")
+            local defaultData = PlayerDataManager.deepCopy(defaultPlayerData)
+            playerDataCache[userId] = defaultData
+            resolve(defaultData)
+            return
+        end
+        
         local success, result = pcall(function()
             return playerDataStore:GetAsync(userId)
         end)
@@ -90,6 +110,13 @@ function PlayerDataManager.savePlayerData(player)
         if not playerData then
             warn("No data to save for player: " .. player.Name)
             resolve(false)
+            return
+        end
+        
+        -- Handle Studio mode (no DataStore)
+        if not playerDataStore then
+            print("Data save skipped for " .. player.Name .. " (Studio mode)")
+            resolve(true)
             return
         end
         

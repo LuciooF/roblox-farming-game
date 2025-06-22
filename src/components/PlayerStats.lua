@@ -1,7 +1,7 @@
 -- Player stats UI component
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Packages = ReplicatedStorage:WaitForChild("Packages")
-local React = require(Packages.React)
+local React = require(Packages.react)
 
 local function PlayerStats(props)
     local player = props.player
