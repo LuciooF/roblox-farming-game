@@ -1,0 +1,5 @@
+Packages/
+*.rbxlx
+*.rbxl
+.DS_Store
+Thumbs.db
