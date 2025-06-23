@@ -12,6 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+    - name: Debug trigger info
+      run: |
+        echo "🔍 GitHub event: ${{ github.event_name }}"
+        echo "🔍 GitHub ref: ${{ github.ref }}"
+        echo "🔍 GitHub repository: ${{ github.repository }}"
+        echo "🔍 Should deploy: ${{ github.ref == 'refs/heads/master' }}"
+    
     - name: Checkout code
       uses: actions/checkout@v4
     
@@ -20,37 +27,26 @@ jobs:
       with:
         node-version: '18'
     
-    - name: Install Rojo directly
+    - name: Install Rojo (Skip Wally for now)
       run: |
-        # Install Rojo directly from GitHub releases
-        wget https://github.com/rojo-rbx/rojo/releases/download/v7.4.4/rojo-7.4.4-linux-x86_64.zip
-        unzip rojo-7.4.4-linux-x86_64.zip
+        # Just install Rojo for now to get deployment working
+        # We'll add React packages manually to the build
+        curl -L "https://github.com/rojo-rbx/rojo/releases/download/v7.4.4/rojo-7.4.4-linux-x86_64.zip" -o rojo.zip
+        unzip rojo.zip
         chmod +x rojo
         sudo mv rojo /usr/local/bin/
+        
+        # Verify installation
+        rojo --version
     
-    - name: Install Wally directly  
+    - name: Create React packages manually
       run: |
-        # Install Wally directly from GitHub releases
-        wget https://github.com/UpliftGames/wally/releases/download/v0.3.2/wally-0.3.2-linux-x86_64.zip
-        unzip wally-0.3.2-linux-x86_64.zip
-        chmod +x wally
-        sudo mv wally /usr/local/bin/
-    
-    - name: Install Wally dependencies
-      run: |
-        # Create wally.toml if it doesn't exist
-        if [ ! -f "wally.toml" ]; then
-          echo '[package]' > wally.toml
-          echo 'name = "lucioof/farming-game"' >> wally.toml
-          echo 'version = "1.0.0"' >> wally.toml
-          echo 'registry = "https://github.com/UpliftGames/wally-index"' >> wally.toml
-          echo 'realm = "shared"' >> wally.toml
-          echo '' >> wally.toml
-          echo '[dependencies]' >> wally.toml
-          echo 'React = "jsdotlua/react@17.1.0"' >> wally.toml
-          echo 'ReactRoblox = "jsdotlua/react-roblox@17.1.0"' >> wally.toml
-        fi
-        wally install
+        # Create Packages folder structure that mirrors what Wally would create
+        mkdir -p Packages/_Index
+        
+        # For now, skip React packages to get basic deployment working
+        # The game has fallback UI that doesn't require React
+        echo "Skipping React packages for now - using fallback UI"
     
     - name: Build place file
       run: |
