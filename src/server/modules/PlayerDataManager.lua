@@ -35,23 +35,31 @@ local PROFILE_TEMPLATE = {
 
 -- Initialize ProfileStore
 function PlayerDataManager.initialize()
-    -- Try to load ProfileStore (it may not be available in Studio without packages)
+    -- Try to load ProfileStore (check both ServerStorage/Packages and ServerPackages)
     local success, profileStoreModule = pcall(function()
+        -- First try ServerPackages (Wally default location)
+        local serverPackages = game:GetService("ServerStorage"):FindFirstChild("ServerPackages")
+        if serverPackages then
+            local profileStore = serverPackages:FindFirstChild("profilestore")
+            if profileStore then
+                log.debug("Found ProfileStore in ServerPackages")
+                return require(profileStore)
+            end
+        end
+        
+        -- Then try ServerStorage/Packages (alternative location)
         local serverStorage = game:GetService("ServerStorage")
         local packages = serverStorage:FindFirstChild("Packages")
-        
-        if not packages then
-            log.info("No Packages folder found - ProfileStore not available")
-            return nil
+        if packages then
+            local profileStore = packages:FindFirstChild("ProfileStore")
+            if profileStore then
+                log.debug("Found ProfileStore in ServerStorage/Packages")
+                return require(profileStore)
+            end
         end
         
-        local profileStore = packages:FindFirstChild("ProfileStore")
-        if not profileStore then
-            log.info("ProfileStore package not found - falling back to in-memory storage")
-            return nil
-        end
-        
-        return require(profileStore)
+        log.info("ProfileStore package not found in any expected location")
+        return nil
     end)
     
     if success and profileStoreModule then
