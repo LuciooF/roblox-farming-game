@@ -62,19 +62,39 @@ jobs:
         rojo build --output game.rbxl
         echo "✅ Build completed successfully!"
     
-    - name: Upload to Roblox using rojo upload
+    - name: Upload to Roblox using rojo upload (with retry)
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       run: |
         echo "🚀 Uploading game to Roblox using rojo upload..."
         
-        # Use rojo upload command (simpler and more reliable)
-        rojo upload \
-          --api_key ${{ secrets.ROBLOX_API_KEY }} \
-          --universe_id ${{ secrets.ROBLOX_EXPERIENCE_ID }} \
-          --asset_id ${{ secrets.ROBLOX_PLACE_ID }}
+        # Retry logic for Roblox server busy errors
+        max_attempts=3
+        attempt=1
         
-        echo "✅ Successfully deployed to Roblox!"
-        echo "🎮 Your game is now live at: https://www.roblox.com/games/${{ secrets.ROBLOX_EXPERIENCE_ID }}"
+        while [ $attempt -le $max_attempts ]; do
+          echo "📤 Upload attempt $attempt/$max_attempts..."
+          
+          if rojo upload \
+            --api_key ${{ secrets.ROBLOX_API_KEY }} \
+            --universe_id ${{ secrets.ROBLOX_EXPERIENCE_ID }} \
+            --asset_id ${{ secrets.ROBLOX_PLACE_ID }}; then
+            
+            echo "✅ Successfully deployed to Roblox!"
+            echo "🎮 Your game is now live at: https://www.roblox.com/games/${{ secrets.ROBLOX_EXPERIENCE_ID }}"
+            exit 0
+          else
+            echo "⚠️ Upload attempt $attempt failed"
+            if [ $attempt -lt $max_attempts ]; then
+              echo "⏳ Waiting 2 minutes before retry (Roblox servers may be busy)..."
+              sleep 120
+            fi
+            attempt=$((attempt + 1))
+          fi
+        done
+        
+        echo "❌ All upload attempts failed. Roblox servers may be experiencing issues."
+        echo "💡 Try manually triggering the deployment later when Roblox servers are stable."
+        exit 1
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
