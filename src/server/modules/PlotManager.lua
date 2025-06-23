@@ -42,11 +42,19 @@ function PlotManager.plantSeed(player, plotId, seedType)
         return false, "Plot is already occupied!"
     end
     
+    -- Check if seed type exists in config
+    if not GameConfig.Plants[seedType] then
+        return false, "Unknown seed type: " .. seedType
+    end
+    
     -- Check player has seeds
     local seedCount = PlayerDataManager.getInventoryCount(player, "seeds", seedType)
     if seedCount <= 0 then
         return false, "You don't have " .. seedType .. " seeds!"
     end
+    
+    -- Roll for crop variation
+    local variation = PlotManager.rollCropVariation()
     
     -- Plant the seed
     plotState.state = "planted"
@@ -56,6 +64,8 @@ function PlotManager.plantSeed(player, plotId, seedType)
     plotState.wateredCount = 0
     plotState.waterNeeded = GameConfig.Plants[seedType].waterNeeded
     plotState.lastWateredTime = 0
+    plotState.variation = variation
+    plotState.harvestCooldown = 0 -- For permanent crops
     
     -- Remove seed from inventory
     PlayerDataManager.removeFromInventory(player, "seeds", seedType, 1)
@@ -106,7 +116,7 @@ function PlotManager.waterPlant(player, plotId)
     end
 end
 
--- Harvest crop from plot
+-- Harvest crop from plot (permanent crops)
 function PlotManager.harvestCrop(player, plotId)
     local plotState = plotStates[plotId]
     local playerData = PlayerDataManager.getPlayerData(player)
@@ -115,23 +125,48 @@ function PlotManager.harvestCrop(player, plotId)
         return false, "Invalid plot or player data"
     end
     
-    -- Validate plot is ready
+    -- Validate plot is ready and owned by player
     if plotState.state ~= "ready" then
         return false, "Crop is not ready yet!"
     end
     
+    if plotState.ownerId ~= player.UserId then
+        return false, "This is not your crop!"
+    end
+    
+    -- Check harvest cooldown
+    local harvestCooldown = GameConfig.Plants[plotState.seedType].harvestCooldown or 30
+    if tick() - plotState.harvestCooldown < harvestCooldown then
+        local timeLeft = math.ceil(harvestCooldown - (tick() - plotState.harvestCooldown))
+        return false, "Harvest again in " .. timeLeft .. " seconds!"
+    end
+    
     local seedType = plotState.seedType
+    local variation = plotState.variation or "normal"
     local baseYield = 1
     local bonusYield = math.random(0, 1) -- Random bonus
-    local totalYield = baseYield + bonusYield
+    local variationMultiplier = GameConfig.CropVariations[variation].multiplier or 1
+    local totalYield = math.floor((baseYield + bonusYield) * variationMultiplier)
     
-    -- Add crops to inventory
-    PlayerDataManager.addToInventory(player, "crops", seedType, totalYield)
+    -- Add crops to inventory with variation prefix
+    local cropName = seedType
+    if variation ~= "normal" then
+        cropName = GameConfig.CropVariations[variation].prefix .. seedType
+    end
     
-    -- Reset plot
-    PlotManager.resetPlot(plotId)
+    PlayerDataManager.addToInventory(player, "crops", cropName, totalYield)
     
-    return true, "Harvested " .. totalYield .. " " .. seedType .. "!", totalYield
+    -- Set harvest cooldown and reset to growing state
+    plotState.harvestCooldown = tick()
+    plotState.state = "watered" -- Reset to watered so it starts growing again
+    plotState.wateredTime = tick() -- Reset watered time for new growth cycle
+    
+    local message = "Harvested " .. totalYield .. " " .. cropName .. "!"
+    if variation ~= "normal" then
+        message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
+    end
+    
+    return true, message, totalYield
 end
 
 -- Reset plot to empty state
@@ -218,6 +253,25 @@ function PlotManager.updateGrowthMonitoring()
             end
         end
     end
+end
+
+-- Roll for crop variation when planting
+function PlotManager.rollCropVariation()
+    local roll = math.random() * 100
+    local cumulative = 0
+    
+    -- Check variations in order of rarity (most common first)
+    local variationOrder = {"normal", "shiny", "rainbow", "golden", "diamond"}
+    
+    for _, variation in ipairs(variationOrder) do
+        cumulative = cumulative + GameConfig.CropVariations[variation].chance
+        if roll <= cumulative then
+            return variation
+        end
+    end
+    
+    -- Fallback to normal
+    return "normal"
 end
 
 -- Get countdown info for display

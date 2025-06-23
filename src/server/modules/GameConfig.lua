@@ -3,57 +3,154 @@
 
 local GameConfig = {}
 
--- Plant configurations with strategic depth
+-- Seed Rarity System
+GameConfig.SeedRarities = {
+    -- Common (70% chance)
+    common = {
+        dropChance = 70,
+        color = Color3.fromRGB(200, 200, 200),
+        multiplier = 1.0,
+        seeds = {
+            wheat = { 
+                growthTime = 15, waterNeeded = 1, basePrice = 5, seedCost = 10,
+                description = "Common fast-growing grain", harvestCooldown = 10, deathTime = 120
+            },
+            carrot = { 
+                growthTime = 30, waterNeeded = 2, basePrice = 15, seedCost = 25,
+                description = "Common root vegetable", harvestCooldown = 15, deathTime = 180
+            }
+        }
+    },
+    
+    -- Uncommon (20% chance)
+    uncommon = {
+        dropChance = 20,
+        color = Color3.fromRGB(100, 255, 100),
+        multiplier = 1.5,
+        seeds = {
+            tomato = { 
+                growthTime = 45, waterNeeded = 2, basePrice = 35, seedCost = 50,
+                description = "Uncommon juicy fruit", harvestCooldown = 20, deathTime = 240
+            },
+            corn = {
+                growthTime = 90, waterNeeded = 3, basePrice = 80, seedCost = 120,
+                description = "Uncommon golden grain", harvestCooldown = 30, deathTime = 360
+            }
+        }
+    },
+    
+    -- Rare (7% chance)
+    rare = {
+        dropChance = 7,
+        color = Color3.fromRGB(100, 100, 255),
+        multiplier = 3.0,
+        seeds = {
+            banana = {
+                growthTime = 120, waterNeeded = 3, basePrice = 200, seedCost = 300,
+                description = "Rare tropical fruit", harvestCooldown = 45, deathTime = 480
+            },
+            strawberry = {
+                growthTime = 75, waterNeeded = 2, basePrice = 150, seedCost = 200,
+                description = "Rare sweet berry", harvestCooldown = 25, deathTime = 360
+            }
+        }
+    },
+    
+    -- Epic (2.5% chance)
+    epic = {
+        dropChance = 2.5,
+        color = Color3.fromRGB(255, 100, 255),
+        multiplier = 5.0,
+        seeds = {
+            dragonfruit = {
+                growthTime = 180, waterNeeded = 4, basePrice = 500, seedCost = 750,
+                description = "Epic mystical fruit", harvestCooldown = 60, deathTime = 720
+            },
+            goldapple = {
+                growthTime = 240, waterNeeded = 5, basePrice = 800, seedCost = 1200,
+                description = "Epic golden apple", harvestCooldown = 90, deathTime = 900
+            }
+        }
+    },
+    
+    -- Legendary (0.5% chance)
+    legendary = {
+        dropChance = 0.5,
+        color = Color3.fromRGB(255, 215, 0),
+        multiplier = 10.0,
+        seeds = {
+            starfruit = {
+                growthTime = 300, waterNeeded = 6, basePrice = 2000, seedCost = 3000,
+                description = "Legendary celestial fruit", harvestCooldown = 120, deathTime = 1200
+            },
+            crystalberry = {
+                growthTime = 360, waterNeeded = 7, basePrice = 3500, seedCost = 5000,
+                description = "Legendary crystal berry", harvestCooldown = 180, deathTime = 1440
+            }
+        }
+    }
+}
+
+-- Crop Colors for seeds and plants
+GameConfig.CropColors = {
+    wheat = Color3.fromRGB(255, 255, 100), -- Light yellow
+    carrot = Color3.fromRGB(255, 140, 0), -- Orange
+    tomato = Color3.fromRGB(255, 69, 0), -- Red-orange
+    corn = Color3.fromRGB(255, 215, 0), -- Golden yellow
+    potato = Color3.fromRGB(139, 69, 19), -- Brown
+    banana = Color3.fromRGB(255, 255, 0), -- Bright yellow
+    strawberry = Color3.fromRGB(255, 20, 147), -- Deep pink
+    dragonfruit = Color3.fromRGB(255, 20, 147), -- Magenta
+    goldapple = Color3.fromRGB(255, 215, 0), -- Gold
+    starfruit = Color3.fromRGB(255, 255, 224), -- Light yellow
+    crystalberry = Color3.fromRGB(173, 216, 230) -- Light blue
+}
+
+-- Crop Variations (chance when planting)
+GameConfig.CropVariations = {
+    normal = {
+        chance = 85,
+        multiplier = 1.0,
+        prefix = "",
+        color = nil -- Uses default plant color
+    },
+    shiny = {
+        chance = 10,
+        multiplier = 2.0,
+        prefix = "Shiny ",
+        color = Color3.fromRGB(255, 255, 150) -- Light gold
+    },
+    rainbow = {
+        chance = 4,
+        multiplier = 5.0,
+        prefix = "Rainbow ",
+        color = Color3.fromRGB(255, 100, 255) -- Rainbow effect (will cycle)
+    },
+    golden = {
+        chance = 0.9,
+        multiplier = 10.0,
+        prefix = "Golden ",
+        color = Color3.fromRGB(255, 215, 0) -- Pure gold
+    },
+    diamond = {
+        chance = 0.1,
+        multiplier = 25.0,
+        prefix = "Diamond ",
+        color = Color3.fromRGB(185, 242, 255) -- Diamond sparkle
+    }
+}
+
+-- Legacy Plants (for backward compatibility)
 GameConfig.Plants = {
-    -- Quick crops (for active play)
-    wheat = { 
-        growthTime = 10, -- 10 seconds for testing (30 min real-time)
-        waterNeeded = 1, 
-        basePrice = 3, 
-        seedCost = 1,
-        description = "Fast growing, low profit",
-        category = "Quick",
-        deathTime = 30 -- Dies in 30 seconds if not watered
-    },
-    tomato = { 
-        growthTime = 30, -- 30 seconds for testing (2 hours real-time)
-        waterNeeded = 2, 
-        basePrice = 12, 
-        seedCost = 3,
-        description = "Medium growth, good profit",
-        category = "Medium",
-        deathTime = 60 -- Dies in 1 minute if not watered
-    },
-    
-    -- Medium crops (balanced)
-    carrot = { 
-        growthTime = 60, -- 1 minute for testing (4 hours real-time)
-        waterNeeded = 2, 
-        basePrice = 25, 
-        seedCost = 8,
-        description = "Steady growth, solid profit",
-        category = "Medium",
-        deathTime = 120 -- Dies in 2 minutes if not watered
-    },
-    
-    -- Long-term crops (overnight/AFK)
+    wheat = GameConfig.SeedRarities.common.seeds.wheat,
+    tomato = GameConfig.SeedRarities.uncommon.seeds.tomato,
+    carrot = GameConfig.SeedRarities.common.seeds.carrot,
+    corn = GameConfig.SeedRarities.uncommon.seeds.corn,
+    banana = GameConfig.SeedRarities.rare.seeds.banana,
+    -- Add missing potato seed
     potato = { 
-        growthTime = 180, -- 3 minutes for testing (12 hours real-time)
-        waterNeeded = 3, 
-        basePrice = 100, 
-        seedCost = 25,
-        description = "Slow growth, high profit",
-        category = "Long-term",
-        deathTime = 300 -- Dies in 5 minutes if not watered
-    },
-    corn = {
-        growthTime = 300, -- 5 minutes for testing (24 hours real-time)
-        waterNeeded = 4,
-        basePrice = 250,
-        seedCost = 80,
-        description = "Very slow, premium profit",
-        category = "Premium",
-        deathTime = 600 -- Dies in 10 minutes if not watered
+        growthTime = 60, waterNeeded = 2, basePrice = 25, seedCost = 35,
+        description = "Common hearty vegetable", harvestCooldown = 20, deathTime = 240
     }
 }
 
@@ -99,7 +196,13 @@ GameConfig.World = {
     farmOffsetZ = 20, -- Move farm away from spawn
     spawnPosition = Vector3.new(0, 2, -40),
     merchantPosition = Vector3.new(40, 1, 0),
-    autoPosition = Vector3.new(-45, 1, 0)
+    autoPosition = Vector3.new(-45, 1, 0),
+    
+    -- Sky drop system
+    skyDropPosition = Vector3.new(-70, 100, 0), -- High above and away from farm plots
+    seedDropInterval = 15, -- Drop a seed every 15 seconds
+    seedLifetime = 30, -- Seeds disappear after 30 seconds if not picked up
+    maxSeedsOnGround = 10 -- Maximum seeds that can be on ground at once
 }
 
 return GameConfig

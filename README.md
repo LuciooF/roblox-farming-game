@@ -1,213 +1,228 @@
-# Roblox Farming Game
+# 🌾 3D Farming Game for Roblox
 
-A farming simulation game built with modern Roblox development tools and practices.
+A modern, React-based 3D farming simulation game built for Roblox with advanced UI components, modular server architecture, and comprehensive progression systems.
 
-## Features
+## 🎮 Game Overview
 
-- 🌱 **Plant & Harvest System**: Grow different crops with realistic growth times
-- 💧 **Watering Mechanics**: Care for your plants to ensure proper growth
-- 🏪 **Shop System**: Buy seeds and equipment to expand your farming operation
-- 🌤️ **Climate System**: Dynamic weather and environmental factors affect crop growth
-- 📊 **Player Progression**: Level up and earn experience through farming activities
-- 💰 **Economy**: Sell crops for profit and reinvest in better equipment
-- 🎮 **Modern UI**: React-based interface with responsive design
+This is a sophisticated farming simulation where players:
+- **Plant and grow crops** with realistic growth timers and watering mechanics
+- **Manage inventory** using a Minecraft-style hotbar with expandable slots
+- **Progress through rebirths** with increasing crop value multipliers
+- **Unlock premium features** through gamepasses and automation systems
+- **Follow guided tutorials** to learn game mechanics progressively
 
-## Technology Stack
+### Key Features
 
-- **Rojo**: Project management and code synchronization
-- **Wally**: Package management
-- **React-lua**: Modern UI framework for Roblox
-- **Rodux**: State management (Redux for Lua)
-- **Promise**: Asynchronous operations
+- 🌱 **Dynamic Crop System**: Multiple seed types with different rarities, growth times, and values
+- 🎒 **Expandable Inventory**: Hotbar system with purchasable slots and left-packing organization
+- 🔄 **Rebirth Progression**: Prestige system that increases crop value multipliers
+- 🤖 **Automation Features**: Premium tools for batch planting, watering, and harvesting
+- 📚 **Tutorial System**: Guided onboarding for new players
+- 🎨 **Modern UI**: React-based responsive interface with smooth animations
+- 🔊 **Audio Integration**: Comprehensive sound system for immersive gameplay
 
-## Setup Instructions
+## 🏗️ Architecture
+
+### Client-Side (React-based)
+```
+src/client/
+├── components/          # React UI components
+│   ├── MainUI.lua          # Root UI component
+│   ├── HotbarInventory.lua # Minecraft-style inventory hotbar
+│   ├── ShopPanel.lua       # Seed purchasing interface
+│   ├── PremiumPanel.lua    # Gamepass and premium features
+│   └── TutorialPanel.lua   # Interactive tutorial system
+├── ClientLogger.lua     # Client-side logging system
+├── LogCommands.client.lua # Development debugging tools
+└── init.client.lua      # Client initialization
+```
+
+### Server-Side (Modular Architecture)
+```
+src/server/
+├── modules/             # Core game systems
+│   ├── GameConfig.lua      # Game balance and configuration
+│   ├── PlayerDataManager.lua # Player data and inventory
+│   ├── PlotManager.lua     # Farm plot state management
+│   ├── RemoteManager.lua   # Client-server communication
+│   ├── AutomationSystem.lua # Premium automation features
+│   ├── NotificationManager.lua # Player notifications
+│   └── TutorialManager.lua # Tutorial progression tracking
+├── FarmingSystemNew.lua # Main game coordinator
+├── WorldBuilder.lua     # 3D world generation
+└── init.server.lua      # Server initialization
+```
+
+## 🚀 Getting Started
 
 ### Prerequisites
-
-1. [Roblox Studio](https://create.roblox.com/docs/studio/setting-up-roblox-studio)
-2. [Rojo](https://rojo.space/docs/v7/getting-started/installation/)
-3. [Wally](https://wally.run/install)
+- Roblox Studio
+- Basic knowledge of Lua and Roblox development
 
 ### Installation
+1. Clone this repository
+2. Open the project in Roblox Studio
+3. The game will automatically initialize server and client systems
+4. Start playtesting to explore the farming mechanics
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/LuciooF/roblox-farming-game.git
-   cd roblox-farming-game
-   ```
+### Development Setup
+- **Logging**: Use `/loglevel DEBUG` in Studio for detailed logs
+- **Testing**: Built-in tutorial system guides through all features
+- **Debugging**: Comprehensive logging system tracks all game events
 
-2. **Install dependencies**:
-   ```bash
-   wally install
-   ```
+## 🎯 Game Systems
 
-3. **Start Rojo server**:
-   ```bash
-   rojo serve
-   ```
+### Farming Mechanics
+- **Plot Management**: Interactive 3D plots with ProximityPrompts
+- **Growth Timers**: Real-time crop growth with visual feedback
+- **Watering System**: Plants require water to grow and can die without care
+- **Harvest Cooldowns**: Realistic farming timers prevent exploitation
 
-4. **Connect to Roblox Studio**:
-   - Open Roblox Studio
-   - Install the [Rojo plugin](https://create.roblox.com/marketplace/asset/13916111004/Rojo)
-   - Click "Connect" in the Rojo plugin
-   - Use default address: `localhost:34872`
+### Economy & Progression
+- **Seed Rarities**: Common, uncommon, rare, epic, and legendary seeds
+- **Dynamic Pricing**: Crop values scale with rarity and rebirth multipliers
+- **Rebirth System**: Prestige mechanic that resets progress for permanent bonuses
+- **Premium Features**: Gamepass-locked automation and convenience tools
 
-5. **Test the game**:
-   - Press F5 or click "Play" in Studio
-   - The farming game UI should appear
+### User Interface
+- **Responsive Design**: Adapts to mobile and desktop screen sizes
+- **Inventory Management**: Drag-free hotbar selection with keyboard shortcuts (1-9)
+- **Real-time Updates**: Live inventory sync and growth countdown displays
+- **Accessibility**: Clear visual feedback and intuitive interactions
 
-## Game Mechanics
+## 🔧 Technical Features
 
-### Basic Gameplay
+### Performance Optimizations
+- **Separated Game Loops**: Growth monitoring (5s) vs UI updates (1s)
+- **Efficient State Management**: Minimal re-renders with React hooks
+- **Smart Caching**: Optimized data structures for plot and player management
 
-1. **Planting**: Click on empty farm plots to plant seeds (requires seeds in inventory)
-2. **Watering**: Click on planted seeds to water them (required for growth)
-3. **Harvesting**: Once plants are fully grown, click to harvest crops
-4. **Selling**: Use the shop to sell harvested crops for money
-5. **Buying**: Purchase new seeds and equipment from the shop
+### Code Quality
+- **Modular Design**: Clear separation of concerns across all systems
+- **Comprehensive Logging**: Multi-level logging system for debugging
+- **Error Handling**: Robust error management with user-friendly notifications
+- **Clean Architecture**: SOLID principles applied throughout codebase
 
-### Crop Types
+### Security & Anti-Cheat
+- **Server-Side Validation**: All critical game logic validated on server
+- **Rate Limiting**: RemoteEvent protection against exploitation
+- **Data Integrity**: Player data validation and sanitization
 
-| Crop | Growth Time | Base Price | Starting Seeds |
-|------|-------------|------------|----------------|
-| Wheat | 20 seconds | $3 | 2 |
-| Tomato | 30 seconds | $5 | 5 |
-| Carrot | 45 seconds | $8 | 3 |
-| Potato | 60 seconds | $12 | 0 |
+## 🛠️ Development
 
-### Equipment & Upgrades
+### Key Components
+- **React Integration**: Modern UI patterns with functional components and hooks
+- **State Management**: Centralized player data with automatic synchronization
+- **Event System**: Comprehensive RemoteEvent architecture for client-server communication
+- **Configuration**: Centralized game balance in `GameConfig.lua`
 
-- **Watering Can**: Basic tool (included by default)
-- **Air Purifier**: Improves air quality for better crop yields ($500)
-- **Advanced Soil**: Reduces growth time by 20% ($200)
-- **Greenhouse**: Protects crops from weather effects ($1000)
+### Extension Points
+- **New Crops**: Add entries to `GameConfig.Plants` with growth parameters
+- **UI Components**: Create React components in `client/components/`
+- **Game Mechanics**: Extend modules in `server/modules/` for new features
+- **Automation**: Add premium features through `AutomationSystem.lua`
 
-### Climate System
-
-- **Temperature**: Affects growth speed (optimal: 60-80°F)
-- **Humidity**: Influences crop health (optimal: 50-70%)
-- **Air Quality**: Impacts yield quantity and quality
-
-## Development
-
-### Project Structure
-
-```
-src/
-├── server/              # Server-side scripts
-│   ├── init.server.lua     # Main server initialization
-│   ├── FarmingSystem.lua   # Core farming mechanics
-│   └── PlayerDataManager.lua # Player data handling
-├── client/              # Client-side scripts
-│   └── init.client.lua     # Main client initialization
-├── shared/              # Shared modules
-│   └── GameReducer.lua     # Rodux state management
-└── components/          # React-lua UI components
-    ├── App.lua             # Main app component
-    ├── FarmUI.lua          # Farm plot interface
-    ├── PlayerStats.lua     # Player info display
-    └── Shop.lua            # Shop interface
-
-default.project.json     # Rojo project configuration
-wally.toml              # Package dependencies
-```
-
-### State Management
-
-The game uses Rodux for centralized state management with the following structure:
-
+### Crop Configuration Example
 ```lua
-{
-    player = {
-        money = 100,
-        level = 1,
-        experience = 0
-    },
-    farm = {
-        plots = {},
-        equipment = {},
-        climate = {}
-    },
-    inventory = {
-        seeds = {},
-        crops = {},
-        tools = {}
-    },
-    shop = {
-        seeds = {},
-        equipment = {}
-    }
+-- In GameConfig.lua
+GameConfig.Plants.newCrop = {
+    growthTime = 45,        -- seconds to grow
+    waterNeeded = 2,        -- water cycles required
+    basePrice = 20,         -- base sell price
+    seedCost = 35,          -- cost to buy seeds
+    description = "A new exotic crop",
+    harvestCooldown = 20,   -- seconds between harvests
+    deathTime = 300         -- seconds until plant dies without water
 }
 ```
 
-### Adding New Features
+### Adding UI Components
+```lua
+-- Create new component in client/components/
+local function NewComponent(props)
+    return React.createElement("Frame", {
+        Size = UDim2.new(0, 200, 0, 100),
+        BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    })
+end
 
-1. **New Crop Types**: Add to `plantGrowthTimes` and `cropPrices` in `FarmingSystem.lua`
-2. **New Equipment**: Add to shop data in `GameReducer.lua` and implement effects in `FarmingSystem.lua`
-3. **UI Components**: Create new React-lua components in `src/components/`
-
-## Testing
-
-The project includes comprehensive unit tests using TestEZ.
-
-### Running Tests
-
-1. **Install test dependencies**:
-   ```bash
-   wally install
-   ```
-
-2. **Run tests in Roblox Studio**:
-   - Sync the project with `rojo serve`
-   - Tests will run automatically when the server starts
-   - Or run manually: `_G.runFarmingGameTests()`
-
-3. **Test Coverage**:
-   - **GameReducer**: State management and action handling
-   - **FarmingSystem**: Plant growth, climate, and harvesting logic
-   - **PlayerDataManager**: Data persistence and inventory management
-
-### Test Structure
-
-```
-tests/
-├── GameReducer.spec.lua      # Rodux state management tests
-├── FarmingSystem.spec.lua    # Server-side farming logic tests
-├── PlayerDataManager.spec.lua # Data management tests
-├── init.server.lua          # Automatic test runner
-└── run_tests.lua            # Manual test runner
+return NewComponent
 ```
 
-## Contributing
+## 📈 Game Progression
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes
-4. **Write tests** for new functionality
-5. **Run tests** to ensure nothing breaks: `_G.runFarmingGameTests()`
-6. Test thoroughly in Roblox Studio
-7. Commit your changes: `git commit -m "Add feature description"`
-8. Push to your branch: `git push origin feature-name`
-9. Create a Pull Request
+### Inventory System
+- **9 Main Slots**: Always visible with keyboard shortcuts (1-9)
+- **Expandable Slots**: Purchase additional slots for $50 each
+- **Smart Packing**: Items automatically organize left-to-right
+- **Visual Selection**: Clear indicators show which item is selected
+- **Hand Display**: Selected items appear in player's hand
 
-## License
+### Rebirth System
+- **Money Requirements**: Increasing thresholds for each rebirth
+- **Crop Multipliers**: Permanent bonuses to crop sale values
+- **Preserved Progress**: Inventory slots and some achievements carry over
+- **Prestige Levels**: Visual indicators of player progression
 
-This project is open source and available under the [MIT License](LICENSE).
+### Premium Features
+- **Automation Tools**: Batch plant, water, harvest, and sell operations
+- **Premium UI**: Enhanced interfaces for gamepass owners
+- **Exclusive Content**: Special crops and equipment for premium players
 
-## Support
+## 🧪 Testing & Debugging
 
-If you encounter any issues or have questions:
+### Built-in Tools
+- **Log Commands**: `/loglevel`, `/logtest` for development debugging
+- **Tutorial System**: Step-by-step guidance for testing all features
+- **Real-time Monitoring**: Server and client logging for issue tracking
 
-1. Check the [Issues](https://github.com/LuciooF/roblox-farming-game/issues) page
-2. Create a new issue with detailed information
-3. Include your Roblox Studio output logs if relevant
+### Development Commands (Studio Only)
+```
+/loglevel DEBUG     # Enable detailed logging
+/loglevel INFO      # Standard logging level
+/logtest           # Test all log levels
+```
 
-## Roadmap
+## 📁 Project Structure
 
-- [ ] Multiplayer farming plots
-- [ ] Seasonal events and crops
-- [ ] Advanced greenhouse management
-- [ ] Trading system between players
-- [ ] Achievement system
-- [ ] Mobile UI optimization
-- [ ] Sound effects and music
+```
+src/
+├── client/
+│   ├── components/          # React UI components (14 files)
+│   ├── ClientLogger.lua     # Client logging system
+│   ├── LogCommands.client.lua # Debug commands
+│   └── init.client.lua      # Client entry point
+├── server/
+│   ├── modules/             # Core game modules (11 files)
+│   ├── FarmingSystemNew.lua # Main game coordinator
+│   ├── WorldBuilder.lua     # 3D world generation
+│   └── init.server.lua      # Server entry point
+└── shared/                  # (Currently unused)
+```
+
+## 🎯 Recent Improvements
+
+This codebase has been significantly refactored for better maintainability:
+
+- ✅ **Removed Legacy Code**: Eliminated ~1,800 lines of unused legacy systems
+- ✅ **Performance Optimization**: Separated growth monitoring from UI updates
+- ✅ **Debug Cleanup**: Replaced print statements with proper logging
+- ✅ **Architecture Cleanup**: Consolidated to single, modular farming system
+- ✅ **UI Improvements**: Fixed slot ordering and responsive design issues
+
+## 🤝 Contributing
+
+This project demonstrates modern Roblox development practices:
+- **React-based UI**: Functional components with hooks
+- **Modular Server Design**: Clean separation of concerns
+- **Comprehensive Logging**: Multi-level debugging system
+- **Type Safety**: Consistent parameter validation
+- **Performance Focus**: Optimized loops and efficient data structures
+
+## 📄 License
+
+This project is for educational purposes and demonstrates advanced Roblox game development patterns using React and modular architecture.
+
+---
+
+*Built with ❤️ using React-lua, modern Lua patterns, and Roblox best practices*

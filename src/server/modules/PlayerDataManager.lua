@@ -16,6 +16,7 @@ function PlayerDataManager.getPlayerData(player)
         playerFarms[userId] = {
             money = GameConfig.Settings.startingMoney,
             rebirths = 0,
+            extraSlots = 0, -- Additional inventory slots beyond the main 9
             inventory = {
                 seeds = {},
                 crops = {}
@@ -26,6 +27,11 @@ function PlayerDataManager.getPlayerData(player)
         for seedType, count in pairs(GameConfig.Settings.startingSeeds) do
             playerFarms[userId].inventory.seeds[seedType] = count
         end
+    end
+    
+    -- Ensure existing players have extraSlots field
+    if playerFarms[userId].extraSlots == nil then
+        playerFarms[userId].extraSlots = 0
     end
     
     return playerFarms[userId]
@@ -50,6 +56,7 @@ function PlayerDataManager.performRebirth(player)
     local oldRebirths = playerData.rebirths
     playerData.rebirths = playerData.rebirths + 1
     playerData.money = GameConfig.Settings.startingMoney -- Reset money
+    -- Note: extraSlots is preserved through rebirth
     
     -- Reset inventory to starting amounts
     playerData.inventory = {

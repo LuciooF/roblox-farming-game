@@ -2,8 +2,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local Logger = require(script.Parent.modules.Logger)
 
 local WorldBuilder = {}
+
+-- Get module logger
+local log = Logger.getModuleLogger("WorldBuilder")
 
 -- Farm plot configuration
 local PLOT_SIZE = Vector3.new(8, 1, 8)
@@ -120,15 +124,20 @@ local function createFarmPlot(position, plotId)
     return plot
 end
 
--- Create a 3D plant model
-function WorldBuilder.createPlant(plot, seedType, growthStage)
+-- Create a 3D plant model with variation support
+function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
+    variation = variation or "normal"
+    log.trace("createPlant called - seedType:", seedType, "growthStage:", growthStage, "variation:", variation)
+    
     -- Remove existing plant if any
     local existingPlant = plot:FindFirstChild("Plant")
     if existingPlant then
+        log.trace("Removing existing plant")
         existingPlant:Destroy()
     end
     
     if growthStage == 0 then
+        log.trace("GrowthStage is 0, not creating plant")
         return -- No plant to show yet
     end
     
@@ -153,7 +162,24 @@ function WorldBuilder.createPlant(plot, seedType, growthStage)
     plant.Size = sizes[growthStage] or sizes[1]
     plant.Shape = Enum.PartType.Cylinder
     plant.Material = Enum.Material.Neon
-    plant.BrickColor = BrickColor.new(plantColors[seedType] or "Bright green")
+    
+    -- Apply variation coloring
+    if variation == "normal" then
+        plant.BrickColor = BrickColor.new(plantColors[seedType] or "Bright green")
+    elseif variation == "shiny" then
+        plant.BrickColor = BrickColor.new("Bright yellow")
+        plant.Material = Enum.Material.ForceField
+    elseif variation == "rainbow" then
+        plant.BrickColor = BrickColor.new("Magenta")
+        plant.Material = Enum.Material.ForceField
+    elseif variation == "golden" then
+        plant.BrickColor = BrickColor.new("Bright yellow")
+        plant.Material = Enum.Material.Gold
+    elseif variation == "diamond" then
+        plant.BrickColor = BrickColor.new("Institutional white")
+        plant.Material = Enum.Material.Diamond
+    end
+    
     plant.Anchored = true
     plant.CanCollide = false
     plant.TopSurface = Enum.SurfaceType.Smooth
@@ -164,6 +190,13 @@ function WorldBuilder.createPlant(plot, seedType, growthStage)
     plant.Position = plotPosition + Vector3.new(0, plot.Size.Y/2 + plant.Size.Y/2, 0)
     plant.Orientation = Vector3.new(0, 0, 90) -- Rotate cylinder to be vertical
     plant.Parent = plot
+    
+    log.debug("Plant created successfully! Size:", plant.Size, "Position:", plant.Position, "Color:", plant.BrickColor.Name)
+    
+    -- Add special effects for rare variations
+    if variation ~= "normal" then
+        WorldBuilder.addVariationEffects(plant, variation)
+    end
     
     -- Add growth animation
     if growthStage > 1 then
@@ -180,8 +213,107 @@ function WorldBuilder.createPlant(plot, seedType, growthStage)
     return plant
 end
 
--- Update plot visual state
-function WorldBuilder.updatePlotState(plot, state, seedType)
+-- Add special effects for crop variations
+function WorldBuilder.addVariationEffects(plant, variation)
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "VariationAttachment"
+    attachment.Position = Vector3.new(0, plant.Size.Y/2, 0)
+    attachment.Parent = plant
+    
+    if variation == "shiny" then
+        local particles = Instance.new("ParticleEmitter")
+        particles.Name = "ShinyParticles"
+        particles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+        particles.Lifetime = NumberRange.new(0.5, 1.0)
+        particles.Rate = 15
+        particles.SpreadAngle = Vector2.new(45, 45)
+        particles.Speed = NumberRange.new(1, 3)
+        particles.Color = ColorSequence.new(Color3.fromRGB(255, 255, 150))
+        particles.Size = NumberSequence.new(0.1)
+        particles.Parent = attachment
+        
+    elseif variation == "rainbow" then
+        local particles = Instance.new("ParticleEmitter")
+        particles.Name = "RainbowParticles"
+        particles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+        particles.Lifetime = NumberRange.new(0.8, 1.5)
+        particles.Rate = 25
+        particles.SpreadAngle = Vector2.new(45, 45)
+        particles.Speed = NumberRange.new(2, 4)
+        particles.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 0)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 255))
+        }
+        particles.Size = NumberSequence.new(0.15)
+        particles.Parent = attachment
+        
+        -- Rainbow color cycling for plant
+        spawn(function()
+            while plant.Parent do
+                for hue = 0, 1, 0.01 do
+                    if not plant.Parent then break end
+                    plant.Color = Color3.fromHSV(hue, 1, 1)
+                    wait(0.1)
+                end
+            end
+        end)
+        
+    elseif variation == "golden" then
+        local particles = Instance.new("ParticleEmitter")
+        particles.Name = "GoldenParticles"
+        particles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+        particles.Lifetime = NumberRange.new(1.0, 2.0)
+        particles.Rate = 30
+        particles.SpreadAngle = Vector2.new(60, 60)
+        particles.Speed = NumberRange.new(3, 6)
+        particles.Color = ColorSequence.new(Color3.fromRGB(255, 215, 0))
+        particles.Size = NumberSequence.new(0.2)
+        particles.Parent = attachment
+        
+        -- Golden glow effect
+        local pointLight = Instance.new("PointLight")
+        pointLight.Color = Color3.fromRGB(255, 215, 0)
+        pointLight.Brightness = 2
+        pointLight.Range = 10
+        pointLight.Parent = plant
+        
+    elseif variation == "diamond" then
+        local particles = Instance.new("ParticleEmitter")
+        particles.Name = "DiamondParticles"
+        particles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+        particles.Lifetime = NumberRange.new(1.5, 2.5)
+        particles.Rate = 50
+        particles.SpreadAngle = Vector2.new(90, 90)
+        particles.Speed = NumberRange.new(4, 8)
+        particles.Color = ColorSequence.new(Color3.fromRGB(185, 242, 255))
+        particles.Size = NumberSequence.new(0.3)
+        particles.Parent = attachment
+        
+        -- Diamond sparkle effect
+        local pointLight = Instance.new("PointLight")
+        pointLight.Color = Color3.fromRGB(185, 242, 255)
+        pointLight.Brightness = 3
+        pointLight.Range = 15
+        pointLight.Parent = plant
+        
+        -- Sparkling effect
+        spawn(function()
+            while plant.Parent do
+                plant.Transparency = 0
+                wait(0.1)
+                plant.Transparency = 0.3
+                wait(0.1)
+            end
+        end)
+    end
+end
+
+-- Update plot visual state with variation support
+function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterProgress)
+    variation = variation or "normal"
+    waterProgress = waterProgress or {current = 0, needed = 1}
+    
     local plotData = plot:FindFirstChild("PlotData")
     local plantPrompt = plot:FindFirstChild("PlantPrompt")
     local waterPrompt = plot:FindFirstChild("WaterPrompt")
@@ -210,16 +342,16 @@ function WorldBuilder.updatePlotState(plot, state, seedType)
         end
         
     elseif state == "planted" then
-        -- Show small plant
-        WorldBuilder.createPlant(plot, seedType, 1)
+        -- Show small plant with variation
+        WorldBuilder.createPlant(plot, seedType, 1, variation)
         
         plantPrompt.Enabled = false
         waterPrompt.Enabled = true
         harvestPrompt.Enabled = false
         
     elseif state == "growing" then
-        -- Show partially grown plant (needs more water)
-        WorldBuilder.createPlant(plot, seedType, 1)
+        -- Show partially grown plant (needs more water) with variation
+        WorldBuilder.createPlant(plot, seedType, 1, variation)
         
         plantPrompt.Enabled = false
         waterPrompt.Enabled = true
@@ -232,36 +364,39 @@ function WorldBuilder.updatePlotState(plot, state, seedType)
             plantPosition.BrickColor = BrickColor.new("Brown")
         end
         
-        -- Show growing plant
-        WorldBuilder.createPlant(plot, seedType, 2)
+        -- Show growing plant with variation
+        WorldBuilder.createPlant(plot, seedType, 2, variation)
         
         plantPrompt.Enabled = false
         waterPrompt.Enabled = false
         harvestPrompt.Enabled = false
         
     elseif state == "ready" then
-        -- Show full grown plant
-        local plant = WorldBuilder.createPlant(plot, seedType, 3)
+        -- Show full grown plant with variation
+        local plant = WorldBuilder.createPlant(plot, seedType, 3, variation)
         
-        -- Add particle effects to ready crops
+        -- Add harvest ready particles (in addition to variation effects)
         if plant then
-            local attachment = Instance.new("Attachment")
-            attachment.Name = "ParticleAttachment"
-            attachment.Position = Vector3.new(0, plant.Size.Y/2, 0)
-            attachment.Parent = plant
+            local attachment = plant:FindFirstChild("VariationAttachment")
+            if not attachment then
+                attachment = Instance.new("Attachment")
+                attachment.Name = "VariationAttachment"
+                attachment.Position = Vector3.new(0, plant.Size.Y/2, 0)
+                attachment.Parent = plant
+            end
             
-            local particles = Instance.new("ParticleEmitter")
-            particles.Name = "ReadyParticles"
-            particles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-            particles.Lifetime = NumberRange.new(0.5, 1.0)
-            particles.Rate = 20
-            particles.SpreadAngle = Vector2.new(45, 45)
-            particles.Speed = NumberRange.new(2, 4)
-            particles.Color = ColorSequence.new(Color3.fromRGB(255, 255, 100)) -- Golden sparkles
-            particles.Size = NumberSequence.new(0.1)
-            particles.Parent = attachment
+            local readyParticles = Instance.new("ParticleEmitter")
+            readyParticles.Name = "ReadyParticles"
+            readyParticles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+            readyParticles.Lifetime = NumberRange.new(0.5, 1.0)
+            readyParticles.Rate = 20
+            readyParticles.SpreadAngle = Vector2.new(45, 45)
+            readyParticles.Speed = NumberRange.new(2, 4)
+            readyParticles.Color = ColorSequence.new(Color3.fromRGB(255, 255, 100)) -- Golden sparkles
+            readyParticles.Size = NumberSequence.new(0.1)
+            readyParticles.Parent = attachment
             
-            print("Added sparkle particles to ready crop!")
+            log.debug("Added harvest ready particles to " .. variation .. " " .. seedType .. " crop!")
         end
         
         plantPrompt.Enabled = false
@@ -272,7 +407,7 @@ end
 
 -- Build the entire farm
 function WorldBuilder.buildFarm()
-    print("Building 3D Farm World...")
+    log.info("Building 3D Farm World...")
     
     -- Clear existing farm if any
     local existingFarm = Workspace:FindFirstChild("Farm")
@@ -319,141 +454,8 @@ function WorldBuilder.buildFarm()
         end
     end
     
-    -- Create NPC Merchant (much further from farm)
-    local merchantPosition = Vector3.new(40, 1, 0) -- Much further to the right
     
-    -- Merchant platform
-    local merchantPlatform = Instance.new("Part")
-    merchantPlatform.Name = "MerchantPlatform"
-    merchantPlatform.Size = Vector3.new(8, 1, 8)
-    merchantPlatform.Position = merchantPosition
-    merchantPlatform.Anchored = true
-    merchantPlatform.Material = Enum.Material.Brick
-    merchantPlatform.BrickColor = BrickColor.new("Dark stone grey")
-    merchantPlatform.Parent = farm
-    
-    -- Merchant NPC (simple block character)
-    local merchant = Instance.new("Part")
-    merchant.Name = "Merchant"
-    merchant.Size = Vector3.new(2, 6, 1)
-    merchant.Position = merchantPosition + Vector3.new(0, 4, 0)
-    merchant.Anchored = true
-    merchant.Material = Enum.Material.Plastic
-    merchant.BrickColor = BrickColor.new("Bright blue")
-    merchant.Shape = Enum.PartType.Block
-    merchant.Parent = farm
-    
-    -- Merchant head
-    local head = Instance.new("Part")
-    head.Name = "Head"
-    head.Size = Vector3.new(1.5, 1.5, 1.5)
-    head.Position = merchantPosition + Vector3.new(0, 5.5, 0)
-    head.Anchored = true
-    head.Material = Enum.Material.Plastic
-    head.BrickColor = BrickColor.new("Light orange")
-    head.Shape = Enum.PartType.Ball
-    head.Parent = merchant
-    
-    -- Merchant shop sign
-    local sign = Instance.new("Part")
-    sign.Name = "Sign"
-    sign.Size = Vector3.new(4, 3, 0.2)
-    sign.Position = merchantPosition + Vector3.new(0, 3, -2)
-    sign.Anchored = true
-    sign.Material = Enum.Material.Wood
-    sign.BrickColor = BrickColor.new("Medium brown")
-    sign.Parent = farm
-    
-    local signText = Instance.new("SurfaceGui")
-    signText.Face = Enum.NormalId.Front
-    signText.Parent = sign
-    
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = "CROP MERCHANT\nSell All Crops\nPress E"
-    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textLabel.TextScaled = true
-    textLabel.Font = Enum.Font.SourceSansBold
-    textLabel.Parent = signText
-    
-    -- Merchant selling prompt
-    local sellPrompt = Instance.new("ProximityPrompt")
-    sellPrompt.Name = "SellAllPrompt"
-    sellPrompt.ActionText = "Sell All Crops"
-    sellPrompt.KeyboardKeyCode = Enum.KeyCode.E
-    sellPrompt.RequiresLineOfSight = false
-    sellPrompt.MaxActivationDistance = 15
-    sellPrompt.Parent = merchant
-    
-    -- Create Automation NPC (Gamepass feature)
-    local autoPosition = Vector3.new(-45, 1, 0) -- Much further to the left
-    
-    -- Automation platform
-    local autoPlatform = Instance.new("Part")
-    autoPlatform.Name = "AutoPlatform"
-    autoPlatform.Size = Vector3.new(8, 1, 8)
-    autoPlatform.Position = autoPosition
-    autoPlatform.Anchored = true
-    autoPlatform.Material = Enum.Material.Neon
-    autoPlatform.BrickColor = BrickColor.new("Bright green")
-    autoPlatform.Parent = farm
-    
-    -- Automation NPC (robot-like)
-    local autoBot = Instance.new("Part")
-    autoBot.Name = "AutoBot"
-    autoBot.Size = Vector3.new(2, 6, 1)
-    autoBot.Position = autoPosition + Vector3.new(0, 4, 0)
-    autoBot.Anchored = true
-    autoBot.Material = Enum.Material.Neon
-    autoBot.BrickColor = BrickColor.new("Lime green")
-    autoBot.Shape = Enum.PartType.Block
-    autoBot.Parent = farm
-    
-    -- AutoBot head
-    local autoHead = Instance.new("Part")
-    autoHead.Name = "Head"
-    autoHead.Size = Vector3.new(1.5, 1.5, 1.5)
-    autoHead.Position = autoPosition + Vector3.new(0, 5.5, 0)
-    autoHead.Anchored = true
-    autoBot.Material = Enum.Material.ForceField
-    autoHead.BrickColor = BrickColor.new("Electric blue")
-    autoHead.Shape = Enum.PartType.Ball
-    autoHead.Parent = autoBot
-    
-    -- AutoBot sign
-    local autoSign = Instance.new("Part")
-    autoSign.Name = "AutoSign"
-    autoSign.Size = Vector3.new(4, 3, 0.2)
-    autoSign.Position = autoPosition + Vector3.new(0, 3, -2)
-    autoSign.Anchored = true
-    autoSign.Material = Enum.Material.Neon
-    autoSign.BrickColor = BrickColor.new("Bright green")
-    autoSign.Parent = farm
-    
-    local autoSignText = Instance.new("SurfaceGui")
-    autoSignText.Face = Enum.NormalId.Front
-    autoSignText.Parent = autoSign
-    
-    local autoTextLabel = Instance.new("TextLabel")
-    autoTextLabel.Size = UDim2.new(1, 0, 1, 0)
-    autoTextLabel.BackgroundTransparency = 1
-    autoTextLabel.Text = "AUTO-FARMER\nAutomation Menu\nPress E"
-    autoTextLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
-    autoTextLabel.TextScaled = true
-    autoTextLabel.Font = Enum.Font.SourceSansBold
-    autoTextLabel.Parent = autoSignText
-    
-    -- Single automation prompt
-    local autoPrompt = Instance.new("ProximityPrompt")
-    autoPrompt.Name = "AutoPrompt"
-    autoPrompt.ActionText = "Automation Menu"
-    autoPrompt.KeyboardKeyCode = Enum.KeyCode.E
-    autoPrompt.RequiresLineOfSight = false
-    autoPrompt.MaxActivationDistance = 15
-    autoPrompt.Parent = autoBot
-    
-    print("Farm built with " .. (plotId - 1) .. " plots, merchant, and auto-farmer!")
+    log.info("Farm built with " .. (plotId - 1) .. " plots!")
     return farm
 end
 

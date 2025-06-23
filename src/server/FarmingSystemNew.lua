@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 -- Import all modules
+local Logger = require(script.Parent.modules.Logger)
 local GameConfig = require(script.Parent.modules.GameConfig)
 local PlayerDataManager = require(script.Parent.modules.PlayerDataManager)
 local PlotManager = require(script.Parent.modules.PlotManager)
@@ -13,18 +14,32 @@ local GamepassManager = require(script.Parent.modules.GamepassManager)
 local AutomationSystem = require(script.Parent.modules.AutomationSystem)
 local NotificationManager = require(script.Parent.modules.NotificationManager)
 local RemoteManager = require(script.Parent.modules.RemoteManager)
+local SoundManager = require(script.Parent.modules.SoundManager)
+local SeedDropSystem = require(script.Parent.modules.SeedDropSystem)
+local TutorialManager = require(script.Parent.modules.TutorialManager)
 
 -- Import WorldBuilder (keeping this for now since it works)
 local WorldBuilder = require(script.Parent.WorldBuilder)
 
 local FarmingSystem = {}
 
+-- Get module logger
+local log = Logger.getModuleLogger("FarmingSystem")
+
 -- Initialize the entire system
 function FarmingSystem.initialize()
-    print("🌱 New Modular Farming System: Initializing...")
+    -- Initialize Logger first
+    Logger.initialize()
+    log.info("New Modular Farming System: Initializing...")
     
     -- Initialize RemoteEvents first
     RemoteManager.initialize()
+    
+    -- Initialize sound system
+    SoundManager.initialize()
+    
+    -- Initialize seed drop system
+    SeedDropSystem.initialize()
     
     -- Build the farm world
     local success, farm = pcall(function()
@@ -32,7 +47,7 @@ function FarmingSystem.initialize()
     end)
     
     if not success then
-        warn("Failed to build farm: " .. tostring(farm))
+        log.error("Failed to build farm:", farm)
         return
     end
     
@@ -45,7 +60,7 @@ function FarmingSystem.initialize()
     -- Start the main game loop
     FarmingSystem.startMainLoop()
     
-    print("🌱 New Modular Farming System: Ready!")
+    log.info("New Modular Farming System: Ready!")
 end
 
 -- Setup ProximityPrompt interactions for plots
@@ -68,6 +83,12 @@ function FarmingSystem.setupPlotInteractions()
             if plantPrompt then
                 plantPrompt.Triggered:Connect(function(player)
                     FarmingSystem.handlePlantInteraction(player, plotId)
+                end)
+                
+                -- Tutorial: Detect when player approaches a plot for the first time
+                plantPrompt.PromptShown:Connect(function(player)
+                    log.trace("Player", player.Name, "approached plot", plotId)
+                    TutorialManager.checkGameAction(player, "approach_plot")
                 end)
             end
             
@@ -100,6 +121,8 @@ function FarmingSystem.setupNPCInteractions()
                 local success, message, details = AutomationSystem.sellAll(player)
                 if success then
                     RemoteManager.syncPlayerData(player)
+                    -- Play sell sound for automation
+                    -- SoundManager.playSellSound()
                 end
                 NotificationManager.sendAutomationNotification(player, success, message, details)
             end)
@@ -124,47 +147,89 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
     local playerData = PlayerDataManager.getPlayerData(player)
     if not playerData then return end
     
-    -- Check if player has seeds
-    local availableSeed = nil
-    for seedType, count in pairs(playerData.inventory.seeds) do
-        if count > 0 then
-            availableSeed = seedType
-            break
+    -- Get the player's selected item from hotbar
+    local selectedItem = RemoteManager.getSelectedItem(player)
+    local selectedSeed = nil
+    
+    log.debug("Planting - Got selected item:", selectedItem and (selectedItem.type .. ":" .. selectedItem.name) or "none")
+    
+    -- Use selected seed if it's a seed and available
+    if selectedItem and selectedItem.type == "seed" then
+        local seedCount = playerData.inventory.seeds[selectedItem.name] or 0
+        if seedCount > 0 then
+            selectedSeed = selectedItem.name
+            log.debug("Player", player.Name, "using selected seed:", selectedSeed)
+        else
+            log.debug("Player", player.Name, "selected seed not available:", selectedItem.name, "count:", seedCount)
+        end
+    else
+        log.debug("Planting - No valid selected item:", selectedItem and tostring(selectedItem.type) or "nil")
+    end
+    
+    -- Fallback to first available seed if no valid selection
+    if not selectedSeed then
+        for seedType, count in pairs(playerData.inventory.seeds) do
+            if count > 0 then
+                selectedSeed = seedType
+                log.debug("Player", player.Name, "falling back to first available seed:", selectedSeed)
+                break
+            end
         end
     end
     
-    if not availableSeed then
-        NotificationManager.sendNotification(player, "You don't have any seeds!")
+    if not selectedSeed then
+        log.debug("Player", player.Name, "has no seeds available")
+        NotificationManager.sendError(player, "🌱 No seeds available! Buy some from the shop.")
         return
     end
     
-    local success, message = PlotManager.plantSeed(player, plotId, availableSeed)
+    local success, message = PlotManager.plantSeed(player, plotId, selectedSeed)
     if success then
         RemoteManager.syncPlayerData(player)
         
-        -- Update plot visuals
+        -- Update plot visuals with variation FIRST
         local plot = WorldBuilder.getPlotById(plotId)
-        if plot then
-            WorldBuilder.updatePlotState(plot, "planted", availableSeed)
+        local plotState = PlotManager.getPlotState(plotId)
+        if plot and plotState then
+            log.trace("Updating plot visual - plotId:", plotId, "seed:", selectedSeed, "variation:", plotState.variation)
+            WorldBuilder.updatePlotState(plot, "planted", selectedSeed, plotState.variation)
+            -- Play plant sound at plot location
+            -- SoundManager.playPlantSound(plot.Position)
+        else
+            log.error("Failed to get plot or plot state for visual update. Plot:", plot ~= nil, "PlotState:", plotState ~= nil)
         end
+        
+        -- Check tutorial progress AFTER visual update
+        TutorialManager.checkGameAction(player, "plant_seed")
     end
     
-    NotificationManager.sendNotification(player, message)
+    -- Use appropriate notification type based on success
+    if success then
+        NotificationManager.sendSuccess(player, "🌱 " .. message)
+    else
+        NotificationManager.sendError(player, "❌ " .. message)
+    end
 end
 
 function FarmingSystem.handleWaterInteraction(player, plotId)
     local success, message = PlotManager.waterPlant(player, plotId)
     
     if success then
-        -- Update plot visuals
+        -- Check tutorial progress
+        TutorialManager.checkGameAction(player, "water_plant")
+        
+        -- Update plot visuals with variation
         local plot = WorldBuilder.getPlotById(plotId)
         local plotState = PlotManager.getPlotState(plotId)
         if plot and plotState then
-            WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType)
+            WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
+            -- Play water sound at plot location
+            -- SoundManager.playWaterSound(plot.Position)
         end
+        NotificationManager.sendSuccess(player, "💧 " .. message)
+    else
+        NotificationManager.sendError(player, "❌ " .. message)
     end
-    
-    NotificationManager.sendNotification(player, message)
 end
 
 function FarmingSystem.handleHarvestInteraction(player, plotId)
@@ -173,21 +238,30 @@ function FarmingSystem.handleHarvestInteraction(player, plotId)
     if success then
         RemoteManager.syncPlayerData(player)
         
-        -- Update plot visuals
+        -- Check tutorial progress
+        TutorialManager.checkGameAction(player, "harvest_crop")
+        
+        -- Update plot visual to match the actual state after harvest
         local plot = WorldBuilder.getPlotById(plotId)
-        if plot then
-            WorldBuilder.updatePlotState(plot, "empty", "")
+        local plotState = PlotManager.getPlotState(plotId)
+        if plot and plotState then
+            -- Use actual plot state (should be "watered" after harvest to start growing again)
+            WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
+            -- Play harvest sound at plot location
+            -- SoundManager.playHarvestSound(plot.Position)
         end
+        NotificationManager.sendMoney(player, "🌾 " .. message)
+    else
+        NotificationManager.sendError(player, "❌ " .. message)
     end
-    
-    NotificationManager.sendNotification(player, message)
 end
 
 -- Main game loop for growth monitoring and countdown updates
 function FarmingSystem.startMainLoop()
+    -- Growth monitoring loop (less frequent for performance)
     spawn(function()
         while true do
-            wait(1) -- Check every second for real-time countdown updates
+            wait(5) -- Check every 5 seconds for growth events
             
             -- Update plot growth monitoring
             local eventType, eventData = PlotManager.updateGrowthMonitoring()
@@ -197,21 +271,32 @@ function FarmingSystem.startMainLoop()
                 local deathInfo = eventData.deathInfo
                 NotificationManager.sendPlantDeathNotification(deathInfo.ownerId, deathInfo.seedType, deathInfo.reason)
                 
-                -- Update plot visuals
+                -- Update plot visuals and play death sound
                 local plot = WorldBuilder.getPlotById(eventData.plotId)
                 if plot then
                     WorldBuilder.updatePlotState(plot, "empty", "")
+                    -- SoundManager.playPlantDeathSound(plot.Position)
                 end
                 
             elseif eventType == "plant_ready" then
-                -- Update plot visuals
+                -- Check tutorial progress
+                TutorialManager.checkGameAction(game.Players:GetPlayerByUserId(PlotManager.getPlotState(eventData.plotId).ownerId), "plant_ready")
+                
+                -- Update plot visuals and play ready sound with variation
                 local plot = WorldBuilder.getPlotById(eventData.plotId)
-                if plot then
-                    WorldBuilder.updatePlotState(plot, "ready", eventData.seedType)
+                local plotState = PlotManager.getPlotState(eventData.plotId)
+                if plot and plotState then
+                    WorldBuilder.updatePlotState(plot, "ready", eventData.seedType, plotState.variation)
+                    -- SoundManager.playPlantReadySound(plot.Position)
                 end
             end
-            
-            -- Update countdown displays
+        end
+    end)
+    
+    -- Countdown display loop (more frequent for smooth UI)
+    spawn(function()
+        while true do
+            wait(1) -- Update countdowns every second for smooth display
             FarmingSystem.updateCountdownDisplays()
         end
     end)
