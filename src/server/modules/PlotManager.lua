@@ -49,10 +49,26 @@ local function sendPlotUpdate(plotId, additionalData)
 end
 
 -- Initialize plot state (loads from player data if available)
-function PlotManager.initializePlot(plotId, ownerId)
+function PlotManager.initializePlot(plotId, ownerId, playerObject)
     -- Try to load existing plot state from player data (only if we have an owner)
     local savedPlotState = nil
-    if ownerId then
+    if ownerId and playerObject then
+        local FarmManager = require(script.Parent.FarmManager)
+        local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
+        
+        -- Use the passed player object directly
+        print("🔧 [PLOT DEBUG] initializePlot using player object for", playerObject.Name, "plot", plotIndex)
+        savedPlotState = PlayerDataManager.getPlotState(playerObject, plotIndex)
+        
+        if savedPlotState then
+            log.info("Loading saved plot state for player", playerObject.Name, "plot", plotIndex, "state:", savedPlotState.state)
+            print("🔧 [PLOT DEBUG] Found saved state in initializePlot:", savedPlotState.state, savedPlotState.seedType)
+        else
+            log.debug("No saved state for player", playerObject.Name, "plot", plotIndex)
+            print("🔧 [PLOT DEBUG] No saved state found in initializePlot for plot", plotIndex)
+        end
+    elseif ownerId and not playerObject then
+        -- Fallback to the old method if no player object passed
         local Players = game:GetService("Players")
         local player = Players:GetPlayerByUserId(ownerId)
         
@@ -64,6 +80,8 @@ function PlotManager.initializePlot(plotId, ownerId)
             if savedPlotState then
                 log.info("Loading saved plot state for player", player.Name, "plot", plotIndex, "state:", savedPlotState.state)
             end
+        else
+            log.warn("Could not find player for userId", ownerId, "when loading plot", plotId)
         end
     end
     

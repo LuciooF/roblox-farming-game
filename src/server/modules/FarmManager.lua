@@ -144,7 +144,7 @@ function FarmManager.onFarmAssigned(farmId, player)
     local PlotManager = require(script.Parent.PlotManager)
     for plotIndex = 1, PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
-        PlotManager.initializePlot(globalPlotId, player.UserId)
+        PlotManager.initializePlot(globalPlotId, player.UserId, player) -- Pass player object directly
         
         -- Update the visual state of the plot to match the loaded data
         local plotState = PlotManager.getPlotState(globalPlotId)
