@@ -4,10 +4,26 @@
 local GameConfig = require(script.Parent.GameConfig)
 local PlayerDataManager = require(script.Parent.PlayerDataManager)
 
+-- Import RemoteManager for client updates (lazy loaded to avoid circular dependency)
+local RemoteManager = nil
+
 local PlotManager = {}
 
 -- Storage
 local plotStates = {} -- [plotId] = { state, seedType, plantedTime, etc. }
+
+-- Helper function to send plot updates to clients
+local function sendPlotUpdate(plotId, additionalData)
+    -- Lazy load RemoteManager to avoid circular dependency
+    if not RemoteManager then
+        RemoteManager = require(script.Parent.RemoteManager)
+    end
+    
+    local plotState = plotStates[plotId]
+    if plotState and RemoteManager.sendPlotUpdate then
+        RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
+    end
+end
 
 -- Initialize plot state
 function PlotManager.initializePlot(plotId)
@@ -57,18 +73,27 @@ function PlotManager.plantSeed(player, plotId, seedType)
     local variation = PlotManager.rollCropVariation()
     
     -- Plant the seed
+    local currentTime = tick()
     plotState.state = "planted"
     plotState.seedType = seedType
-    plotState.plantedTime = tick()
+    plotState.plantedTime = currentTime
+    plotState.plantedAt = currentTime -- For client prediction
     plotState.ownerId = player.UserId
     plotState.wateredCount = 0
     plotState.waterNeeded = GameConfig.Plants[seedType].waterNeeded
     plotState.lastWateredTime = 0
+    plotState.lastWateredAt = 0 -- For client prediction
     plotState.variation = variation
     plotState.harvestCooldown = 0 -- For permanent crops
+    plotState.growthTime = GameConfig.Plants[seedType].growthTime
+    plotState.waterTime = GameConfig.Plants[seedType].waterNeeded * 10 -- Time before needs water
+    plotState.deathTime = GameConfig.Plants[seedType].deathTime or 120
     
     -- Remove seed from inventory
     PlayerDataManager.removeFromInventory(player, "seeds", seedType, 1)
+    
+    -- Send plot update to clients for smooth countdown prediction
+    sendPlotUpdate(plotId, {plantedAt = currentTime})
     
     return true, "Planted " .. seedType .. "! Now water it."
 end
@@ -99,19 +124,29 @@ function PlotManager.waterPlant(player, plotId)
     end
     
     -- Add water
+    local currentTime = tick()
     plotState.wateredCount = plotState.wateredCount + 1
-    plotState.lastWateredTime = tick()
+    plotState.lastWateredTime = currentTime
+    plotState.lastWateredAt = currentTime -- For client prediction
     
     local waterProgress = plotState.wateredCount .. "/" .. plotState.waterNeeded
     
     if plotState.wateredCount >= plotState.waterNeeded then
         -- Fully watered - start growing
         plotState.state = "watered"
-        plotState.wateredTime = tick()
+        plotState.wateredTime = currentTime
+        
+        -- Send plot update to clients
+        sendPlotUpdate(plotId, {wateredAt = currentTime})
+        
         return true, "Plant fully watered (" .. waterProgress .. ")! Growing now..."
     else
         -- Partially watered
         plotState.state = "growing"
+        
+        -- Send plot update to clients
+        sendPlotUpdate(plotId, {wateredAt = currentTime})
+        
         return true, "Plant watered (" .. waterProgress .. "). Needs more water!"
     end
 end
@@ -246,6 +281,10 @@ function PlotManager.updateGrowthMonitoring()
             if timeSinceWatered >= growthTime then
                 -- Plant is ready!
                 plotState.state = "ready"
+                
+                -- Send plot update to clients
+                sendPlotUpdate(plotId)
+                
                 return "plant_ready", {
                     plotId = plotId,
                     seedType = plotState.seedType

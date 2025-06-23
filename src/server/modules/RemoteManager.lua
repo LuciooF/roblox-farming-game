@@ -95,6 +95,10 @@ function RemoteManager.initialize()
     buySlotRemote.Name = "BuySlot"
     buySlotRemote.Parent = remoteFolder
     
+    local plotUpdateRemote = Instance.new("RemoteEvent")
+    plotUpdateRemote.Name = "PlotUpdate"
+    plotUpdateRemote.Parent = remoteFolder
+    
     -- Store references
     remotes.plant = plantRemote
     remotes.water = waterRemote
@@ -110,6 +114,7 @@ function RemoteManager.initialize()
     remotes.logCommand = logCommandRemote
     remotes.selectedItem = selectedItemRemote
     remotes.buySlot = buySlotRemote
+    remotes.plotUpdate = plotUpdateRemote
     
     -- Also create direct references for client access
     remotes.SyncPlayerData = syncRemote
@@ -331,6 +336,37 @@ function RemoteManager.onBuySlot(player)
     else
         NotificationManager.sendError(player, "💰 Need $" .. slotCost .. " to buy a new inventory slot")
     end
+end
+
+-- Send plot state update to all clients for smooth countdown prediction
+function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
+    if not remotes.plotUpdate then
+        log.warn("PlotUpdate remote not available")
+        return
+    end
+    
+    local updateData = {
+        plotId = plotId,
+        state = plotState.state,
+        seedType = plotState.seedType,
+        plantedAt = plotState.plantedAt,
+        lastWateredAt = plotState.lastWateredAt,
+        growthTime = plotState.growthTime,
+        waterTime = plotState.waterTime,
+        deathTime = plotState.deathTime,
+        variation = plotState.variation
+    }
+    
+    -- Add any additional timing data
+    if additionalData then
+        for key, value in pairs(additionalData) do
+            updateData[key] = value
+        end
+    end
+    
+    -- Send to all players for now (later optimize to nearby players only)
+    remotes.plotUpdate:FireAllClients(updateData)
+    log.debug("Sent plot update for", plotId, "state:", plotState.state)
 end
 
 -- Log command handler

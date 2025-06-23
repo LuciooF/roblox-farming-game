@@ -293,35 +293,14 @@ function FarmingSystem.startMainLoop()
         end
     end)
     
-    -- Countdown display loop (more frequent for smooth UI)
-    spawn(function()
-        while true do
-            wait(1) -- Update countdowns every second for smooth display
-            FarmingSystem.updateCountdownDisplays()
-        end
-    end)
+    -- Remove countdown display loop - now handled client-side for better performance
 end
 
--- Update all countdown displays
+-- Update countdown displays (deprecated - now handled client-side)
+-- This function is kept for backward compatibility but no longer used
 function FarmingSystem.updateCountdownDisplays()
-    local plots = WorldBuilder.getAllPlots()
-    
-    for _, plot in pairs(plots) do
-        local plotIdValue = plot:FindFirstChild("PlotId")
-        if plotIdValue then
-            local plotId = plotIdValue.Value
-            local countdownGui = plot:FindFirstChild("CountdownDisplay")
-            local countdownLabel = countdownGui and countdownGui:FindFirstChild("TextLabel")
-            
-            if countdownLabel then
-                local countdownInfo = PlotManager.getCountdownInfo(plotId)
-                if countdownInfo then
-                    countdownLabel.Text = countdownInfo.text
-                    countdownLabel.TextColor3 = countdownInfo.color
-                end
-            end
-        end
-    end
+    -- Countdown displays are now handled client-side for better performance
+    -- Server only sends state changes via plot update events
 end
 
 -- Player connection handlers

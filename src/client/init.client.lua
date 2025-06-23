@@ -27,6 +27,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 -- Import main UI component
 local MainUI = require(script.components.MainUI)
+local PlotCountdownManager = require(script.PlotCountdownManager)
 
 -- Wait for farming remotes
 log.debug("Waiting for FarmingRemotes folder...")
@@ -48,6 +49,7 @@ local tutorialRemote = farmingRemotes:WaitForChild("TutorialData")
 local tutorialActionRemote = farmingRemotes:WaitForChild("TutorialAction")
 local selectedItemRemote = farmingRemotes:WaitForChild("SelectedItem")
 local buySlotRemote = farmingRemotes:WaitForChild("BuySlot")
+local plotUpdateRemote = farmingRemotes:WaitForChild("PlotUpdate")
 
 -- Player data state
 local playerData = {
@@ -113,6 +115,14 @@ if existingUI then
     existingUI:Destroy()
 end
 
+-- Initialize client systems
+PlotCountdownManager.initialize()
+
+-- Handle plot updates from server
+plotUpdateRemote.OnClientEvent:Connect(function(plotData)
+    PlotCountdownManager.updatePlotData(plotData.plotId, plotData)
+end)
+
 -- Initialize React UI
 wait(1) -- Wait a moment for everything to load
 updateUI()
@@ -120,6 +130,7 @@ updateUI()
 log.info("React 3D Farming Game Client Ready!")
 log.info("Responsive UI activated - supports mobile and desktop!")
 log.info("Enhanced with emojis and smooth animations!")
+log.info("Client-side plot countdown system active!")
 
 -- Development hot reload support (optional)
 if game:GetService("RunService"):IsStudio() then
