@@ -13,6 +13,13 @@
       }
     },
 
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "ServerPackages": {
+        "$path": "ServerPackages"
+      }
+    },
+
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "Server": {
