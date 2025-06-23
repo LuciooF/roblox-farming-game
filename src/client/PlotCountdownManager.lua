@@ -238,9 +238,8 @@ function PlotCountdownManager.updateCountdownDisplay(plotId, countdownLabel)
     local state = plotData.state
     
     if state == "empty" then
-        countdownLabel.Text = "Empty"
-        countdownLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-        countdownLabel.Visible = true  -- Always show "Empty" for owned plots
+        countdownLabel.Text = ""
+        countdownLabel.Visible = false  -- Hide text for empty plots
         
     elseif state == "planted" then
         -- Calculate time until needs water and death time
@@ -304,9 +303,9 @@ function PlotCountdownManager.updateCountdownDisplay(plotId, countdownLabel)
         countdownLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold
         
     else
-        countdownLabel.Visible = true
-        countdownLabel.Text = state
-        countdownLabel.TextColor3 = Color3.fromRGB(200, 200, 200) -- Gray
+        -- For any unknown state, hide the text instead of showing the raw state name
+        countdownLabel.Text = ""
+        countdownLabel.Visible = false
     end
 end
 
