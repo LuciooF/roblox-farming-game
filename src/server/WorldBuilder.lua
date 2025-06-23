@@ -592,25 +592,7 @@ function WorldBuilder.createFarmSign(farmFolder, farmPosition, farmId)
     characterDisplay.CanCollide = false
     characterDisplay.Parent = farmFolder
     
-    -- Create player name display above character (clean, no background clutter)
-    local nameGui = Instance.new("BillboardGui")
-    nameGui.Name = "PlayerNameGui"
-    nameGui.Size = UDim2.new(0, 400, 0, 80) -- Clean name display
-    nameGui.StudsOffset = Vector3.new(0, 15, 0) -- Higher up above the character
-    nameGui.MaxDistance = 150 -- Limit visibility distance
-    nameGui.Parent = characterDisplay
-    
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Name = "NameLabel"
-    nameLabel.Size = UDim2.new(1, 0, 1, 0)
-    nameLabel.BackgroundTransparency = 1 -- No background - just floating text
-    nameLabel.Text = ""
-    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    nameLabel.TextScaled = true
-    nameLabel.Font = Enum.Font.SourceSansBold
-    nameLabel.TextStrokeTransparency = 0 -- Add text stroke for visibility
-    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    nameLabel.Parent = nameGui
+    -- No player name display - clean farm appearance
 end
 
 -- Create spawn platform sign
@@ -702,28 +684,15 @@ function WorldBuilder.updateFarmSign(farmId, playerName, player)
     local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
     if not farmFolder then return end
     
-    -- Update character display and name (no wooden/grey sign clutter)
+    -- Update character display (no name display anymore)
     local characterDisplay = farmFolder:FindFirstChild("CharacterDisplay")
     if characterDisplay then
-        local nameGui = characterDisplay:FindFirstChild("PlayerNameGui")
-        local nameLabel = nameGui and nameGui:FindFirstChild("NameLabel")
-        
-        if nameLabel then
-            if playerName then
-                nameLabel.Text = playerName .. "'s Farm"
-                nameLabel.Visible = true
-                
-                -- Create 3D character model if player is provided
-                if player then
-                    WorldBuilder.createPlayerCharacterDisplay(characterDisplay, player, farmId)
-                end
-            else
-                nameLabel.Text = ""
-                nameLabel.Visible = false
-                
-                -- Remove character model
-                WorldBuilder.clearCharacterDisplay(characterDisplay)
-            end
+        if player then
+            -- Create 3D character model if player is provided
+            WorldBuilder.createPlayerCharacterDisplay(characterDisplay, player, farmId)
+        else
+            -- Remove character model when no player
+            WorldBuilder.clearCharacterDisplay(characterDisplay)
         end
     end
     

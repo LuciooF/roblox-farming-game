@@ -88,47 +88,41 @@ local TUTORIAL_STEPS = {
     }
 }
 
--- Player tutorial states
-local playerTutorialStates = {} -- [userId] = {currentStep, completed, skipped}
-
--- Initialize tutorial for a player
+-- Initialize tutorial for a player (now uses ProfileStore persistence)
 function TutorialManager.initializePlayer(player)
-    local userId = player.UserId
-    local playerData = PlayerDataManager.getPlayerData(player)
-    
-    -- Check if player has already completed tutorial
-    if playerData and playerData.tutorialCompleted then
-        playerTutorialStates[userId] = {
-            currentStep = #TUTORIAL_STEPS + 1,
-            completed = true,
-            skipped = false
-        }
+    local tutorialProgress = PlayerDataManager.getTutorialProgress(player)
+    if not tutorialProgress then
+        log.warn("Could not get tutorial progress for", player.Name)
         return
     end
     
-    -- Start tutorial for new player
-    playerTutorialStates[userId] = {
-        currentStep = 1,
-        completed = false,
-        skipped = false
-    }
+    -- Check if player has already completed tutorial
+    if tutorialProgress.completed then
+        log.info("Player", player.Name, "has already completed tutorial")
+        return
+    end
     
-    -- Send initial tutorial step to client
+    -- Check if player is in middle of tutorial
+    if tutorialProgress.currentStep > 1 then
+        log.info("Resuming tutorial for player", player.Name, "at step", tutorialProgress.currentStep)
+    else
+        log.info("Starting new tutorial for player", player.Name)
+    end
+    
+    -- Send current tutorial step to client
     TutorialManager.sendTutorialStep(player)
-    
-    log.info("Started tutorial for player:", player.Name)
 end
 
 -- Send current tutorial step to client
 function TutorialManager.sendTutorialStep(player)
-    local userId = player.UserId
-    local tutorialState = playerTutorialStates[userId]
+    local tutorialProgress = PlayerDataManager.getTutorialProgress(player)
+    if not tutorialProgress then return end
     
-    if not tutorialState or tutorialState.completed or tutorialState.skipped then
+    if tutorialProgress.completed then
         return
     end
     
-    local currentStep = TUTORIAL_STEPS[tutorialState.currentStep]
+    local currentStep = TUTORIAL_STEPS[tutorialProgress.currentStep]
     if not currentStep then
         return
     end
@@ -138,10 +132,10 @@ function TutorialManager.sendTutorialStep(player)
     if remotes.tutorialRemote then
         local tutorialData = {
             step = currentStep,
-            stepNumber = tutorialState.currentStep,
+            stepNumber = tutorialProgress.currentStep,
             totalSteps = #TUTORIAL_STEPS
         }
-        log.debug("Sending tutorial step", tutorialState.currentStep, "to", player.Name, ":", currentStep.title)
+        log.debug("Sending tutorial step", tutorialProgress.currentStep, "to", player.Name, ":", currentStep.title)
         remotes.tutorialRemote:FireClient(player, tutorialData)
     else
         log.error("Tutorial remote not found!")
@@ -150,14 +144,14 @@ end
 
 -- Progress tutorial to next step
 function TutorialManager.progressTutorial(player, action, data)
-    local userId = player.UserId
-    local tutorialState = playerTutorialStates[userId]
+    local tutorialProgress = PlayerDataManager.getTutorialProgress(player)
+    if not tutorialProgress then return end
     
-    if not tutorialState or tutorialState.completed or tutorialState.skipped then
+    if tutorialProgress.completed then
         return
     end
     
-    local currentStep = TUTORIAL_STEPS[tutorialState.currentStep]
+    local currentStep = TUTORIAL_STEPS[tutorialProgress.currentStep]
     if not currentStep then
         return
     end
@@ -177,18 +171,24 @@ function TutorialManager.progressTutorial(player, action, data)
         log.debug("Buy seed passed target check")
     end
     
-    -- Give reward
+    -- Mark current step as completed and give reward
+    local rewardAmount = 0
     if currentStep.reward and currentStep.reward.money > 0 then
-        PlayerDataManager.addMoney(player, currentStep.reward.money)
+        rewardAmount = currentStep.reward.money
+        PlayerDataManager.addMoney(player, rewardAmount)
         NotificationManager.sendMoney(player, 
-            "🎉 Tutorial Reward: +" .. currentStep.reward.money .. " coins!")
+            "🎉 Tutorial Reward: +" .. rewardAmount .. " coins!")
     end
     
+    -- Mark step as completed in persistent storage
+    PlayerDataManager.markTutorialStepCompleted(player, currentStep.id, rewardAmount)
+    
     -- Move to next step
-    tutorialState.currentStep = tutorialState.currentStep + 1
+    local nextStep = tutorialProgress.currentStep + 1
+    PlayerDataManager.setTutorialStep(player, nextStep)
     
     -- Check if tutorial is complete
-    if tutorialState.currentStep > #TUTORIAL_STEPS then
+    if nextStep > #TUTORIAL_STEPS then
         TutorialManager.completeTutorial(player)
     else
         -- Send next step
@@ -201,18 +201,8 @@ end
 
 -- Complete tutorial
 function TutorialManager.completeTutorial(player)
-    local userId = player.UserId
-    local tutorialState = playerTutorialStates[userId]
-    
-    if tutorialState then
-        tutorialState.completed = true
-    end
-    
-    -- Mark tutorial as completed in player data
-    local playerData = PlayerDataManager.getPlayerData(player)
-    if playerData then
-        playerData.tutorialCompleted = true
-    end
+    -- Mark tutorial as completed in persistent storage
+    PlayerDataManager.completeTutorial(player, false)
     
     -- Hide tutorial UI
     local remotes = RemoteManager.getRemotes()
@@ -228,22 +218,15 @@ end
 
 -- Skip tutorial
 function TutorialManager.skipTutorial(player)
-    local userId = player.UserId
-    local tutorialState = playerTutorialStates[userId]
+    local tutorialProgress = PlayerDataManager.getTutorialProgress(player)
+    if not tutorialProgress then return end
     
-    if not tutorialState or tutorialState.completed then
+    if tutorialProgress.completed then
         return
     end
     
-    tutorialState.skipped = true
-    tutorialState.completed = true
-    
-    -- Mark tutorial as completed in player data (but not rewarded)
-    local playerData = PlayerDataManager.getPlayerData(player)
-    if playerData then
-        playerData.tutorialCompleted = true
-        playerData.tutorialSkipped = true
-    end
+    -- Mark tutorial as completed and skipped in persistent storage
+    PlayerDataManager.completeTutorial(player, true)
     
     -- Hide tutorial UI
     local remotes = RemoteManager.getRemotes()
@@ -268,35 +251,36 @@ end
 
 -- Check if player should receive tutorial progress for game actions
 function TutorialManager.checkGameAction(player, action, data)
-    local userId = player.UserId
-    local tutorialState = playerTutorialStates[userId]
+    local tutorialProgress = PlayerDataManager.getTutorialProgress(player)
+    if not tutorialProgress then return end
     
-    if not tutorialState or tutorialState.completed or tutorialState.skipped then
+    if tutorialProgress.completed then
         return
     end
     
-    local currentStep = TUTORIAL_STEPS[tutorialState.currentStep]
+    local currentStep = TUTORIAL_STEPS[tutorialProgress.currentStep]
     if not currentStep then
         return
     end
     
     -- Only progress if the action matches the current step's expected action
     if currentStep.action == action then
-        log.debug("Tutorial action matches current step:", action, "for step", tutorialState.currentStep)
+        log.debug("Tutorial action matches current step:", action, "for step", tutorialProgress.currentStep)
         TutorialManager.progressTutorial(player, action, data)
     else
-        log.debug("Tutorial action ignored:", action, "expected:", currentStep.action, "for step", tutorialState.currentStep)
+        log.debug("Tutorial action ignored:", action, "expected:", currentStep.action, "for step", tutorialProgress.currentStep)
     end
 end
 
--- Get tutorial state for player
+-- Get tutorial state for player (now from ProfileStore)
 function TutorialManager.getTutorialState(player)
-    return playerTutorialStates[player.UserId]
+    return PlayerDataManager.getTutorialProgress(player)
 end
 
--- Player left - cleanup
+-- Player left - no cleanup needed (ProfileStore handles persistence)
 function TutorialManager.onPlayerLeft(player)
-    playerTutorialStates[player.UserId] = nil
+    -- No local state to clean up - everything is in ProfileStore
+    log.debug("Tutorial state preserved for", player.Name, "in ProfileStore")
 end
 
 return TutorialManager

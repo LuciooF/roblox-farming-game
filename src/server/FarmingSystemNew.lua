@@ -32,12 +32,14 @@ function FarmingSystem.initialize()
     Logger.initialize()
     log.info("New Modular Farming System: Initializing...")
     
-    -- Initialize RemoteEvents first
+    -- Initialize PlayerDataManager with ProfileStore first
+    PlayerDataManager.initialize()
+    
+    -- Initialize RemoteEvents
     RemoteManager.initialize()
     
     -- Initialize sound system
     SoundManager.initialize()
-    
     
     -- Initialize farm management system
     FarmManager.initialize()
@@ -338,17 +340,21 @@ end
 
 -- Player connection handlers
 function FarmingSystem.onPlayerJoined(player)
-    -- Assign farm first
+    -- Load player data with ProfileStore first
+    PlayerDataManager.onPlayerJoined(player)
+    -- Assign farm after data is loaded
     FarmManager.onPlayerJoined(player)
     -- Then handle remote connections
     RemoteManager.onPlayerJoined(player)
 end
 
 function FarmingSystem.onPlayerLeft(player)
-    -- Clean up farm assignment
+    -- Clean up farm assignment first
     FarmManager.onPlayerLeaving(player)
-    -- Then handle remote cleanup
+    -- Handle remote cleanup
     RemoteManager.onPlayerLeft(player)
+    -- Release ProfileStore profile last
+    PlayerDataManager.onPlayerLeaving(player)
 end
 
 return FarmingSystem

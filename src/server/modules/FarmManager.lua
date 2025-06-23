@@ -140,18 +140,27 @@ function FarmManager.onFarmAssigned(farmId, player)
     local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
     WorldBuilder.updateFarmSign(farmId, player.Name, player)
     
-    -- Initialize farm plots in PlotManager
+    -- Initialize farm plots in PlotManager (loads saved states from player data)
     local PlotManager = require(script.Parent.PlotManager)
     for plotIndex = 1, PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
         PlotManager.initializePlot(globalPlotId, player.UserId)
+        
+        -- Update the visual state of the plot to match the loaded data
+        local plotState = PlotManager.getPlotState(globalPlotId)
+        if plotState then
+            local plot = WorldBuilder.getPlotById(globalPlotId)
+            if plot then
+                WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
+            end
+        end
     end
     
     -- Store assignment in player data
     local PlayerDataManager = require(script.Parent.PlayerDataManager)
     PlayerDataManager.setAssignedFarm(player, farmId)
     
-    log.debug("Farm", farmId, "assigned to", player.Name)
+    log.info("Farm", farmId, "assigned to", player.Name, "- restored plot states from player data")
 end
 
 -- Called when a farm is unassigned from a player
@@ -160,11 +169,23 @@ function FarmManager.onFarmUnassigned(farmId, userId)
     local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
     WorldBuilder.updateFarmSign(farmId, nil, nil)
     
-    -- Reset all farm plots in PlotManager
+    -- Reset plot visuals to empty state but keep plot states in PlotManager memory
+    -- (plot states are preserved in player data and will be restored when they rejoin)
+    local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+    for plotIndex = 1, PLOTS_PER_FARM do
+        local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
+        local plot = WorldBuilder.getPlotById(globalPlotId)
+        if plot then
+            -- Only reset the visual appearance, not the plot state data
+            WorldBuilder.updatePlotState(plot, "empty", "")
+        end
+    end
+    
+    -- Clear plot states from memory (but they remain in player data)
     local PlotManager = require(script.Parent.PlotManager)
     for plotIndex = 1, PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
-        PlotManager.resetPlot(globalPlotId)
+        PlotManager.clearPlotFromMemory(globalPlotId)
     end
     
     -- Clear assignment from player data (if player still online)
@@ -175,7 +196,7 @@ function FarmManager.onFarmUnassigned(farmId, userId)
         PlayerDataManager.setAssignedFarm(player, nil)
     end
     
-    log.debug("Farm", farmId, "unassigned from user", userId)
+    log.info("Farm", farmId, "unassigned from user", userId, "- plot states preserved in player data")
 end
 
 -- Convert farm and plot index to global plot ID

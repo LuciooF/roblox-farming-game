@@ -14,6 +14,7 @@ testez = "roblox/testez@^0.4.1"
 [dev-dependencies]
 
 [server-dependencies]
+profilestore = "madstudioroblox/profilestore@^1.0.8"
 
 [place]
 shared-packages = "Packages"

@@ -16,8 +16,27 @@ local PlotManager = {}
 -- Storage
 local plotStates = {} -- [plotId] = { state, seedType, plantedTime, etc. }
 
+-- Helper function to save plot state to player data
+local function savePlotToPlayerData(plotId)
+    local plotState = plotStates[plotId]
+    if not plotState or not plotState.ownerId then return end
+    
+    local Players = game:GetService("Players")
+    local player = Players:GetPlayerByUserId(plotState.ownerId)
+    if not player then return end
+    
+    local FarmManager = require(script.Parent.FarmManager)
+    local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
+    
+    -- Use ProfileStore-powered PlayerDataManager to save plot state
+    PlayerDataManager.savePlotState(player, plotIndex, plotState)
+end
+
 -- Helper function to send plot updates to clients
 local function sendPlotUpdate(plotId, additionalData)
+    -- Save plot state to player data whenever it changes
+    savePlotToPlayerData(plotId)
+    
     -- Lazy load RemoteManager to avoid circular dependency
     if not RemoteManager then
         RemoteManager = require(script.Parent.RemoteManager)
@@ -29,9 +48,25 @@ local function sendPlotUpdate(plotId, additionalData)
     end
 end
 
--- Initialize plot state
+-- Initialize plot state (loads from player data if available)
 function PlotManager.initializePlot(plotId, ownerId)
-    plotStates[plotId] = {
+    local Players = game:GetService("Players")
+    local player = Players:GetPlayerByUserId(ownerId)
+    
+    -- Try to load existing plot state from player data
+    local savedPlotState = nil
+    if player then
+        local FarmManager = require(script.Parent.FarmManager)
+        local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
+        savedPlotState = PlayerDataManager.getPlotState(player, plotIndex)
+        
+        if savedPlotState then
+            log.info("Loading saved plot state for player", player.Name, "plot", plotIndex, "state:", savedPlotState.state)
+        end
+    end
+    
+    -- Use saved state or create new empty plot
+    plotStates[plotId] = savedPlotState or {
         state = "empty",
         seedType = "",
         plantedTime = 0,
@@ -44,6 +79,9 @@ function PlotManager.initializePlot(plotId, ownerId)
         maxHarvests = 0,  -- Max harvests for this specific plant (set when planted)
         needsReplanting = false -- Flag for when plant needs to be replanted
     }
+    
+    -- Ensure ownerId is set correctly (in case it changed)
+    plotStates[plotId].ownerId = ownerId
 end
 
 -- Reset plot state (for when players leave)
@@ -162,7 +200,7 @@ function PlotManager.plantSeed(player, plotId, seedType)
     -- Remove seed from inventory
     PlayerDataManager.removeFromInventory(player, "seeds", seedType, 1)
     
-    -- Send plot update to clients for smooth countdown prediction
+    -- Send plot update to clients for smooth countdown prediction (also saves to player data)
     sendPlotUpdate(plotId, {plantedAt = currentTime})
     
     return true, "Planted " .. seedType .. "! Now water it."
@@ -212,7 +250,7 @@ function PlotManager.waterPlant(player, plotId)
         plotState.state = "watered"
         plotState.wateredTime = currentTime
         
-        -- Send plot update to clients
+        -- Send plot update to clients (also saves to player data)
         sendPlotUpdate(plotId, {wateredAt = currentTime})
         
         return true, "Plant fully watered (" .. waterProgress .. ")! Growing now..."
@@ -220,7 +258,7 @@ function PlotManager.waterPlant(player, plotId)
         -- Partially watered
         plotState.state = "growing"
         
-        -- Send plot update to clients
+        -- Send plot update to clients (also saves to player data)
         sendPlotUpdate(plotId, {wateredAt = currentTime})
         
         return true, "Plant watered (" .. waterProgress .. "). Needs more water!"
@@ -344,6 +382,8 @@ end
 function PlotManager.resetPlot(plotId)
     local plotState = plotStates[plotId]
     if plotState then
+        local ownerId = plotState.ownerId -- Remember owner before reset
+        
         plotState.state = "empty"
         plotState.seedType = ""
         plotState.plantedTime = 0
@@ -351,7 +391,28 @@ function PlotManager.resetPlot(plotId)
         plotState.lastWateredTime = 0
         plotState.wateredCount = 0
         plotState.waterNeeded = 0
-        plotState.ownerId = nil
+        plotState.harvestCount = 0
+        plotState.maxHarvests = 0
+        plotState.needsReplanting = false
+        plotState.variation = nil
+        plotState.harvestCooldown = 0
+        plotState.growthTime = 0
+        plotState.waterTime = 0
+        plotState.deathTime = 0
+        plotState.plantedAt = 0
+        plotState.lastWateredAt = 0
+        plotState.deathReason = nil
+        
+        -- Only clear ownerId if this is called during farm unassignment
+        -- (not during normal plot clearing by the owner)
+        if not ownerId then
+            plotState.ownerId = nil
+        end
+        
+        -- Save the reset state to player data
+        if ownerId then
+            savePlotToPlayerData(plotId)
+        end
     end
 end
 
@@ -556,6 +617,12 @@ function PlotManager.getCountdownInfo(plotId)
             color = Color3.fromRGB(255, 255, 255)
         }
     end
+end
+
+-- Clear plot from memory (used when farm is unassigned)
+function PlotManager.clearPlotFromMemory(plotId)
+    plotStates[plotId] = nil
+    log.debug("Cleared plot", plotId, "from memory")
 end
 
 return PlotManager
