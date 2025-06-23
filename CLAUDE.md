@@ -2,6 +2,11 @@
 
 ## 🚨 Critical Development Guidelines
 
+### **Git Workflow**
+- **User controls commits** - Don't prompt for git commits after every change
+- **Wait for user instruction** before committing changes
+- **User will tell me when to commit** - focus on making changes and testing first
+
 ### **File Size & Modularity**
 - **NEVER create files >300 lines** - break into modules immediately
 - **Separate concerns**: UI, logic, data, and configuration should be in different files

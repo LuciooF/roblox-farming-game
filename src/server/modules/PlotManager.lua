@@ -3,9 +3,13 @@
 
 local GameConfig = require(script.Parent.GameConfig)
 local PlayerDataManager = require(script.Parent.PlayerDataManager)
+local Logger = require(script.Parent.Logger)
 
 -- Import RemoteManager for client updates (lazy loaded to avoid circular dependency)
 local RemoteManager = nil
+
+-- Get module logger
+local log = Logger.getModuleLogger("PlotManager")
 
 local PlotManager = {}
 
@@ -26,7 +30,7 @@ local function sendPlotUpdate(plotId, additionalData)
 end
 
 -- Initialize plot state
-function PlotManager.initializePlot(plotId)
+function PlotManager.initializePlot(plotId, ownerId)
     plotStates[plotId] = {
         state = "empty",
         seedType = "",
@@ -35,8 +39,39 @@ function PlotManager.initializePlot(plotId)
         lastWateredTime = 0,
         wateredCount = 0,
         waterNeeded = 0,
-        ownerId = nil
+        ownerId = ownerId or nil,
+        harvestCount = 0, -- Track how many times this plant has been harvested
+        maxHarvests = 0,  -- Max harvests for this specific plant (set when planted)
+        needsReplanting = false -- Flag for when plant needs to be replanted
     }
+end
+
+-- Reset plot state (for when players leave)
+function PlotManager.resetPlot(plotId)
+    local plotState = plotStates[plotId]
+    if plotState then
+        -- Clear ownership and reset to empty state
+        plotStates[plotId] = {
+            state = "empty",
+            seedType = "",
+            plantedTime = 0,
+            wateredTime = 0,
+            lastWateredTime = 0,
+            wateredCount = 0,
+            waterNeeded = 0,
+            ownerId = nil
+        }
+        
+        -- Update visual state in the world
+        local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+        local plot = WorldBuilder.getPlotById(plotId)
+        if plot then
+            WorldBuilder.updatePlotState(plot, "empty", "")
+        end
+        
+        -- Send update to all clients
+        sendPlotUpdate(plotId)
+    end
 end
 
 -- Get plot state
@@ -51,6 +86,18 @@ function PlotManager.plantSeed(player, plotId, seedType)
     
     if not plotState or not playerData then 
         return false, "Invalid plot or player data"
+    end
+    
+    -- Validate seedType parameter
+    if not seedType then
+        log.error("PlotManager.plantSeed called with nil seedType for player", player.Name, "plot", plotId)
+        return false, "No seed type specified"
+    end
+    
+    -- Validate plot ownership with FarmManager
+    local FarmManager = require(script.Parent.FarmManager)
+    if not FarmManager.doesPlayerOwnPlot(player.UserId, plotId) then
+        return false, "This plot doesn't belong to you!"
     end
     
     -- Validate plot is empty
@@ -89,6 +136,29 @@ function PlotManager.plantSeed(player, plotId, seedType)
     plotState.waterTime = GameConfig.Plants[seedType].waterNeeded * 10 -- Time before needs water
     plotState.deathTime = GameConfig.Plants[seedType].deathTime or 120
     
+    -- Set up replanting system
+    plotState.harvestCount = 0
+    local baseMaxHarvests = GameConfig.Replanting.maxHarvestCycles[seedType] or 3
+    
+    -- Apply random factors for realism
+    local randomFactors = GameConfig.Replanting.randomFactors
+    local rand = math.random(1, 100)
+    
+    if rand <= randomFactors.earlyWearoutChance then
+        -- Plant wears out early
+        plotState.maxHarvests = math.max(1, baseMaxHarvests - 1)
+        log.debug("Plant", seedType, "will wear out early after", plotState.maxHarvests, "harvests")
+    elseif rand <= randomFactors.earlyWearoutChance + randomFactors.bonusHarvestChance then
+        -- Plant gets bonus harvest
+        plotState.maxHarvests = baseMaxHarvests + 1
+        log.debug("Plant", seedType, "will get bonus harvest, lasting", plotState.maxHarvests, "harvests")
+    else
+        -- Normal harvest count
+        plotState.maxHarvests = baseMaxHarvests
+    end
+    
+    plotState.needsReplanting = false
+    
     -- Remove seed from inventory
     PlayerDataManager.removeFromInventory(player, "seeds", seedType, 1)
     
@@ -104,6 +174,12 @@ function PlotManager.waterPlant(player, plotId)
     
     if not plotState then 
         return false, "Invalid plot"
+    end
+    
+    -- Validate plot ownership with FarmManager
+    local FarmManager = require(script.Parent.FarmManager)
+    if not FarmManager.doesPlayerOwnPlot(player.UserId, plotId) then
+        return false, "This plot doesn't belong to you!"
     end
     
     -- Validate plot has planted seed and needs water
@@ -165,8 +241,10 @@ function PlotManager.harvestCrop(player, plotId)
         return false, "Crop is not ready yet!"
     end
     
-    if plotState.ownerId ~= player.UserId then
-        return false, "This is not your crop!"
+    -- Validate plot ownership with FarmManager
+    local FarmManager = require(script.Parent.FarmManager)
+    if not FarmManager.doesPlayerOwnPlot(player.UserId, plotId) then
+        return false, "This plot doesn't belong to you!"
     end
     
     -- Check harvest cooldown
@@ -191,17 +269,75 @@ function PlotManager.harvestCrop(player, plotId)
     
     PlayerDataManager.addToInventory(player, "crops", cropName, totalYield)
     
-    -- Set harvest cooldown and reset to growing state
+    -- Update harvest count and check replanting logic
+    plotState.harvestCount = plotState.harvestCount + 1
     plotState.harvestCooldown = tick()
-    plotState.state = "watered" -- Reset to watered so it starts growing again
-    plotState.wateredTime = tick() -- Reset watered time for new growth cycle
     
-    local message = "Harvested " .. totalYield .. " " .. cropName .. "!"
-    if variation ~= "normal" then
-        message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
+    -- Check if plant needs replanting
+    if plotState.harvestCount >= plotState.maxHarvests then
+        -- Plant has reached its harvest limit, needs replanting
+        plotState.state = "empty"
+        plotState.seedType = ""
+        plotState.plantedTime = 0
+        plotState.wateredTime = 0
+        plotState.lastWateredTime = 0
+        plotState.wateredCount = 0
+        plotState.waterNeeded = 0
+        plotState.harvestCount = 0
+        plotState.maxHarvests = 0
+        plotState.needsReplanting = false
+        
+        sendPlotUpdate(plotId)
+        
+        local message = "Harvested " .. totalYield .. " " .. cropName .. "! Plant needs replanting."
+        if variation ~= "normal" then
+            message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
+        end
+        
+        return true, message
+    else
+        -- Plant can continue growing, check if it needs watering
+        local needsWatering = false
+        
+        if GameConfig.Replanting.requiresWateringAfterHarvest then
+            local wateringChance = GameConfig.Replanting.wateringChanceAfterHarvest
+            needsWatering = math.random(1, 100) <= wateringChance
+        end
+        
+        if needsWatering then
+            -- Reset to planted state requiring watering
+            plotState.state = "planted"
+            plotState.plantedTime = tick()
+            plotState.wateredTime = 0
+            plotState.lastWateredTime = 0
+            plotState.wateredCount = 0
+            
+            sendPlotUpdate(plotId, {plantedAt = plotState.plantedTime, lastWateredAt = 0})
+            
+            local harvestsLeft = plotState.maxHarvests - plotState.harvestCount
+            local message = "Harvested " .. totalYield .. " " .. cropName .. "! Needs watering again (" .. harvestsLeft .. " harvests left)."
+            if variation ~= "normal" then
+                message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
+            end
+            
+            return true, message
+        else
+            -- Reset to watered state for immediate regrowth
+            plotState.state = "watered"
+            plotState.wateredTime = tick()
+            plotState.lastWateredTime = tick() -- Also update lastWateredTime for client countdown
+            
+            sendPlotUpdate(plotId, {lastWateredAt = plotState.wateredTime})
+            
+            local harvestsLeft = plotState.maxHarvests - plotState.harvestCount
+            local message = "Harvested " .. totalYield .. " " .. cropName .. "! Growing again (" .. harvestsLeft .. " harvests left)."
+            if variation ~= "normal" then
+                message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
+            end
+            
+            return true, message
+        end
     end
-    
-    return true, message, totalYield
 end
 
 -- Reset plot to empty state
@@ -227,14 +363,49 @@ function PlotManager.killPlant(plotId, reason)
     local seedType = plotState.seedType
     local ownerId = plotState.ownerId
     
-    -- Reset plot state
-    PlotManager.resetPlot(plotId)
+    -- Set plot to dead state instead of resetting immediately
+    plotState.state = "dead"
+    plotState.deathReason = reason
+    plotState.deathTime = tick()
+    
+    -- Send plot update to clients
+    sendPlotUpdate(plotId)
     
     return true, {
         seedType = seedType,
         ownerId = ownerId,
         reason = reason
     }
+end
+
+-- Clear a dead plant (player acknowledgment)
+function PlotManager.clearDeadPlant(player, plotId)
+    local plotState = plotStates[plotId]
+    if not plotState then 
+        return false, "Plot not found"
+    end
+    
+    if plotState.state ~= "dead" then
+        return false, "Plant is not dead"
+    end
+    
+    -- Verify ownership
+    if plotState.ownerId and plotState.ownerId ~= player.UserId then
+        return false, "This is not your plot"
+    end
+    
+    local seedType = plotState.seedType
+    local deathReason = plotState.deathReason or "unknown"
+    
+    -- Reset plot to empty state
+    PlotManager.resetPlot(plotId)
+    
+    -- Send plot update to clients
+    sendPlotUpdate(plotId)
+    
+    log.debug("Player", player.Name, "cleared dead", seedType, "from plot", plotId, "- reason:", deathReason)
+    
+    return true, "Cleared dead " .. seedType .. " plant"
 end
 
 -- Get all plots in specific state
@@ -368,6 +539,14 @@ function PlotManager.getCountdownInfo(plotId)
         return {
             text = plantName .. " Ready!\n🌟 Harvest Now! 🌟",
             color = Color3.fromRGB(255, 255, 100)
+        }
+        
+    elseif plotState.state == "dead" then
+        -- Show dead plant message
+        local deathReason = plotState.deathReason or "unknown reason"
+        return {
+            text = "💀 " .. plantName .. " Died\n" .. deathReason .. "\n❌ Clear to replant",
+            color = Color3.fromRGB(255, 0, 0)
         }
         
     else

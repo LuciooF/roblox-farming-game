@@ -2,6 +2,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 local Logger = require(script.Parent.modules.Logger)
 
 local WorldBuilder = {}
@@ -11,8 +12,8 @@ local log = Logger.getModuleLogger("WorldBuilder")
 
 -- Farm plot configuration
 local PLOT_SIZE = Vector3.new(8, 1, 8)
-local PLOT_SPACING = 2
-local FARM_GRID_SIZE = 4 -- 4x4 grid of plots
+local PLOT_SPACING = 4 -- Increased spacing for multiplayer visibility
+local TOTAL_PLOTS = 6 -- 6 plots in a line for multiplayer
 
 -- Create physical farm plot
 local function createFarmPlot(position, plotId)
@@ -49,32 +50,14 @@ local function createFarmPlot(position, plotId)
     plantPosition.CanCollide = false
     plantPosition.Parent = plot
     
-    -- Add ProximityPrompts (reduced activation distance to prevent overlap)
-    local plantPrompt = Instance.new("ProximityPrompt")
-    plantPrompt.Name = "PlantPrompt"
-    plantPrompt.ActionText = "Plant Seed"
-    plantPrompt.KeyboardKeyCode = Enum.KeyCode.E
-    plantPrompt.RequiresLineOfSight = false
-    plantPrompt.MaxActivationDistance = 6 -- Reduced from 10
-    plantPrompt.Parent = plot
-    
-    local waterPrompt = Instance.new("ProximityPrompt")
-    waterPrompt.Name = "WaterPrompt"
-    waterPrompt.ActionText = "Water Plant"
-    waterPrompt.KeyboardKeyCode = Enum.KeyCode.R
-    waterPrompt.RequiresLineOfSight = false
-    waterPrompt.MaxActivationDistance = 6 -- Reduced from 10
-    waterPrompt.Enabled = false -- Hidden until planted
-    waterPrompt.Parent = plot
-    
-    local harvestPrompt = Instance.new("ProximityPrompt")
-    harvestPrompt.Name = "HarvestPrompt"
-    harvestPrompt.ActionText = "Harvest Crop"
-    harvestPrompt.KeyboardKeyCode = Enum.KeyCode.F
-    harvestPrompt.RequiresLineOfSight = false
-    harvestPrompt.MaxActivationDistance = 6 -- Reduced from 10
-    harvestPrompt.Enabled = false -- Hidden until ready
-    harvestPrompt.Parent = plot
+    -- Add single context-sensitive ProximityPrompt
+    local actionPrompt = Instance.new("ProximityPrompt")
+    actionPrompt.Name = "ActionPrompt"
+    actionPrompt.ActionText = "Plant Seed" -- Default action
+    actionPrompt.KeyboardKeyCode = Enum.KeyCode.E -- Single key for all actions
+    actionPrompt.RequiresLineOfSight = false
+    actionPrompt.MaxActivationDistance = 6
+    actionPrompt.Parent = plot
     
     -- Store plot data
     local plotData = Instance.new("StringValue")
@@ -178,6 +161,10 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
     elseif variation == "diamond" then
         plant.BrickColor = BrickColor.new("Institutional white")
         plant.Material = Enum.Material.Diamond
+    elseif variation == "dead" then
+        plant.BrickColor = BrickColor.new("Really black")
+        plant.Material = Enum.Material.Concrete
+        plant.Transparency = 0.3  -- Make it slightly transparent/withered
     end
     
     plant.Anchored = true
@@ -315,12 +302,10 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
     waterProgress = waterProgress or {current = 0, needed = 1}
     
     local plotData = plot:FindFirstChild("PlotData")
-    local plantPrompt = plot:FindFirstChild("PlantPrompt")
-    local waterPrompt = plot:FindFirstChild("WaterPrompt")
-    local harvestPrompt = plot:FindFirstChild("HarvestPrompt")
+    local actionPrompt = plot:FindFirstChild("ActionPrompt")
     local plantPosition = plot:FindFirstChild("PlantPosition")
     
-    if not plotData then return end
+    if not plotData or not actionPrompt then return end
     
     plotData.Value = state
     
@@ -331,9 +316,9 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             plantPosition.BrickColor = BrickColor.new("CGA brown")
         end
         
-        plantPrompt.Enabled = true
-        waterPrompt.Enabled = false
-        harvestPrompt.Enabled = false
+        -- Set prompt for planting
+        actionPrompt.ActionText = "Plant Seed"
+        actionPrompt.Enabled = true
         
         -- Remove any existing plant
         local existingPlant = plot:FindFirstChild("Plant")
@@ -345,17 +330,25 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         -- Show small plant with variation
         WorldBuilder.createPlant(plot, seedType, 1, variation)
         
-        plantPrompt.Enabled = false
-        waterPrompt.Enabled = true
-        harvestPrompt.Enabled = false
+        -- Set prompt for watering
+        local waterText = "Water Plant"
+        if waterProgress and waterProgress.needed > 1 then
+            waterText = "Water Plant (" .. waterProgress.current .. "/" .. waterProgress.needed .. ")"
+        end
+        actionPrompt.ActionText = waterText
+        actionPrompt.Enabled = true
         
     elseif state == "growing" then
         -- Show partially grown plant (needs more water) with variation
         WorldBuilder.createPlant(plot, seedType, 1, variation)
         
-        plantPrompt.Enabled = false
-        waterPrompt.Enabled = true
-        harvestPrompt.Enabled = false
+        -- Set prompt for additional watering
+        local waterText = "Water Plant"
+        if waterProgress and waterProgress.needed > 1 then
+            waterText = "Water Plant (" .. waterProgress.current .. "/" .. waterProgress.needed .. ")"
+        end
+        actionPrompt.ActionText = waterText
+        actionPrompt.Enabled = true
         
     elseif state == "watered" then
         -- Darker, moist dirt
@@ -367,9 +360,9 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         -- Show growing plant with variation
         WorldBuilder.createPlant(plot, seedType, 2, variation)
         
-        plantPrompt.Enabled = false
-        waterPrompt.Enabled = false
-        harvestPrompt.Enabled = false
+        -- Plant is growing, no action needed
+        actionPrompt.ActionText = "Growing..."
+        actionPrompt.Enabled = false
         
     elseif state == "ready" then
         -- Show full grown plant with variation
@@ -399,26 +392,44 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             log.debug("Added harvest ready particles to " .. variation .. " " .. seedType .. " crop!")
         end
         
-        plantPrompt.Enabled = false
-        waterPrompt.Enabled = false
-        harvestPrompt.Enabled = true
+        -- Set prompt for harvesting
+        actionPrompt.ActionText = "Harvest " .. (seedType or "Crop")
+        actionPrompt.Enabled = true
+        
+    elseif state == "dead" then
+        -- Show withered/dead plant
+        local plant = WorldBuilder.createPlant(plot, seedType, 1, "dead") -- Use special "dead" variation
+        
+        -- Change plot to dark/withered appearance
+        plot.BrickColor = BrickColor.new("Really black")
+        if plantPosition then
+            plantPosition.BrickColor = BrickColor.new("Really black")
+        end
+        
+        -- Set prompt for clearing
+        actionPrompt.ActionText = "Clear Dead Plant"
+        actionPrompt.Enabled = true
     end
 end
 
--- Build the entire farm
+-- Build the entire farm world with individual player farm areas
 function WorldBuilder.buildFarm()
-    log.info("Building 3D Farm World...")
+    log.info("Building individual player farm areas...")
     
-    -- Clear existing farm if any
-    local existingFarm = Workspace:FindFirstChild("Farm")
-    if existingFarm then
-        existingFarm:Destroy()
+    -- Get farm configuration from FarmManager
+    local FarmManager = require(script.Parent.modules.FarmManager)
+    local config = FarmManager.getFarmConfig()
+    
+    -- Clear existing farms if any
+    local existingFarms = Workspace:FindFirstChild("PlayerFarms")
+    if existingFarms then
+        existingFarms:Destroy()
     end
     
-    -- Create farm container
-    local farm = Instance.new("Folder")
-    farm.Name = "Farm"
-    farm.Parent = Workspace
+    -- Create main container for all player farms
+    local farmsContainer = Instance.new("Folder")
+    farmsContainer.Name = "PlayerFarms"
+    farmsContainer.Parent = Workspace
     
     -- Remove any existing spawn locations first
     for _, obj in pairs(Workspace:GetChildren()) do
@@ -427,59 +438,620 @@ function WorldBuilder.buildFarm()
         end
     end
     
-    -- Create single spawn platform (further from farm)
-    local spawn = Instance.new("SpawnLocation")
-    spawn.Name = "MainSpawn"
-    spawn.Size = Vector3.new(10, 1, 10)
-    spawn.Position = Vector3.new(0, 2, -40) -- Further away and lower
-    spawn.Anchored = true
-    spawn.Material = Enum.Material.Concrete
-    spawn.BrickColor = BrickColor.new("Medium stone grey")
-    spawn.Parent = farm
+    -- No central spawn - each farm will have its own spawn location
     
-    -- Create farm plots in a grid (positioned away from spawn)
-    local plotId = 1
-    local farmOffsetZ = 20 -- Move farm 20 studs forward from center
+    -- Create individual farm areas
+    local totalPlotsCreated = 0
+    for farmId = 1, config.totalFarms do
+        local farmFolder = WorldBuilder.createIndividualFarm(farmId, config)
+        farmFolder.Parent = farmsContainer
+        totalPlotsCreated = totalPlotsCreated + config.plotsPerFarm
+    end
     
-    for row = 1, FARM_GRID_SIZE do
-        for col = 1, FARM_GRID_SIZE do
-            local x = (col - 1) * (PLOT_SIZE.X + PLOT_SPACING) - (FARM_GRID_SIZE * (PLOT_SIZE.X + PLOT_SPACING)) / 2
-            local z = (row - 1) * (PLOT_SIZE.Z + PLOT_SPACING) - (FARM_GRID_SIZE * (PLOT_SIZE.Z + PLOT_SPACING)) / 2 + farmOffsetZ
-            local position = Vector3.new(x, PLOT_SIZE.Y / 2, z)
+    log.info("Built", config.totalFarms, "individual farms with", totalPlotsCreated, "total plots!")
+    return farmsContainer
+end
+
+-- Create an individual farm area for a player
+function WorldBuilder.createIndividualFarm(farmId, config)
+    local FarmManager = require(script.Parent.modules.FarmManager)
+    local farmPosition = FarmManager.getFarmPosition(farmId)
+    
+    -- Create farm folder
+    local farmFolder = Instance.new("Folder")
+    farmFolder.Name = "Farm_" .. farmId
+    
+    -- Create farm base/ground
+    local farmBase = Instance.new("Part")
+    farmBase.Name = "FarmBase"
+    farmBase.Size = config.farmSize
+    farmBase.Position = farmPosition
+    farmBase.Anchored = true
+    farmBase.Material = Enum.Material.Grass
+    farmBase.BrickColor = BrickColor.new("Bright green")
+    farmBase.Shape = Enum.PartType.Block
+    farmBase.TopSurface = Enum.SurfaceType.Smooth
+    farmBase.Parent = farmFolder
+    
+    -- Create farm spawn location (in front of the farm)
+    local spawnLocation = Instance.new("SpawnLocation")
+    spawnLocation.Name = "FarmSpawn_" .. farmId
+    spawnLocation.Size = Vector3.new(8, 1, 8)
+    -- Position spawn in front of the farm (negative Z direction)
+    spawnLocation.Position = farmPosition + Vector3.new(0, 1, -config.farmSize.Z/2 - 6)
+    spawnLocation.Anchored = true
+    spawnLocation.Material = Enum.Material.Concrete
+    spawnLocation.BrickColor = BrickColor.new("Medium stone grey")
+    spawnLocation.Transparency = 0.5
+    spawnLocation.Enabled = false -- Disabled by default, enabled when player assigned
+    spawnLocation.Parent = farmFolder
+    
+    -- Add a spawn platform visual
+    local spawnPlatform = Instance.new("Part")
+    spawnPlatform.Name = "SpawnPlatform"
+    spawnPlatform.Size = Vector3.new(10, 0.5, 10)
+    spawnPlatform.Position = spawnLocation.Position - Vector3.new(0, 0.25, 0)
+    spawnPlatform.Anchored = true
+    spawnPlatform.Material = Enum.Material.WoodPlanks
+    spawnPlatform.BrickColor = BrickColor.new("CGA brown")
+    spawnPlatform.Parent = farmFolder
+    
+    -- Add welcome sign at spawn
+    local signPost = Instance.new("Part")
+    signPost.Name = "WelcomeSignPost"
+    signPost.Size = Vector3.new(0.5, 4, 0.5)
+    signPost.Position = spawnLocation.Position + Vector3.new(4, 2, 0)
+    signPost.Anchored = true
+    signPost.Material = Enum.Material.Wood
+    signPost.BrickColor = BrickColor.new("CGA brown")
+    signPost.Shape = Enum.PartType.Cylinder
+    signPost.Parent = farmFolder
+    
+    local signBoard = Instance.new("Part")
+    signBoard.Name = "WelcomeSignBoard"
+    signBoard.Size = Vector3.new(4, 2, 0.2)
+    signBoard.Position = signPost.Position + Vector3.new(-2, 1.5, 0)
+    signBoard.Anchored = true
+    signBoard.Material = Enum.Material.Wood
+    signBoard.BrickColor = BrickColor.new("Pine Cone")
+    signBoard.Parent = farmFolder
+    
+    local signGui = Instance.new("SurfaceGui")
+    signGui.Face = Enum.NormalId.Front
+    signGui.Parent = signBoard
+    
+    local signText = Instance.new("TextLabel")
+    signText.Size = UDim2.new(1, 0, 1, 0)
+    signText.BackgroundTransparency = 1
+    signText.Text = "🌾 Welcome! 🌾\nFarm #" .. farmId .. "\nPress E to interact"
+    signText.TextScaled = true
+    signText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    signText.Font = Enum.Font.Cartoon
+    signText.Parent = signGui
+    
+    -- Create farm boundary walls
+    WorldBuilder.createFarmBoundary(farmFolder, farmPosition, config.farmSize)
+    
+    -- Create farm sign
+    WorldBuilder.createFarmSign(farmFolder, farmPosition, farmId)
+    
+    -- Create plots in a 3x3 grid within the farm
+    local globalPlotId = (farmId - 1) * config.plotsPerFarm + 1
+    for row = 1, 3 do
+        for col = 1, 3 do
+            local plotIndex = (row - 1) * 3 + col
+            local plotOffsetX = (col - 2) * (PLOT_SIZE.X + PLOT_SPACING) -- Center the grid
+            local plotOffsetZ = (row - 2) * (PLOT_SIZE.Z + PLOT_SPACING)
+            local plotPosition = farmPosition + Vector3.new(plotOffsetX, PLOT_SIZE.Y / 2, plotOffsetZ)
             
-            local plot = createFarmPlot(position, plotId)
-            plot.Parent = farm
+            local plot = createFarmPlot(plotPosition, globalPlotId)
+            plot.Parent = farmFolder
             
-            plotId = plotId + 1
+            globalPlotId = globalPlotId + 1
         end
     end
     
-    
-    log.info("Farm built with " .. (plotId - 1) .. " plots!")
-    return farm
+    log.debug("Created farm", farmId, "at position", farmPosition, "with", config.plotsPerFarm, "plots")
+    return farmFolder
 end
 
--- Get plot by ID
+-- Create boundary walls around a farm
+function WorldBuilder.createFarmBoundary(farmFolder, farmPosition, farmSize)
+    local wallHeight = 3
+    local wallThickness = 1
+    
+    -- Create 4 walls around the farm perimeter
+    local walls = {
+        {name = "NorthWall", size = Vector3.new(farmSize.X, wallHeight, wallThickness), offset = Vector3.new(0, wallHeight/2, farmSize.Z/2)},
+        {name = "SouthWall", size = Vector3.new(farmSize.X, wallHeight, wallThickness), offset = Vector3.new(0, wallHeight/2, -farmSize.Z/2)},
+        {name = "EastWall", size = Vector3.new(wallThickness, wallHeight, farmSize.Z), offset = Vector3.new(farmSize.X/2, wallHeight/2, 0)},
+        {name = "WestWall", size = Vector3.new(wallThickness, wallHeight, farmSize.Z), offset = Vector3.new(-farmSize.X/2, wallHeight/2, 0)}
+    }
+    
+    for _, wallData in ipairs(walls) do
+        local wall = Instance.new("Part")
+        wall.Name = wallData.name
+        wall.Size = wallData.size
+        wall.Position = farmPosition + wallData.offset
+        wall.Anchored = true
+        wall.Material = Enum.Material.Brick
+        wall.BrickColor = BrickColor.new("Brown")
+        wall.Parent = farmFolder
+    end
+end
+
+-- Create a sign for the farm with character display capability (simplified - no visual clutter)
+function WorldBuilder.createFarmSign(farmFolder, farmPosition, farmId)
+    -- Create invisible character display area (no platform or wooden sign clutter)
+    local characterDisplay = Instance.new("Part")
+    characterDisplay.Name = "CharacterDisplay"
+    characterDisplay.Size = Vector3.new(15, 20, 5) -- Big display area for character
+    characterDisplay.Position = farmPosition + Vector3.new(0, 45, 0) -- High above farm, centered
+    characterDisplay.Anchored = true
+    characterDisplay.Transparency = 1 -- Completely invisible
+    characterDisplay.CanCollide = false
+    characterDisplay.Parent = farmFolder
+    
+    -- Create player name display above character (clean, no background clutter)
+    local nameGui = Instance.new("BillboardGui")
+    nameGui.Name = "PlayerNameGui"
+    nameGui.Size = UDim2.new(0, 400, 0, 80) -- Clean name display
+    nameGui.StudsOffset = Vector3.new(0, 15, 0) -- Higher up above the character
+    nameGui.MaxDistance = 150 -- Limit visibility distance
+    nameGui.Parent = characterDisplay
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "NameLabel"
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1 -- No background - just floating text
+    nameLabel.Text = ""
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.TextStrokeTransparency = 0 -- Add text stroke for visibility
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.Parent = nameGui
+end
+
+-- Create spawn platform sign
+function WorldBuilder.createSpawnSign(spawn)
+    local sign = Instance.new("Part")
+    sign.Name = "SpawnSign"
+    sign.Size = Vector3.new(6, 3, 0.5)
+    sign.Position = spawn.Position + Vector3.new(0, 4, 0)
+    sign.Anchored = true
+    sign.Material = Enum.Material.Neon
+    sign.BrickColor = BrickColor.new("Bright blue")
+    sign.Parent = spawn
+    
+    local signGui = Instance.new("BillboardGui")
+    signGui.Size = UDim2.new(1, 0, 1, 0)
+    signGui.Parent = sign
+    
+    local signLabel = Instance.new("TextLabel")
+    signLabel.Size = UDim2.new(1, 0, 1, 0)
+    signLabel.BackgroundTransparency = 1
+    signLabel.Text = "🌱 FARMING SERVER 🌱\nWalk around to find your farm!"
+    signLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    signLabel.TextScaled = true
+    signLabel.Font = Enum.Font.SourceSansBold
+    signLabel.Parent = signGui
+end
+
+-- Get plot by ID (now searches across all farm areas)
 function WorldBuilder.getPlotById(plotId)
-    local farm = Workspace:FindFirstChild("Farm")
-    if not farm then return nil end
+    local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
+    if not farmsContainer then return nil end
     
-    return farm:FindFirstChild("FarmPlot_" .. plotId)
+    -- Search through all farm areas
+    for _, farmFolder in pairs(farmsContainer:GetChildren()) do
+        if farmFolder.Name:match("^Farm_") then
+            local plot = farmFolder:FindFirstChild("FarmPlot_" .. plotId)
+            if plot then
+                return plot
+            end
+        end
+    end
+    
+    return nil
 end
 
--- Get all plots
+-- Get all plots across all farms
 function WorldBuilder.getAllPlots()
-    local farm = Workspace:FindFirstChild("Farm")
-    if not farm then return {} end
+    local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
+    if not farmsContainer then return {} end
     
     local plots = {}
-    for _, child in pairs(farm:GetChildren()) do
+    for _, farmFolder in pairs(farmsContainer:GetChildren()) do
+        if farmFolder.Name:match("^Farm_") then
+            for _, child in pairs(farmFolder:GetChildren()) do
+                if child.Name:match("^FarmPlot_") then
+                    table.insert(plots, child)
+                end
+            end
+        end
+    end
+    
+    return plots
+end
+
+-- Get plots in a specific farm
+function WorldBuilder.getFarmPlots(farmId)
+    local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
+    if not farmsContainer then return {} end
+    
+    local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
+    if not farmFolder then return {} end
+    
+    local plots = {}
+    for _, child in pairs(farmFolder:GetChildren()) do
         if child.Name:match("^FarmPlot_") then
             table.insert(plots, child)
         end
     end
     
     return plots
+end
+
+
+-- Update farm sign to show ownership with character display (no clutter signs)
+function WorldBuilder.updateFarmSign(farmId, playerName, player)
+    local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
+    if not farmsContainer then return end
+    
+    local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
+    if not farmFolder then return end
+    
+    -- Update character display and name (no wooden/grey sign clutter)
+    local characterDisplay = farmFolder:FindFirstChild("CharacterDisplay")
+    if characterDisplay then
+        local nameGui = characterDisplay:FindFirstChild("PlayerNameGui")
+        local nameLabel = nameGui and nameGui:FindFirstChild("NameLabel")
+        
+        if nameLabel then
+            if playerName then
+                nameLabel.Text = playerName .. "'s Farm"
+                nameLabel.Visible = true
+                
+                -- Create 3D character model if player is provided
+                if player then
+                    WorldBuilder.createPlayerCharacterDisplay(characterDisplay, player, farmId)
+                end
+            else
+                nameLabel.Text = ""
+                nameLabel.Visible = false
+                
+                -- Remove character model
+                WorldBuilder.clearCharacterDisplay(characterDisplay)
+            end
+        end
+    end
+    
+    log.debug("Updated farm", farmId, "character display:", playerName or "Available")
+end
+
+-- Create a real 3D Roblox character display for the farm sign
+function WorldBuilder.createPlayerCharacterDisplay(characterDisplay, player, farmId)
+    -- Clear existing character
+    WorldBuilder.clearCharacterDisplay(characterDisplay)
+    
+    log.info("Creating 3D character display for", player.Name, "at", characterDisplay.Position)
+    
+    -- Method 1: Try to create a proper 3D character using Roblox's character system
+    local success, characterModel = pcall(function()
+        -- Get the player's humanoid description
+        local humanoidDescription = Players:GetHumanoidDescriptionFromUserId(player.UserId)
+        
+        -- Create a full 3D character model using Roblox's built-in method
+        -- Create it in a temporary container first to avoid spawning next to player
+        local tempContainer = Instance.new("Folder")
+        tempContainer.Name = "TempCharacterContainer"
+        tempContainer.Parent = game:GetService("ServerStorage") -- Hidden location
+        
+        local newCharacter = Players:CreateHumanoidModelFromDescription(humanoidDescription, Enum.HumanoidRigType.R15)
+        newCharacter.Name = "PlayerDisplay"
+        newCharacter.Parent = tempContainer -- Put in hidden container first
+        
+        -- Wait for the character to fully generate and appearance to load
+        log.info("Waiting for full character appearance to load for", player.Name, "in hidden container")
+        wait(5) -- Wait even longer for complete appearance loading
+        
+        -- List what we actually got
+        log.info("Character parts loaded for", player.Name, ":")
+        for _, part in pairs(newCharacter:GetChildren()) do
+            log.info("- " .. part.Name .. " (" .. part.ClassName .. ")")
+        end
+        
+        -- Remove ONLY animation scripts but keep Humanoid for now
+        for _, obj in pairs(newCharacter:GetChildren()) do
+            if obj:IsA("Script") or obj:IsA("LocalScript") or obj.Name == "Animate" then
+                obj:Destroy()
+                log.debug("Removed", obj.Name, "script")
+            end
+        end
+        
+        -- Disable humanoid animations but keep it for appearance
+        local humanoid = newCharacter:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.PlatformStand = true
+            humanoid.Sit = true
+            humanoid.WalkSpeed = 0
+            humanoid.JumpPower = 0
+            humanoid.JumpHeight = 0
+            log.debug("Disabled humanoid movement but kept for appearance")
+        end
+        
+        -- Now move the character to the proper display location and set it up
+        newCharacter.Parent = characterDisplay -- Move from temp container to display area
+        
+        -- Get the root part and store original positions
+        local humanoidRootPart = newCharacter:FindFirstChild("HumanoidRootPart")
+        local originalPositions = {}
+        local originalRotations = {}
+        
+        if humanoidRootPart then
+            local rootPosition = humanoidRootPart.Position
+            local rootCFrame = humanoidRootPart.CFrame
+            
+            -- Store original relative positions and rotations
+            for _, part in pairs(newCharacter:GetChildren()) do
+                if part:IsA("BasePart") and part ~= humanoidRootPart then
+                    originalPositions[part] = part.Position - rootPosition
+                    originalRotations[part] = rootCFrame:ToObjectSpace(part.CFrame)
+                end
+            end
+            
+            -- Collect ALL character parts including accessories
+            local characterParts = {}
+            local accessories = {}
+            
+            for _, obj in pairs(newCharacter:GetChildren()) do
+                if obj:IsA("BasePart") and obj ~= humanoidRootPart then
+                    characterParts[obj] = {
+                        relativePos = originalPositions[obj] or Vector3.new(0, 0, 0),
+                        relativeCFrame = originalRotations[obj] or CFrame.new()
+                    }
+                    log.debug("Stored part", obj.Name, "with relative position", characterParts[obj].relativePos)
+                elseif obj:IsA("Accessory") then
+                    table.insert(accessories, obj)
+                    log.debug("Found accessory", obj.Name)
+                end
+            end
+            
+            -- Scale and reposition everything
+            local scale = 4
+            
+            -- Position root part at display location FIRST
+            humanoidRootPart.CFrame = CFrame.new(characterDisplay.Position)
+            humanoidRootPart.Size = humanoidRootPart.Size * scale
+            humanoidRootPart.Anchored = true
+            humanoidRootPart.CanCollide = false
+            
+            log.info("Positioned root part for", player.Name, "at", characterDisplay.Position)
+            
+            -- Scale and reposition all body parts relative to root
+            for part, data in pairs(characterParts) do
+                if part.Parent then -- Make sure part still exists
+                    part.Size = part.Size * scale
+                    part.Anchored = true
+                    part.CanCollide = false
+                    
+                    -- Calculate new position maintaining relative spacing
+                    local scaledRelativePos = data.relativePos * scale
+                    part.CFrame = humanoidRootPart.CFrame * CFrame.new(scaledRelativePos) * data.relativeCFrame
+                    
+                    log.debug("Repositioned", part.Name, "for", player.Name, "to", part.Position)
+                end
+            end
+            
+            -- Handle accessories WITH their attachment system
+            for _, accessory in pairs(accessories) do
+                local handle = accessory:FindFirstChild("Handle")
+                if handle then
+                    handle.Size = handle.Size * scale
+                    handle.Anchored = true
+                    handle.CanCollide = false
+                    
+                    -- Find the attachment on the accessory and on the character
+                    local accessoryAttachment = handle:FindFirstChildOfClass("Attachment")
+                    if accessoryAttachment then
+                        -- Find corresponding attachment on character (usually head)
+                        local attachmentName = accessoryAttachment.Name
+                        for _, part in pairs(newCharacter:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                local characterAttachment = part:FindFirstChild(attachmentName)
+                                if characterAttachment then
+                                    -- Position accessory relative to character attachment
+                                    local offset = accessoryAttachment.CFrame
+                                    handle.CFrame = characterAttachment.Parent.CFrame * characterAttachment.CFrame * offset:Inverse()
+                                    log.debug("Positioned accessory", accessory.Name, "relative to", part.Name)
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Clean up temp container
+        tempContainer:Destroy()
+        
+        -- Add glow effect to the head
+        local head = newCharacter:FindFirstChild("Head")
+        if head then
+            local pointLight = Instance.new("PointLight")
+            pointLight.Color = Color3.fromRGB(255, 255, 255)
+            pointLight.Brightness = 2
+            pointLight.Range = 25
+            pointLight.Parent = head
+        end
+        
+        log.info("Successfully created real 3D character for", player.Name)
+        
+        -- Notify clients about the new character display for face tracking
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local farmingRemotes = ReplicatedStorage:FindFirstChild("FarmingRemotes")
+        if farmingRemotes then
+            local characterTrackingRemote = farmingRemotes:FindFirstChild("CharacterTracking")
+            if characterTrackingRemote then
+                characterTrackingRemote:FireAllClients("characterCreated", {
+                    farmId = farmId,
+                    playerName = player.Name,
+                    userId = player.UserId
+                })
+            end
+        end
+        
+        return newCharacter
+    end)
+    
+    if not success then
+        log.warn("Character creation failed for", player.Name, "- retrying with longer wait...")
+        -- Retry with even longer wait time
+        success, characterModel = pcall(function()
+            -- Try again but wait much longer for appearance
+            log.info("Retrying character creation for", player.Name, "with extended wait time")
+            
+            -- Create it in a temporary container first to avoid spawning next to player
+            local tempContainer = Instance.new("Folder")
+            tempContainer.Name = "RetryCharacterContainer"
+            tempContainer.Parent = game:GetService("ServerStorage")
+            
+            local humanoidDescription = Players:GetHumanoidDescriptionFromUserId(player.UserId)
+            local newCharacter = Players:CreateHumanoidModelFromDescription(humanoidDescription, Enum.HumanoidRigType.R15)
+            newCharacter.Name = "PlayerDisplay"
+            newCharacter.Parent = tempContainer
+            
+            -- Wait MUCH longer for complete loading
+            log.info("Waiting 10 seconds for complete character loading...")
+            wait(10)
+            
+            -- Disable humanoid but keep for appearance
+            local humanoid = newCharacter:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid.PlatformStand = true
+                humanoid.WalkSpeed = 0
+                humanoid.JumpPower = 0
+            end
+            
+            -- Move to display area and position
+            newCharacter.Parent = characterDisplay
+            
+            local humanoidRootPart = newCharacter:FindFirstChild("HumanoidRootPart")
+            if humanoidRootPart then
+                humanoidRootPart.CFrame = CFrame.new(characterDisplay.Position)
+                humanoidRootPart.Anchored = true
+                
+                -- Scale everything up
+                for _, obj in pairs(newCharacter:GetChildren()) do
+                    if obj:IsA("BasePart") then
+                        obj.Size = obj.Size * 4
+                        obj.Anchored = true
+                        obj.CanCollide = false
+                    elseif obj:IsA("Accessory") then
+                        local handle = obj:FindFirstChild("Handle")
+                        if handle then
+                            handle.Size = handle.Size * 4
+                            handle.Anchored = true
+                        end
+                    end
+                end
+            end
+            
+            tempContainer:Destroy()
+            log.info("Retry successful for", player.Name)
+            return newCharacter
+        end)
+    end
+    
+    if not success then
+        log.warn("Both methods failed, using fallback display for", player.Name)
+        -- Fallback: Create a simple but visible display
+        WorldBuilder.createSimpleCharacterDisplay(characterDisplay, player)
+        
+        -- Still notify clients even for fallback
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local farmingRemotes = ReplicatedStorage:FindFirstChild("FarmingRemotes")
+        if farmingRemotes then
+            local characterTrackingRemote = farmingRemotes:FindFirstChild("CharacterTracking")
+            if characterTrackingRemote then
+                characterTrackingRemote:FireAllClients("characterCreated", {
+                    farmId = farmId,
+                    playerName = player.Name,
+                    userId = player.UserId
+                })
+            end
+        end
+    end
+end
+
+-- Create a simplified character display as fallback
+function WorldBuilder.createSimpleCharacterDisplay(characterDisplay, player)
+    log.info("Creating simple character display for", player.Name, "UserID:", player.UserId)
+    
+    local characterModel = Instance.new("Model")
+    characterModel.Name = "PlayerDisplay"
+    characterModel.Parent = characterDisplay
+    
+    -- Create much bigger head with player's avatar for show-off factor
+    local head = Instance.new("Part")
+    head.Name = "Head"
+    head.Size = Vector3.new(12, 12, 12) -- Even bigger head for maximum visibility
+    head.Position = characterDisplay.Position + Vector3.new(0, 5, 0) -- Adjust position for bigger size
+    head.Shape = Enum.PartType.Block
+    head.Material = Enum.Material.Neon -- Make it glow for better visibility
+    head.BrickColor = BrickColor.new("Light orange")
+    head.Anchored = true
+    head.CanCollide = false
+    head.Parent = characterModel
+    
+    -- Add player's headshot with maximum valid quality
+    local headDecal = Instance.new("Decal")
+    headDecal.Texture = "rbxthumb://type=AvatarHeadShot&id=" .. player.UserId .. "&w=420&h=420" -- Maximum valid size
+    headDecal.Face = Enum.NormalId.Front
+    headDecal.Parent = head
+    
+    -- Add the same decal to multiple faces for better visibility
+    local frontDecal = Instance.new("Decal")
+    frontDecal.Texture = "rbxthumb://type=AvatarHeadShot&id=" .. player.UserId .. "&w=420&h=420"
+    frontDecal.Face = Enum.NormalId.Back
+    frontDecal.Parent = head
+    
+    -- Create much bigger body
+    local torso = Instance.new("Part")
+    torso.Name = "Torso"
+    torso.Size = Vector3.new(10, 10, 6) -- Much bigger torso
+    torso.Position = characterDisplay.Position + Vector3.new(0, -3, 0) -- Adjust position
+    torso.Shape = Enum.PartType.Block
+    torso.Material = Enum.Material.Neon -- Make it glow
+    torso.BrickColor = BrickColor.new("Bright blue")
+    torso.Anchored = true
+    torso.CanCollide = false
+    torso.Parent = characterModel
+    
+    -- Try to add player's full body shot with maximum valid quality
+    local bodyDecal = Instance.new("Decal")
+    bodyDecal.Texture = "rbxthumb://type=AvatarBust&id=" .. player.UserId .. "&w=420&h=420" -- Maximum valid size
+    bodyDecal.Face = Enum.NormalId.Front
+    bodyDecal.Parent = torso
+    
+    -- Add glow effect
+    local pointLight = Instance.new("PointLight")
+    pointLight.Color = Color3.fromRGB(255, 255, 255)
+    pointLight.Brightness = 1
+    pointLight.Range = 20
+    pointLight.Parent = head
+    
+    log.info("Successfully created large glowing character display for", player.Name, "at", characterDisplay.Position)
+end
+
+-- Clear character display
+function WorldBuilder.clearCharacterDisplay(characterDisplay)
+    local existingModel = characterDisplay:FindFirstChild("PlayerDisplay")
+    if existingModel then
+        existingModel:Destroy()
+    end
 end
 
 return WorldBuilder

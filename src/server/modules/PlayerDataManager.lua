@@ -17,6 +17,7 @@ function PlayerDataManager.getPlayerData(player)
             money = GameConfig.Settings.startingMoney,
             rebirths = 0,
             extraSlots = 0, -- Additional inventory slots beyond the main 9
+            assignedFarm = nil, -- Farm assigned to this player
             inventory = {
                 seeds = {},
                 crops = {}
@@ -170,6 +171,20 @@ function PlayerDataManager.sellAllCrops(player)
     end
     
     return totalProfit, itemsSold, rebirthMultiplier
+end
+
+-- Get player's assigned farm
+function PlayerDataManager.getAssignedFarm(player)
+    local playerData = PlayerDataManager.getPlayerData(player)
+    return playerData and playerData.assignedFarm
+end
+
+-- Set player's assigned farm
+function PlayerDataManager.setAssignedFarm(player, farmId)
+    local playerData = PlayerDataManager.getPlayerData(player)
+    if playerData then
+        playerData.assignedFarm = farmId
+    end
 end
 
 return PlayerDataManager

@@ -15,8 +15,8 @@ local AutomationSystem = require(script.Parent.modules.AutomationSystem)
 local NotificationManager = require(script.Parent.modules.NotificationManager)
 local RemoteManager = require(script.Parent.modules.RemoteManager)
 local SoundManager = require(script.Parent.modules.SoundManager)
-local SeedDropSystem = require(script.Parent.modules.SeedDropSystem)
 local TutorialManager = require(script.Parent.modules.TutorialManager)
+local FarmManager = require(script.Parent.modules.FarmManager)
 
 -- Import WorldBuilder (keeping this for now since it works)
 local WorldBuilder = require(script.Parent.WorldBuilder)
@@ -38,8 +38,9 @@ function FarmingSystem.initialize()
     -- Initialize sound system
     SoundManager.initialize()
     
-    -- Initialize seed drop system
-    SeedDropSystem.initialize()
+    
+    -- Initialize farm management system
+    FarmManager.initialize()
     
     -- Build the farm world
     local success, farm = pcall(function()
@@ -75,32 +76,18 @@ function FarmingSystem.setupPlotInteractions()
             -- Initialize plot in PlotManager
             PlotManager.initializePlot(plotId)
             
-            -- Connect ProximityPrompts
-            local plantPrompt = plot:FindFirstChild("PlantPrompt")
-            local waterPrompt = plot:FindFirstChild("WaterPrompt")
-            local harvestPrompt = plot:FindFirstChild("HarvestPrompt")
+            -- Connect to single ActionPrompt
+            local actionPrompt = plot:FindFirstChild("ActionPrompt")
             
-            if plantPrompt then
-                plantPrompt.Triggered:Connect(function(player)
-                    FarmingSystem.handlePlantInteraction(player, plotId)
+            if actionPrompt then
+                actionPrompt.Triggered:Connect(function(player)
+                    FarmingSystem.handlePlotAction(player, plotId)
                 end)
                 
                 -- Tutorial: Detect when player approaches a plot for the first time
-                plantPrompt.PromptShown:Connect(function(player)
+                actionPrompt.PromptShown:Connect(function(player)
                     log.trace("Player", player.Name, "approached plot", plotId)
                     TutorialManager.checkGameAction(player, "approach_plot")
-                end)
-            end
-            
-            if waterPrompt then
-                waterPrompt.Triggered:Connect(function(player)
-                    FarmingSystem.handleWaterInteraction(player, plotId)
-                end)
-            end
-            
-            if harvestPrompt then
-                harvestPrompt.Triggered:Connect(function(player)
-                    FarmingSystem.handleHarvestInteraction(player, plotId)
                 end)
             end
         end
@@ -142,6 +129,30 @@ function FarmingSystem.setupNPCInteractions()
     end
 end
 
+-- Handle single plot action based on current state
+function FarmingSystem.handlePlotAction(player, plotId)
+    -- Get current plot state to determine appropriate action
+    local plotState = PlotManager.getPlotState(plotId)
+    if not plotState then 
+        log.warn("No plot state found for plotId", plotId)
+        return 
+    end
+    
+    -- Route to appropriate handler based on current state
+    if plotState.state == "empty" then
+        FarmingSystem.handlePlantInteraction(player, plotId)
+    elseif plotState.state == "planted" or plotState.state == "growing" then
+        FarmingSystem.handleWaterInteraction(player, plotId)
+    elseif plotState.state == "ready" then
+        FarmingSystem.handleHarvestInteraction(player, plotId)
+    elseif plotState.state == "dead" then
+        FarmingSystem.handleClearDeadPlantInteraction(player, plotId)
+    else
+        log.warn("Unknown plot state:", plotState.state, "for plot", plotId)
+        NotificationManager.sendError(player, "❌ Cannot interact with this plot right now")
+    end
+end
+
 -- Handle plot interactions via ProximityPrompt
 function FarmingSystem.handlePlantInteraction(player, plotId)
     local playerData = PlayerDataManager.getPlayerData(player)
@@ -180,6 +191,8 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
     if not selectedSeed then
         log.debug("Player", player.Name, "has no seeds available")
         NotificationManager.sendError(player, "🌱 No seeds available! Buy some from the shop.")
+        -- Send interaction failure to client for prediction rollback
+        RemoteManager.sendInteractionFailure(player, plotId, "plant", "no_seeds")
         return
     end
     
@@ -201,6 +214,9 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
         
         -- Check tutorial progress AFTER visual update
         TutorialManager.checkGameAction(player, "plant_seed")
+    else
+        -- Send interaction failure to client for prediction rollback
+        RemoteManager.sendInteractionFailure(player, plotId, "plant", "plot_manager_failure")
     end
     
     -- Use appropriate notification type based on success
@@ -256,81 +272,82 @@ function FarmingSystem.handleHarvestInteraction(player, plotId)
     end
 end
 
+function FarmingSystem.handleClearDeadPlantInteraction(player, plotId)
+    local success, message = PlotManager.clearDeadPlant(player, plotId)
+    
+    if success then
+        -- Update plot visual to empty state
+        local plot = WorldBuilder.getPlotById(plotId)
+        if plot then
+            WorldBuilder.updatePlotState(plot, "empty", "")
+            -- Play cleanup sound at plot location
+            -- SoundManager.playCleanupSound(plot.Position)
+        end
+        NotificationManager.sendSuccess(player, "🗑️ " .. message)
+    else
+        NotificationManager.sendError(player, "❌ " .. message)
+    end
+end
+
 -- Main game loop for growth monitoring and countdown updates
 function FarmingSystem.startMainLoop()
     -- Growth monitoring loop (less frequent for performance)
     spawn(function()
         while true do
-            wait(5) -- Check every 5 seconds for growth events
-            
-            -- Update plot growth monitoring
-            local eventType, eventData = PlotManager.updateGrowthMonitoring()
-            
-            -- Handle growth events
-            if eventType == "plant_died" then
-                local deathInfo = eventData.deathInfo
-                NotificationManager.sendPlantDeathNotification(deathInfo.ownerId, deathInfo.seedType, deathInfo.reason)
+            local success, err = pcall(function()
+                wait(5) -- Check every 5 seconds for growth events
                 
-                -- Update plot visuals and play death sound
-                local plot = WorldBuilder.getPlotById(eventData.plotId)
-                if plot then
-                    WorldBuilder.updatePlotState(plot, "empty", "")
-                    -- SoundManager.playPlantDeathSound(plot.Position)
+                -- Update plot growth monitoring
+                local eventType, eventData = PlotManager.updateGrowthMonitoring()
+                
+                -- Handle growth events
+                if eventType == "plant_died" then
+                    local deathInfo = eventData.deathInfo
+                    NotificationManager.sendPlantDeathNotification(deathInfo.ownerId, deathInfo.seedType, deathInfo.reason)
+                    
+                    -- Update plot visuals to show dead state
+                    local plot = WorldBuilder.getPlotById(eventData.plotId)
+                    if plot then
+                        WorldBuilder.updatePlotState(plot, "dead", deathInfo.seedType)
+                        -- SoundManager.playPlantDeathSound(plot.Position)
+                    end
+                    
+                elseif eventType == "plant_ready" then
+                    -- Check tutorial progress
+                    TutorialManager.checkGameAction(game.Players:GetPlayerByUserId(PlotManager.getPlotState(eventData.plotId).ownerId), "plant_ready")
+                    
+                    -- Update plot visuals and play ready sound with variation
+                    local plot = WorldBuilder.getPlotById(eventData.plotId)
+                    local plotState = PlotManager.getPlotState(eventData.plotId)
+                    if plot and plotState then
+                        WorldBuilder.updatePlotState(plot, "ready", eventData.seedType, plotState.variation)
+                        -- SoundManager.playPlantReadySound(plot.Position)
+                    end
                 end
-                
-            elseif eventType == "plant_ready" then
-                -- Check tutorial progress
-                TutorialManager.checkGameAction(game.Players:GetPlayerByUserId(PlotManager.getPlotState(eventData.plotId).ownerId), "plant_ready")
-                
-                -- Update plot visuals and play ready sound with variation
-                local plot = WorldBuilder.getPlotById(eventData.plotId)
-                local plotState = PlotManager.getPlotState(eventData.plotId)
-                if plot and plotState then
-                    WorldBuilder.updatePlotState(plot, "ready", eventData.seedType, plotState.variation)
-                    -- SoundManager.playPlantReadySound(plot.Position)
-                end
+            end)
+            
+            if not success then
+                log.error("Growth monitoring loop error:", err)
+                wait(10) -- Longer wait on error to prevent spam
             end
         end
     end)
     
-    -- Fallback countdown display loop (reduced frequency)
-    -- TODO: Remove when client-side system is fully working
-    spawn(function()
-        while true do
-            wait(3) -- Update every 3 seconds as fallback
-            FarmingSystem.updateCountdownDisplays()
-        end
-    end)
 end
 
--- Update countdown displays (fallback implementation)
-function FarmingSystem.updateCountdownDisplays()
-    local plots = WorldBuilder.getAllPlots()
-    
-    for _, plot in pairs(plots) do
-        local plotIdValue = plot:FindFirstChild("PlotId")
-        if plotIdValue then
-            local plotId = plotIdValue.Value
-            local countdownGui = plot:FindFirstChild("CountdownDisplay")
-            local countdownLabel = countdownGui and countdownGui:FindFirstChild("TextLabel")
-            
-            if countdownLabel then
-                local countdownInfo = PlotManager.getCountdownInfo(plotId)
-                if countdownInfo then
-                    countdownLabel.Text = countdownInfo.text
-                    countdownLabel.TextColor3 = countdownInfo.color
-                end
-            end
-        end
-    end
-end
 
 -- Player connection handlers
 function FarmingSystem.onPlayerJoined(player)
+    -- Assign farm first
+    FarmManager.onPlayerJoined(player)
+    -- Then handle remote connections
     RemoteManager.onPlayerJoined(player)
 end
 
 function FarmingSystem.onPlayerLeft(player)
+    -- Clean up farm assignment
+    FarmManager.onPlayerLeaving(player)
+    -- Then handle remote cleanup
     RemoteManager.onPlayerLeft(player)
 end
 

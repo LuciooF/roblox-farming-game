@@ -99,6 +99,18 @@ function RemoteManager.initialize()
     plotUpdateRemote.Name = "PlotUpdate"
     plotUpdateRemote.Parent = remoteFolder
     
+    local characterTrackingRemote = Instance.new("RemoteEvent")
+    characterTrackingRemote.Name = "CharacterTracking"
+    characterTrackingRemote.Parent = remoteFolder
+    
+    local interactionFailureRemote = Instance.new("RemoteEvent")
+    interactionFailureRemote.Name = "InteractionFailure"
+    interactionFailureRemote.Parent = remoteFolder
+    
+    local clearDeadPlantRemote = Instance.new("RemoteEvent")
+    clearDeadPlantRemote.Name = "ClearDeadPlant"
+    clearDeadPlantRemote.Parent = remoteFolder
+    
     -- Store references
     remotes.plant = plantRemote
     remotes.water = waterRemote
@@ -115,6 +127,9 @@ function RemoteManager.initialize()
     remotes.selectedItem = selectedItemRemote
     remotes.buySlot = buySlotRemote
     remotes.plotUpdate = plotUpdateRemote
+    remotes.characterTracking = characterTrackingRemote
+    remotes.interactionFailure = interactionFailureRemote
+    remotes.clearDeadPlant = clearDeadPlantRemote
     
     -- Also create direct references for client access
     remotes.SyncPlayerData = syncRemote
@@ -135,6 +150,7 @@ function RemoteManager.initialize()
     logCommandRemote.OnServerEvent:Connect(RemoteManager.onLogCommand)
     selectedItemRemote.OnServerEvent:Connect(RemoteManager.onSelectedItem)
     buySlotRemote.OnServerEvent:Connect(RemoteManager.onBuySlot)
+    clearDeadPlantRemote.OnServerEvent:Connect(RemoteManager.onClearDeadPlant)
     
     log.info("Remote events ready!")
 end
@@ -338,35 +354,103 @@ function RemoteManager.onBuySlot(player)
     end
 end
 
--- Send plot state update to all clients for smooth countdown prediction
+-- Clear dead plant handler
+function RemoteManager.onClearDeadPlant(player, plotId)
+    local success, message = PlotManager.clearDeadPlant(player, plotId)
+    if success then
+        NotificationManager.sendSuccess(player, "🗑️ " .. message)
+    else
+        NotificationManager.sendError(player, "❌ " .. message)
+    end
+end
+
+-- Send interaction failure notification to client for rollback
+function RemoteManager.sendInteractionFailure(player, plotId, interactionType, reason)
+    if not remotes.interactionFailure then
+        log.warn("InteractionFailure remote not available")
+        return
+    end
+    
+    log.debug("Sending interaction failure to", player.Name, "- plot:", plotId, "type:", interactionType, "reason:", reason)
+    remotes.interactionFailure:FireClient(player, {
+        plotId = plotId,
+        interactionType = interactionType,
+        reason = reason
+    })
+end
+
+-- Send plot state update to clients with ownership-based data filtering
 function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
     if not remotes.plotUpdate then
         log.warn("PlotUpdate remote not available")
         return
     end
     
-    local updateData = {
-        plotId = plotId,
-        state = plotState.state,
-        seedType = plotState.seedType,
-        plantedAt = plotState.plantedAt,
-        lastWateredAt = plotState.lastWateredAt,
-        growthTime = plotState.growthTime,
-        waterTime = plotState.waterTime,
-        deathTime = plotState.deathTime,
-        variation = plotState.variation
-    }
+    -- Get plot ownership info via FarmManager
+    local FarmManager = require(script.Parent.FarmManager)
+    local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
+    local ownerId, ownerName = FarmManager.getFarmOwner(farmId)
     
-    -- Add any additional timing data
-    if additionalData then
-        for key, value in pairs(additionalData) do
-            updateData[key] = value
+    -- Send detailed update to plot owner only
+    if ownerId then
+        local Players = game:GetService("Players")
+        local owner = Players:GetPlayerByUserId(ownerId)
+        if owner then
+            -- Get timing data from GameConfig for the seed type
+            local growthTime = 60 -- Default
+            local waterTime = 30 -- Default
+            local deathTime = 120 -- Default
+            
+            if plotState.seedType and plotState.seedType ~= "" then
+                local plantConfig = GameConfig.Plants[plotState.seedType]
+                if plantConfig then
+                    growthTime = plantConfig.growthTime or 60
+                    waterTime = plantConfig.waterTime or 30
+                    deathTime = plantConfig.deathTime or 120
+                end
+            end
+            
+            local ownerUpdateData = {
+                plotId = plotId,
+                state = plotState.state,
+                seedType = plotState.seedType,
+                plantedAt = plotState.plantedAt,
+                lastWateredAt = plotState.lastWateredAt,
+                growthTime = growthTime,
+                waterTime = waterTime,
+                deathTime = deathTime,
+                variation = plotState.variation,
+                isOwner = true
+            }
+            
+            -- Add any additional timing data
+            if additionalData then
+                for key, value in pairs(additionalData) do
+                    ownerUpdateData[key] = value
+                end
+            end
+            
+            remotes.plotUpdate:FireClient(owner, ownerUpdateData)
         end
     end
     
-    -- Send to all players for now (later optimize to nearby players only)
-    remotes.plotUpdate:FireAllClients(updateData)
-    log.debug("Sent plot update for", plotId, "state:", plotState.state)
+    -- Send visual-only update to all other players
+    local publicUpdateData = {
+        plotId = plotId,
+        state = plotState.state,
+        seedType = plotState.seedType,
+        variation = plotState.variation,
+        ownerName = ownerName,
+        isOwner = false
+    }
+    
+    for _, player in pairs(game.Players:GetPlayers()) do
+        if not ownerId or player.UserId ~= ownerId then
+            remotes.plotUpdate:FireClient(player, publicUpdateData)
+        end
+    end
+    
+    log.debug("Sent plot update for", plotId, "state:", plotState.state, "owner:", ownerName or "none")
 end
 
 -- Log command handler
@@ -398,8 +482,7 @@ end
 function RemoteManager.onPlayerJoined(player)
     local playerData = PlayerDataManager.getPlayerData(player)
     
-    -- Wait a bit for client to load
-    wait(2)
+    -- Sync data immediately - client will handle it when ready
     RemoteManager.syncPlayerData(player)
     
     -- Initialize tutorial for new players

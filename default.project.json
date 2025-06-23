@@ -10,9 +10,6 @@
       },
       "Shared": {
         "$path": "src/shared"
-      },
-      "Components": {
-        "$path": "src/components"
       }
     },
 

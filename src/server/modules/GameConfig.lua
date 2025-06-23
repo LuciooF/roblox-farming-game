@@ -188,6 +188,42 @@ GameConfig.Settings = {
     }
 }
 
+-- Replanting configuration (configurable and modular)
+GameConfig.Replanting = {
+    -- Whether plants require watering after each harvest
+    requiresWateringAfterHarvest = true,
+    
+    -- Percentage chance a plant needs watering after each harvest (0-100)
+    wateringChanceAfterHarvest = 70, -- 70% chance to need watering
+    
+    -- How many harvest cycles before plant automatically needs replanting
+    maxHarvestCycles = {
+        wheat = 5,   -- Wheat can be harvested 5 times before needing replanting
+        carrot = 3,  -- Carrot can be harvested 3 times
+        tomato = 4,  -- Tomato can be harvested 4 times
+        potato = 3,  -- Potato can be harvested 3 times
+        corn = 2,    -- Corn can be harvested 2 times (premium crop)
+        banana = 1,  -- Rare fruits need replanting more often
+        strawberry = 1,
+        dragonfruit = 1,
+        goldapple = 1,
+        starfruit = 1,
+        crystalberry = 1
+    },
+    
+    -- Whether to show harvest count in UI
+    showHarvestCount = true,
+    
+    -- Random factors for realism
+    randomFactors = {
+        -- Chance for plant to "wear out" early (0-100)
+        earlyWearoutChance = 15, -- 15% chance to need replanting one cycle early
+        
+        -- Chance for plant to last longer (0-100) 
+        bonusHarvestChance = 10  -- 10% chance to get one extra harvest cycle
+    }
+}
+
 -- World building settings
 GameConfig.World = {
     plotSize = Vector3.new(8, 1, 8),
