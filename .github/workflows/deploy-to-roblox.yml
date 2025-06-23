@@ -62,26 +62,30 @@ jobs:
         rojo build --output game.rbxl
         echo "✅ Build completed successfully!"
     
-    - name: Upload to Roblox
+    - name: Upload to Roblox using curl
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       run: |
-        # Install rbxcloud CLI using the correct package name
-        echo "📤 Installing rbxcloud CLI..."
-        npm install -g rbxcloud
+        echo "🚀 Uploading game to Roblox using Open Cloud API..."
         
-        # Verify installation
-        rbxcloud --version
+        # Upload using Roblox Open Cloud API directly
+        response=$(curl -X POST \
+          "https://apis.roblox.com/universes/v1/${{ secrets.ROBLOX_EXPERIENCE_ID }}/places/${{ secrets.ROBLOX_PLACE_ID }}/versions?versionType=Published" \
+          -H "x-api-key: ${{ secrets.ROBLOX_API_KEY }}" \
+          -H "Content-Type: application/octet-stream" \
+          --data-binary @game.rbxl \
+          -w "%{http_code}" \
+          -s)
         
-        # Upload the place file to Roblox
-        echo "🚀 Uploading game to Roblox..."
-        rbxcloud experience publish-place \
-          --file game.rbxl \
-          --experience-id ${{ secrets.ROBLOX_EXPERIENCE_ID }} \
-          --place-id ${{ secrets.ROBLOX_PLACE_ID }} \
-          --api-key ${{ secrets.ROBLOX_API_KEY }} \
-          --version-type Published
-        
-        echo "✅ Successfully deployed to Roblox!"
+        # Check if upload was successful
+        http_code=$(echo "$response" | tail -c 4)
+        if [ "$http_code" = "200" ]; then
+          echo "✅ Successfully deployed to Roblox!"
+          echo "🎮 Your game is now live at: https://www.roblox.com/games/${{ secrets.ROBLOX_EXPERIENCE_ID }}"
+        else
+          echo "❌ Upload failed with HTTP code: $http_code"
+          echo "Response: $response"
+          exit 1
+        fi
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
