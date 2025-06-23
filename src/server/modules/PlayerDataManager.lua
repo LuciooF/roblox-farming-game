@@ -105,15 +105,13 @@ function PlayerDataManager.onPlayerJoined(player)
                 
                 log.info("Initialized new player data for", player.Name)
                 
-                -- Debug notification
-                local NotificationManager = require(script.Parent.NotificationManager)
-                NotificationManager.sendNotification(player, "🔧 DEBUG: ProfileStore working - New player data created")
+                -- DEBUG PRINT for live game testing
+                print("🔧 [PLOT DEBUG] ProfileStore WORKING - NEW PLAYER:", player.Name)
             else
                 log.info("Loaded existing player data for", player.Name, "- Money:", profile.Data.money, "Rebirths:", profile.Data.rebirths)
                 
-                -- Debug notification
-                local NotificationManager = require(script.Parent.NotificationManager)
-                NotificationManager.sendNotification(player, "🔧 DEBUG: ProfileStore working - Loaded existing data")
+                -- DEBUG PRINT for live game testing
+                print("🔧 [PLOT DEBUG] ProfileStore WORKING - LOADED DATA for:", player.Name, "Money:", profile.Data.money)
             end
         else
             profile:Release()
@@ -383,9 +381,8 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
     -- ProfileStore automatically handles saving - no manual save needed!
     log.info("Saved plot", plotIndex, "state", plotState.state, "seed", plotState.seedType, "for player", player.Name)
     
-    -- Debug notification for testing
-    local NotificationManager = require(script.Parent.NotificationManager)
-    NotificationManager.sendNotification(player, "🔧 DEBUG: Saved plot " .. plotIndex .. " state: " .. plotState.state)
+    -- DEBUG PRINT for live game testing
+    print("🔧 [PLOT DEBUG]", player.Name, "saved plot", plotIndex, "state:", plotState.state, "seed:", plotState.seedType)
     
     return true
 end
@@ -401,8 +398,12 @@ function PlayerDataManager.getPlotState(player, plotIndex)
     local plotState = playerData.plots[plotIndex]
     if plotState then
         log.info("Loading plot", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
+        -- DEBUG PRINT for live game testing
+        print("🔧 [PLOT DEBUG]", player.Name, "loading plot", plotIndex, "state:", plotState.state, "seed:", plotState.seedType)
     else
         log.info("No saved plot", plotIndex, "found for", player.Name)
+        -- DEBUG PRINT for live game testing
+        print("🔧 [PLOT DEBUG]", player.Name, "NO SAVED DATA for plot", plotIndex)
     end
     
     return plotState
