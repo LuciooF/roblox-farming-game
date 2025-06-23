@@ -149,10 +149,16 @@ function FarmManager.onFarmAssigned(farmId, player)
         -- Update the visual state of the plot to match the loaded data
         local plotState = PlotManager.getPlotState(globalPlotId)
         if plotState then
+            log.info("Restoring plot", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
             local plot = WorldBuilder.getPlotById(globalPlotId)
             if plot then
                 WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
+                log.info("Updated visual state for plot", plotIndex)
+            else
+                log.warn("Could not find plot object for globalPlotId", globalPlotId)
             end
+        else
+            log.info("No saved state found for plot", plotIndex, "- will be empty")
         end
     end
     

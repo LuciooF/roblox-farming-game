@@ -345,7 +345,10 @@ end
 -- Save plot state to player data (called by PlotManager)
 function PlayerDataManager.savePlotState(player, plotIndex, plotState)
     local playerData = PlayerDataManager.getPlayerData(player)
-    if not playerData then return false end
+    if not playerData then 
+        log.warn("Failed to save plot", plotIndex, "- no player data for", player.Name)
+        return false 
+    end
     
     -- Copy plot state to avoid reference issues
     playerData.plots[plotIndex] = {
@@ -370,16 +373,26 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
     }
     
     -- ProfileStore automatically handles saving - no manual save needed!
-    log.debug("Saved plot", plotIndex, "state", plotState.state, "for player", player.Name, "(ProfileStore auto-save)")
+    log.info("Saved plot", plotIndex, "state", plotState.state, "seed", plotState.seedType, "for player", player.Name)
     return true
 end
 
 -- Get plot state from player data (called by PlotManager)
 function PlayerDataManager.getPlotState(player, plotIndex)
     local playerData = PlayerDataManager.getPlayerData(player)
-    if not playerData then return nil end
+    if not playerData then 
+        log.warn("Failed to get plot", plotIndex, "- no player data for", player.Name)
+        return nil 
+    end
     
-    return playerData.plots[plotIndex]
+    local plotState = playerData.plots[plotIndex]
+    if plotState then
+        log.info("Loading plot", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
+    else
+        log.info("No saved plot", plotIndex, "found for", player.Name)
+    end
+    
+    return plotState
 end
 
 -- Force save player data (used when player leaves or on critical actions)
