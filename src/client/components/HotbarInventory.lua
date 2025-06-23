@@ -12,6 +12,7 @@ local function HotbarInventory(props)
     local playerData = props.playerData or {}
     local visible = props.visible or false
     local remotes = props.remotes or {}
+    local onShowInfo = props.onShowInfo -- Handler from parent to show info modal
     
     -- Responsive sizing
     local screenSize = props.screenSize or Vector2.new(1024, 768)
@@ -22,8 +23,6 @@ local function HotbarInventory(props)
     -- State for hotbar (9 main slots + expandable slots)
     local animationRef = React.useRef()
     local selectedSlot, setSelectedSlot = React.useState(1) -- Track selected slot (1-indexed)
-    local showCropInfo, setShowCropInfo = React.useState(false)
-    local selectedCropInfo, setSelectedCropInfo = React.useState(nil)
     local extraSlots = playerData.extraSlots or 0 -- Additional slots beyond the main 9
     
     -- Animation state
@@ -108,9 +107,17 @@ local function HotbarInventory(props)
     end
     
     -- Handle crop info display
-    local function handleCropInfo(cropData)
-        setSelectedCropInfo(cropData)
-        setShowCropInfo(true)
+    local function handleCropInfo(item)
+        if onShowInfo then
+            -- Extract the base seed type from the item name (remove variation prefixes)
+            local seedType = item.name
+            if item.type == "crop" then
+                -- Remove variation prefixes for crops
+                seedType = item.name:gsub("Shiny ", ""):gsub("Rainbow ", ""):gsub("Golden ", ""):gsub("Diamond ", "")
+            end
+            
+            onShowInfo(seedType)
+        end
     end
     
     -- Keyboard input handling for slot selection (1-9)
@@ -245,7 +252,7 @@ local function HotbarInventory(props)
                 isMainSlot = isMainSlot,
                 displayNumber = displayNumber,
                 onSelect = handleSlotSelect,
-                onInfoClick = item and item.type == "crop" and handleCropInfo or nil,
+                onInfoClick = item and (item.type == "crop" or item.type == "seed") and handleCropInfo or nil,
                 screenSize = screenSize,
                 LayoutOrder = i -- Explicitly set layout order
             }))

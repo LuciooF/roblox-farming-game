@@ -64,7 +64,12 @@ local function InventorySlot(props)
         ZIndex = 15,
         LayoutOrder = layoutOrder, -- Ensure proper ordering
         [React.Event.Activated] = function()
-            onSelect(slotIndex)
+            -- If this is a crop or seed and we have an info handler, show info instead of selecting
+            if not isEmpty and item and (item.type == "crop" or item.type == "seed") and onInfoClick then
+                onInfoClick(item)
+            else
+                onSelect(slotIndex)
+            end
         end
     }, {
         Corner = e("UICorner", {
@@ -105,7 +110,7 @@ local function InventorySlot(props)
             ZIndex = 16
         }) or nil,
         
-        -- Quantity badge (if item has quantity > 1)
+        -- Quantity badge (if item has quantity > 1) - positioned bottom-right
         QuantityBadge = not isEmpty and item and item.quantity > 1 and e("TextLabel", {
             Name = "QuantityBadge",
             Size = UDim2.new(0.5, 0, 0.3, 0),
@@ -124,32 +129,6 @@ local function InventorySlot(props)
             }),
             Stroke = e("UIStroke", {
                 Color = Color3.fromRGB(200, 200, 200),
-                Thickness = 1
-            })
-        }) or nil,
-        
-        -- Info button for crops (bottom-right corner)
-        InfoButton = not isEmpty and item and item.type == "crop" and onInfoClick and e("TextButton", {
-            Name = "InfoButton",
-            Size = UDim2.new(0.3, 0, 0.3, 0),
-            Position = UDim2.new(0.75, 0, 0.75, 0),
-            Text = "i",
-            TextColor3 = Color3.fromRGB(100, 150, 255),
-            TextScaled = true,
-            BackgroundColor3 = Color3.fromRGB(40, 40, 40),
-            BackgroundTransparency = 0.3,
-            BorderSizePixel = 0,
-            Font = Enum.Font.SourceSansItalic,
-            ZIndex = 17,
-            [React.Event.Activated] = function()
-                onInfoClick(item)
-            end
-        }, {
-            Corner = e("UICorner", {
-                CornerRadius = UDim.new(0.5, 0)
-            }),
-            Stroke = e("UIStroke", {
-                Color = Color3.fromRGB(100, 150, 255),
                 Thickness = 1
             })
         }) or nil,

@@ -17,11 +17,54 @@ local countdownConnections = {} -- [plotId] = RBXScriptConnection
 -- Initialize countdown manager
 function PlotCountdownManager.initialize()
     log.info("Client-side plot countdown system initialized")
+    
+    -- Initialize existing plots in the world
+    PlotCountdownManager.scanExistingPlots()
+end
+
+-- Scan for existing plots and set them to empty state
+function PlotCountdownManager.scanExistingPlots()
+    local farm = Workspace:FindFirstChild("Farm")
+    if not farm then 
+        log.warn("No Farm found in Workspace")
+        return 
+    end
+    
+    local plots = farm:FindFirstChild("Plots")
+    if not plots then 
+        log.warn("No Plots found in Farm")
+        return 
+    end
+    
+    local plotCount = 0
+    for _, plot in pairs(plots:GetChildren()) do
+        local plotIdValue = plot:FindFirstChild("PlotId")
+        if plotIdValue then
+            local plotId = plotIdValue.Value
+            plotCount = plotCount + 1
+            
+            -- Initialize with empty state until server sends actual data
+            PlotCountdownManager.updatePlotData(plotId, {
+                state = "empty",
+                plantedAt = 0,
+                lastWateredAt = 0,
+                growthTime = 60,
+                waterTime = 30,
+                deathTime = 120,
+                seedType = "",
+                variation = "normal"
+            })
+        end
+    end
+    
+    log.info("Initialized", plotCount, "existing plots")
 end
 
 -- Update plot timing data when server sends state changes
 function PlotCountdownManager.updatePlotData(plotId, plotData)
     local currentTime = tick()
+    
+    log.info("Received plot update for plot", plotId, "state:", plotData.state, "seedType:", plotData.seedType or "none")
     
     -- Store plot timing information
     plotTimers[plotId] = {
@@ -140,18 +183,31 @@ end
 -- Find plot by ID in workspace
 function PlotCountdownManager.findPlotById(plotId)
     local farm = Workspace:FindFirstChild("Farm")
-    if not farm then return nil end
+    if not farm then 
+        log.warn("No Farm found in Workspace when looking for plot", plotId)
+        return nil 
+    end
     
     local plots = farm:FindFirstChild("Plots")
-    if not plots then return nil end
+    if not plots then 
+        log.warn("No Plots folder found in Farm when looking for plot", plotId)
+        return nil 
+    end
     
+    -- Debug: List all available plots
+    local availablePlots = {}
     for _, plot in pairs(plots:GetChildren()) do
         local plotIdValue = plot:FindFirstChild("PlotId")
-        if plotIdValue and plotIdValue.Value == plotId then
-            return plot
+        if plotIdValue then
+            table.insert(availablePlots, tostring(plotIdValue.Value))
+            if plotIdValue.Value == plotId then
+                log.debug("Found plot", plotId, "successfully")
+                return plot
+            end
         end
     end
     
+    log.warn("Could not find plot", plotId, "in workspace. Available plots:", table.concat(availablePlots, ", "))
     return nil
 end
 

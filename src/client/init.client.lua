@@ -115,9 +115,6 @@ if existingUI then
     existingUI:Destroy()
 end
 
--- Initialize client systems
-PlotCountdownManager.initialize()
-
 -- Handle plot updates from server
 plotUpdateRemote.OnClientEvent:Connect(function(plotData)
     PlotCountdownManager.updatePlotData(plotData.plotId, plotData)
@@ -126,6 +123,10 @@ end)
 -- Initialize React UI
 wait(1) -- Wait a moment for everything to load
 updateUI()
+
+-- Initialize client systems after UI is ready
+wait(2) -- Wait for world to load
+PlotCountdownManager.initialize()
 
 log.info("React 3D Farming Game Client Ready!")
 log.info("Responsive UI activated - supports mobile and desktop!")

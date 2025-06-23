@@ -11,6 +11,7 @@ local InventoryPanel = require(script.Parent.InventoryPanel)
 local ShopPanel = require(script.Parent.ShopPanel)
 local TutorialPanel = require(script.Parent.TutorialPanel)
 local HotbarInventory = require(script.Parent.HotbarInventory)
+local SeedDetailModal = require(script.Parent.SeedDetailModal)
 
 local function MainUI(props)
     local playerData = props.playerData or {}
@@ -21,6 +22,8 @@ local function MainUI(props)
     local inventoryVisible, setInventoryVisible = React.useState(false)
     local shopVisible, setShopVisible = React.useState(false)
     local tutorialVisible, setTutorialVisible = React.useState(tutorialData ~= nil)
+    local hotbarInfoVisible, setHotbarInfoVisible = React.useState(false)
+    local selectedHotbarInfo, setSelectedHotbarInfo = React.useState(nil)
     
     -- Screen size detection for responsive design
     local screenSize, setScreenSize = React.useState(Vector2.new(1024, 768))
@@ -142,7 +145,11 @@ local function MainUI(props)
             playerData = playerData,
             screenSize = screenSize,
             visible = true, -- Always visible
-            remotes = remotes
+            remotes = remotes,
+            onShowInfo = function(seedType)
+                setSelectedHotbarInfo(seedType)
+                setHotbarInfoVisible(true)
+            end
         }),
         
         -- Tutorial Panel Component
@@ -152,6 +159,17 @@ local function MainUI(props)
             visible = tutorialVisible,
             onNext = handleTutorialNext,
             onSkip = handleTutorialSkip
+        }) or nil,
+        
+        -- Hotbar Info Modal (rendered at top level for proper positioning)
+        HotbarInfoModal = hotbarInfoVisible and e(SeedDetailModal, {
+            seedType = selectedHotbarInfo,
+            isVisible = hotbarInfoVisible,
+            onClose = function()
+                setHotbarInfoVisible(false)
+            end,
+            playerMoney = playerData.money or 0,
+            screenSize = screenSize
         }) or nil
     })
 end
