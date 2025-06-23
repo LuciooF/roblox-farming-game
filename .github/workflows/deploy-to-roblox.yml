@@ -65,16 +65,23 @@ jobs:
     - name: Upload to Roblox
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       run: |
-        # Install rbxcloud CLI for uploading
-        npm install -g @roblox/rbxcloud-cli
+        # Install rbxcloud CLI using the correct package name
+        echo "📤 Installing rbxcloud CLI..."
+        npm install -g rbxcloud
+        
+        # Verify installation
+        rbxcloud --version
         
         # Upload the place file to Roblox
+        echo "🚀 Uploading game to Roblox..."
         rbxcloud experience publish-place \
           --file game.rbxl \
           --experience-id ${{ secrets.ROBLOX_EXPERIENCE_ID }} \
           --place-id ${{ secrets.ROBLOX_PLACE_ID }} \
           --api-key ${{ secrets.ROBLOX_API_KEY }} \
           --version-type Published
+        
+        echo "✅ Successfully deployed to Roblox!"
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
