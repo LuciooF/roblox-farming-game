@@ -150,15 +150,23 @@ function FarmManager.onFarmAssigned(farmId, player)
         local plotState = PlotManager.getPlotState(globalPlotId)
         if plotState then
             log.info("Restoring plot", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
+            
+            -- Debug notification for testing
+            local NotificationManager = require(script.Parent.NotificationManager)
+            NotificationManager.sendNotification(player, "🔧 DEBUG: Restoring plot " .. plotIndex .. " - " .. plotState.state .. " " .. (plotState.seedType or ""))
+            
             local plot = WorldBuilder.getPlotById(globalPlotId)
             if plot then
                 WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
                 log.info("Updated visual state for plot", plotIndex)
             else
                 log.warn("Could not find plot object for globalPlotId", globalPlotId)
+                NotificationManager.sendError(player, "🔧 DEBUG: Could not find plot object " .. globalPlotId)
             end
         else
             log.info("No saved state found for plot", plotIndex, "- will be empty")
+            local NotificationManager = require(script.Parent.NotificationManager)
+            NotificationManager.sendNotification(player, "🔧 DEBUG: No saved state for plot " .. plotIndex)
         end
     end
     

@@ -104,8 +104,16 @@ function PlayerDataManager.onPlayerJoined(player)
                 end
                 
                 log.info("Initialized new player data for", player.Name)
+                
+                -- Debug notification
+                local NotificationManager = require(script.Parent.NotificationManager)
+                NotificationManager.sendNotification(player, "🔧 DEBUG: ProfileStore working - New player data created")
             else
                 log.info("Loaded existing player data for", player.Name, "- Money:", profile.Data.money, "Rebirths:", profile.Data.rebirths)
+                
+                -- Debug notification
+                local NotificationManager = require(script.Parent.NotificationManager)
+                NotificationManager.sendNotification(player, "🔧 DEBUG: ProfileStore working - Loaded existing data")
             end
         else
             profile:Release()
@@ -374,6 +382,11 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
     
     -- ProfileStore automatically handles saving - no manual save needed!
     log.info("Saved plot", plotIndex, "state", plotState.state, "seed", plotState.seedType, "for player", player.Name)
+    
+    -- Debug notification for testing
+    local NotificationManager = require(script.Parent.NotificationManager)
+    NotificationManager.sendNotification(player, "🔧 DEBUG: Saved plot " .. plotIndex .. " state: " .. plotState.state)
+    
     return true
 end
 
