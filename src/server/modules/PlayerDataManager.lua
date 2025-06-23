@@ -86,6 +86,12 @@ function PlayerDataManager.onPlayerJoined(player)
         profile:AddUserId(player.UserId) -- GDPR compliance
         profile:Reconcile() -- Fill in missing template values
         
+        -- Ensure plots field exists after reconciliation
+        if not profile.Data.plots then
+            profile.Data.plots = {}
+            print("🔧 [PLOT DEBUG] Created plots table after Reconcile for", player.Name)
+        end
+        
         profile.OnRelease = function()
             Profiles[player] = nil
             player:Kick("Profile released - please rejoin")
@@ -112,6 +118,16 @@ function PlayerDataManager.onPlayerJoined(player)
                 
                 -- DEBUG PRINT for live game testing
                 print("🔧 [PLOT DEBUG] ProfileStore WORKING - LOADED DATA for:", player.Name, "Money:", profile.Data.money)
+                -- Debug check plots field
+                if profile.Data.plots then
+                    local plotCount = 0
+                    for k, v in pairs(profile.Data.plots) do
+                        plotCount = plotCount + 1
+                    end
+                    print("🔧 [PLOT DEBUG] Profile has plots table with", plotCount, "saved plots")
+                else
+                    print("🔧 [PLOT DEBUG] WARNING: Profile.Data.plots is nil!")
+                end
             end
         else
             profile:Release()
@@ -134,6 +150,11 @@ end
 function PlayerDataManager.getPlayerData(player)
     local profile = Profiles[player]
     if profile then
+        -- DEBUG: Check if we're actually using ProfileStore
+        if not _G.ProfileStoreDebugPrinted then
+            print("🔧 [PLOT DEBUG] Using ProfileStore data for", player.Name)
+            _G.ProfileStoreDebugPrinted = true
+        end
         return profile.Data
     end
     
@@ -356,6 +377,12 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
         return false 
     end
     
+    -- Ensure plots table exists
+    if not playerData.plots then
+        playerData.plots = {}
+        print("🔧 [PLOT DEBUG] WARNING: Created missing plots table for", player.Name)
+    end
+    
     -- Copy plot state to avoid reference issues
     playerData.plots[plotIndex] = {
         state = plotState.state,
@@ -383,6 +410,13 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
     
     -- DEBUG PRINT for live game testing
     print("🔧 [PLOT DEBUG]", player.Name, "saved plot", plotIndex, "state:", plotState.state, "seed:", plotState.seedType)
+    
+    -- Verify it was actually saved
+    if playerData.plots[plotIndex] then
+        print("🔧 [PLOT DEBUG] VERIFIED: Plot", plotIndex, "exists in playerData.plots")
+    else
+        print("🔧 [PLOT DEBUG] ERROR: Plot", plotIndex, "NOT FOUND after saving!")
+    end
     
     return true
 end
