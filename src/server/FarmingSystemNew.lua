@@ -75,8 +75,8 @@ function FarmingSystem.setupPlotInteractions()
         if plotIdValue then
             local plotId = plotIdValue.Value
             
-            -- Initialize plot in PlotManager
-            PlotManager.initializePlot(plotId)
+            -- Initialize plot in PlotManager (no owner during world setup)
+            PlotManager.initializePlot(plotId, nil)
             
             -- Connect to single ActionPrompt
             local actionPrompt = plot:FindFirstChild("ActionPrompt")

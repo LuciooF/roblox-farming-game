@@ -50,18 +50,20 @@ end
 
 -- Initialize plot state (loads from player data if available)
 function PlotManager.initializePlot(plotId, ownerId)
-    local Players = game:GetService("Players")
-    local player = Players:GetPlayerByUserId(ownerId)
-    
-    -- Try to load existing plot state from player data
+    -- Try to load existing plot state from player data (only if we have an owner)
     local savedPlotState = nil
-    if player then
-        local FarmManager = require(script.Parent.FarmManager)
-        local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
-        savedPlotState = PlayerDataManager.getPlotState(player, plotIndex)
+    if ownerId then
+        local Players = game:GetService("Players")
+        local player = Players:GetPlayerByUserId(ownerId)
         
-        if savedPlotState then
-            log.info("Loading saved plot state for player", player.Name, "plot", plotIndex, "state:", savedPlotState.state)
+        if player then
+            local FarmManager = require(script.Parent.FarmManager)
+            local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
+            savedPlotState = PlayerDataManager.getPlotState(player, plotIndex)
+            
+            if savedPlotState then
+                log.info("Loading saved plot state for player", player.Name, "plot", plotIndex, "state:", savedPlotState.state)
+            end
         end
     end
     
