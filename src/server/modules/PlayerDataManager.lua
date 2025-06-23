@@ -63,7 +63,7 @@ function PlayerDataManager.initialize()
     end)
     
     if success and profileStoreModule then
-        ProfileStore = profileStoreModule.new(PROFILE_STORE_NAME, PROFILE_TEMPLATE)
+        ProfileStore = profileStoreModule.New(PROFILE_STORE_NAME, PROFILE_TEMPLATE)
         log.info("ProfileStore initialized successfully for", PROFILE_STORE_NAME)
     else
         log.warn("ProfileStore not available - falling back to in-memory storage (Studio mode)")
@@ -80,7 +80,7 @@ function PlayerDataManager.onPlayerJoined(player)
     end
     
     local userId = tostring(player.UserId)
-    local profile = ProfileStore:LoadProfileAsync(userId)
+    local profile = ProfileStore:StartSessionAsync(userId)
     
     if profile then
         profile:AddUserId(player.UserId) -- GDPR compliance
