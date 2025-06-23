@@ -48,38 +48,19 @@ jobs:
         # The game has fallback UI that doesn't require React
         echo "Skipping React packages for now - using fallback UI"
     
+    - name: Create placeholder for empty shared folder
+      run: |
+        # Create a placeholder file in shared folder if it's empty
+        if [ ! "$(ls -A src/shared)" ]; then
+          echo "-- Shared modules placeholder" > src/shared/init.lua
+        fi
+    
     - name: Build place file
       run: |
-        # Create default.project.json if it doesn't exist
-        if [ ! -f "default.project.json" ]; then
-          cat > default.project.json << 'EOF'
-        {
-          "name": "FarmingGame",
-          "tree": {
-            "$className": "DataModel",
-            "ReplicatedStorage": {
-              "$className": "ReplicatedStorage",
-              "Packages": {
-                "$path": "Packages"
-              }
-            },
-            "ServerScriptService": {
-              "$className": "ServerScriptService",
-              "Server": {
-                "$path": "src/server"
-              }
-            },
-            "StarterPlayerScripts": {
-              "$className": "StarterPlayerScripts",
-              "Client": {
-                "$path": "src/client"
-              }
-            }
-          }
-        }
-        EOF
-        fi
+        # Use the existing default.project.json (no need to recreate)
+        echo "📦 Building with Rojo..."
         rojo build --output game.rbxl
+        echo "✅ Build completed successfully!"
     
     - name: Upload to Roblox
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
