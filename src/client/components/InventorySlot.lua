@@ -139,7 +139,7 @@ local function InventorySlot(props)
             BackgroundColor3 = Color3.fromRGB(40, 40, 40),
             BackgroundTransparency = 0.3,
             BorderSizePixel = 0,
-            Font = Enum.Font.SourceSansBoldItalic,
+            Font = Enum.Font.SourceSansItalic,
             ZIndex = 17,
             [React.Event.Activated] = function()
                 onInfoClick(item)
