@@ -37,10 +37,24 @@ local PROFILE_TEMPLATE = {
 function PlayerDataManager.initialize()
     -- Try to load ProfileStore (it may not be available in Studio without packages)
     local success, profileStoreModule = pcall(function()
-        return require(game:GetService("ServerStorage"):WaitForChild("Packages"):WaitForChild("ProfileStore"))
+        local serverStorage = game:GetService("ServerStorage")
+        local packages = serverStorage:FindFirstChild("Packages")
+        
+        if not packages then
+            log.info("No Packages folder found - ProfileStore not available")
+            return nil
+        end
+        
+        local profileStore = packages:FindFirstChild("ProfileStore")
+        if not profileStore then
+            log.info("ProfileStore package not found - falling back to in-memory storage")
+            return nil
+        end
+        
+        return require(profileStore)
     end)
     
-    if success then
+    if success and profileStoreModule then
         ProfileStore = profileStoreModule.new(PROFILE_STORE_NAME, PROFILE_TEMPLATE)
         log.info("ProfileStore initialized successfully for", PROFILE_STORE_NAME)
     else
@@ -110,7 +124,7 @@ function PlayerDataManager.getPlayerData(player)
     end
     
     -- Fallback for Studio mode or when ProfileStore isn't available
-    log.warn("Using fallback data for", player.Name, "- ProfileStore not available")
+    log.info("Using fallback data for", player.Name, "- ProfileStore not available (Studio mode)")
     local userId = tostring(player.UserId)
     
     if not _G.FallbackPlayerData then
@@ -134,13 +148,36 @@ function PlayerDataManager.getPlayerData(player)
                 currentStep = 1,
                 completedSteps = {},
                 totalRewardsEarned = 0
-            }
+            },
+            -- Legacy fields for backward compatibility
+            tutorialCompleted = false,
+            tutorialSkipped = false
         }
         
         -- Set starting seeds
         for seedType, count in pairs(GameConfig.Settings.startingSeeds) do
             _G.FallbackPlayerData[userId].inventory.seeds[seedType] = count
         end
+        
+        log.debug("Created new fallback data for", player.Name)
+    else
+        -- Ensure tutorial field exists in existing fallback data
+        if not _G.FallbackPlayerData[userId].tutorial then
+            _G.FallbackPlayerData[userId].tutorial = {
+                completed = _G.FallbackPlayerData[userId].tutorialCompleted or false,
+                skipped = _G.FallbackPlayerData[userId].tutorialSkipped or false,
+                currentStep = 1,
+                completedSteps = {},
+                totalRewardsEarned = 0
+            }
+        end
+        
+        -- Ensure plots field exists
+        if not _G.FallbackPlayerData[userId].plots then
+            _G.FallbackPlayerData[userId].plots = {}
+        end
+        
+        log.debug("Loaded existing fallback data for", player.Name)
     end
     
     return _G.FallbackPlayerData[userId]
