@@ -23,17 +23,17 @@ local TUTORIAL_STEPS = {
         action = "continue"
     },
     {
-        id = "buy_seeds",
-        title = "🛒 Buy Your First Seeds", 
-        description = "You need seeds to start farming! Any seeds will work to get started.",
-        instruction = "Click the 🛒 Shop button on the left, then buy any seeds",
+        id = "buy_crops",
+        title = "🛒 Buy Your First Crops", 
+        description = "You need crops to start farming! Any crops will work to get started.",
+        instruction = "Click the 🛒 Shop button on the left, then buy any crops (like wheat or carrot)",
         reward = {money = 25},
-        action = "buy_seed"
+        action = "buy_crop"
     },
     {
         id = "plant_seed",
-        title = "🌱 Plant Your Seed",
-        description = "Great! Now you have seeds. Time to plant your first seed.",
+        title = "🌱 Plant Your Crop",
+        description = "Great! Now you have crops. Time to plant your first crop.",
         instruction = "Walk to any brown farm plot and press E when the 'Plant Seed' prompt appears",
         reward = {money = 50},
         action = "plant_seed"
@@ -66,7 +66,7 @@ local TUTORIAL_STEPS = {
         id = "sell_crops",
         title = "💰 Sell Your Crops",
         description = "Fantastic! You harvested your first crop. Now let's sell it for money.",
-        instruction = "Open your inventory (🎒 button) and click 'Sell All' on your crops",
+        instruction = "Click the 💰 'Sell All' button on the left side panel to sell your crops",
         reward = {money = 100},
         action = "sell_crops"
     },
@@ -98,7 +98,15 @@ function TutorialManager.initializePlayer(player)
     
     -- Check if player has already completed tutorial
     if tutorialProgress.completed then
-        log.info("Player", player.Name, "has already completed tutorial")
+        log.info("Player", player.Name, "has already completed tutorial - sending completion status")
+        -- Send completion status to client for reset button
+        local remotes = RemoteManager.getRemotes()
+        if remotes.tutorialRemote then
+            remotes.tutorialRemote:FireClient(player, {
+                completed = true,
+                action = "hide"
+            })
+        end
         return
     end
     
@@ -156,19 +164,20 @@ function TutorialManager.progressTutorial(player, action, data)
         return
     end
     
-    -- Check if action matches expected action
-    if currentStep.action ~= action and currentStep.action ~= "continue" then
+    -- Check if action matches expected action OR if sending "continue" to a step that allows it
+    if currentStep.action ~= action and not (currentStep.action == "continue" and action == "continue") then
+        log.debug("Tutorial action mismatch: expected", currentStep.action, "got", action)
         return
     end
     
     -- Special checks for specific actions
-    if action == "buy_seed" and currentStep.target then
-        log.debug("Buy seed check: expected", currentStep.target, "got", data and data.seedType or "nil")
-        if not data or data.seedType ~= currentStep.target then
-            log.debug("Buy seed failed target check")
+    if action == "buy_crop" and currentStep.target then
+        log.debug("Buy crop check: expected", currentStep.target, "got", data and data.cropType or "nil")
+        if not data or data.cropType ~= currentStep.target then
+            log.debug("Buy crop failed target check")
             return
         end
-        log.debug("Buy seed passed target check")
+        log.debug("Buy crop passed target check")
     end
     
     -- Mark current step as completed and give reward
@@ -204,10 +213,11 @@ function TutorialManager.completeTutorial(player)
     -- Mark tutorial as completed in persistent storage
     PlayerDataManager.completeTutorial(player, false)
     
-    -- Hide tutorial UI
+    -- Hide tutorial UI and send completion status
     local remotes = RemoteManager.getRemotes()
     if remotes.tutorialRemote then
         remotes.tutorialRemote:FireClient(player, {
+            completed = true,
             action = "hide"
         })
     end
@@ -228,10 +238,11 @@ function TutorialManager.skipTutorial(player)
     -- Mark tutorial as completed and skipped in persistent storage
     PlayerDataManager.completeTutorial(player, true)
     
-    -- Hide tutorial UI
+    -- Hide tutorial UI and send completion status
     local remotes = RemoteManager.getRemotes()
     if remotes.tutorialRemote then
         remotes.tutorialRemote:FireClient(player, {
+            completed = true,
             action = "hide"
         })
     end
@@ -242,10 +253,18 @@ end
 
 -- Handle tutorial action from client
 function TutorialManager.handleTutorialAction(player, actionType, data)
+    log.debug("Tutorial action from", player.Name, ":", actionType)
     if actionType == "next" then
         TutorialManager.progressTutorial(player, "continue", data)
     elseif actionType == "skip" then
         TutorialManager.skipTutorial(player)
+    elseif actionType == "reset" then
+        -- Debug action to reset tutorial
+        print("🎯 Resetting tutorial for", player.Name)
+        PlayerDataManager.resetTutorial(player)
+        TutorialManager.initializePlayer(player)
+    else
+        log.warn("Unknown tutorial action:", actionType, "from", player.Name)
     end
 end
 

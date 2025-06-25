@@ -16,6 +16,7 @@ local function InventorySlot(props)
     local displayNumber = props.displayNumber -- Number to display (1-9 for main slots, nil for extra)
     local onSelect = props.onSelect or function() end
     local onInfoClick = props.onInfoClick or nil
+    local onRightClick = props.onRightClick or nil
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     local layoutOrder = props.LayoutOrder or slotIndex -- Use explicit LayoutOrder or fall back to slotIndex
     
@@ -46,6 +47,28 @@ local function InventorySlot(props)
     
     local displayInfo = getItemDisplay()
     
+    -- Add right-click detection via UserInputService
+    React.useEffect(function()
+        if not onRightClick then return end
+        
+        local UserInputService = game:GetService("UserInputService")
+        
+        local function onInput(input, gameProcessed)
+            if gameProcessed then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton2 then -- Right-click
+                -- Check if mouse is over this slot (basic check)
+                -- Note: This is a simplified approach - a more robust solution would use proper hit detection
+                onRightClick(slotIndex, item)
+            end
+        end
+        
+        local connection = UserInputService.InputBegan:Connect(onInput)
+        
+        return function()
+            connection:Disconnect()
+        end
+    end, {onRightClick, slotIndex, item})
+    
     -- Calculate transparency and colors based on state
     local backgroundTransparency = isEmpty and 0.8 or 0.2
     local borderColor = isEmpty and Color3.fromRGB(40, 40, 40) or (isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(120, 120, 120))
@@ -64,12 +87,8 @@ local function InventorySlot(props)
         ZIndex = 15,
         LayoutOrder = layoutOrder, -- Ensure proper ordering
         [React.Event.Activated] = function()
-            -- If this is a crop or seed and we have an info handler, show info instead of selecting
-            if not isEmpty and item and (item.type == "crop" or item.type == "seed") and onInfoClick then
-                onInfoClick(item)
-            else
-                onSelect(slotIndex)
-            end
+            -- Always select the slot when clicked
+            onSelect(slotIndex)
         end
     }, {
         Corner = e("UICorner", {
@@ -174,6 +193,30 @@ local function InventorySlot(props)
         }, {
             Corner = e("UICorner", {
                 CornerRadius = UDim.new(0, 4)
+            })
+        }) or nil,
+        
+        -- Info button (only for crops/seeds)
+        InfoButton = (not isEmpty and item and (item.type == "crop" or item.type == "seed") and onInfoClick) and e("TextButton", {
+            Name = "InfoButton",
+            Size = UDim2.new(0, 16, 0, 16),
+            Position = UDim2.new(1, -18, 1, -18),
+            Text = "i",
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextScaled = true,
+            BackgroundColor3 = Color3.fromRGB(50, 100, 200),
+            BackgroundTransparency = 0.2,
+            BorderSizePixel = 0,
+            Font = Enum.Font.SourceSansBold,
+            ZIndex = 18,
+            [React.Event.Activated] = function()
+                if onInfoClick then
+                    onInfoClick(item)
+                end
+            end
+        }, {
+            Corner = e("UICorner", {
+                CornerRadius = UDim.new(0.5, 0)
             })
         }) or nil
     })

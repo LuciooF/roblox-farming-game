@@ -6,6 +6,7 @@
 - **User controls commits** - Don't prompt for git commits after every change
 - **Wait for user instruction** before committing changes
 - **User will tell me when to commit** - focus on making changes and testing first
+- Stop making unrequested github commits, the user will decide when they commit and can ask you to do so at the time.
 
 ### **File Size & Modularity**
 - **NEVER create files >300 lines** - break into modules immediately

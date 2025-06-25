@@ -15,12 +15,16 @@ local PlotInteractionManager = {}
 local pendingInteractions = {} -- [plotId] = {type, timestamp, originalState}
 local remotes = {}
 local currentPlayerData = nil -- Cache current player data for inventory checks
+local plotUIHandler = nil -- Handler to open plot UI
 
 -- Initialize interaction manager
 function PlotInteractionManager.initialize(farmingRemotes)
-    remotes.plant = farmingRemotes:WaitForChild("PlantSeed")
+    remotes.plant = farmingRemotes:WaitForChild("PlantCrop")
     remotes.water = farmingRemotes:WaitForChild("WaterPlant") 
     remotes.harvest = farmingRemotes:WaitForChild("HarvestCrop")
+    remotes.harvestAll = farmingRemotes:WaitForChild("HarvestAllCrops")
+    remotes.cut = farmingRemotes:WaitForChild("CutPlant")
+    remotes.buyPlot = farmingRemotes:WaitForChild("BuyPlot")
     remotes.interactionFailure = farmingRemotes:WaitForChild("InteractionFailure")
     
     -- Connect to interaction failure events for rollback
@@ -45,8 +49,66 @@ function PlotInteractionManager.updatePlayerData(playerData)
     currentPlayerData = playerData
 end
 
+-- Set the plot UI handler function
+function PlotInteractionManager.setPlotUIHandler(handler)
+    plotUIHandler = handler
+    log.info("Plot UI handler set")
+end
+
 -- Predict contextual action based on plot state
 function PlotInteractionManager.predictContextualAction(plot, plotId)
+    log.info("🔍 predictContextualAction called for plot", plotId, "plotUIHandler exists:", plotUIHandler ~= nil)
+    
+    -- If we have a UI handler, open the UI instead of predictions
+    if plotUIHandler then
+        log.info("📋 UI handler found, opening Plot UI for plot", plotId)
+        
+        -- Get current plot state information (using correct field names)
+        local plotState = plot:FindFirstChild("PlotData")
+        local seedType = plot:FindFirstChild("SeedType")
+        local countdownGui = plot:FindFirstChild("CountdownDisplay")
+        
+        log.debug("Plot state data:", plotState and plotState.Value or "nil", "seed:", seedType and seedType.Value or "nil")
+        
+        -- Build plot data for UI
+        local plotData = {
+            plotId = plotId,
+            state = plotState and plotState.Value or "empty",
+            seedType = seedType and seedType.Value or "",
+            -- Get additional data from attributes if available
+            harvestCount = plot:GetAttribute("HarvestCount") or 0,
+            maxHarvests = plot:GetAttribute("MaxHarvests") or 0,
+            accumulatedCrops = plot:GetAttribute("AccumulatedCrops") or 0,
+            wateredCount = plot:GetAttribute("WateredCount") or 0,
+            waterNeeded = plot:GetAttribute("WaterNeeded") or 1
+        }
+        
+        log.debug("Built plot data:", plotData)
+        
+        -- Check if this is a purchase/unlock action
+        local actionPrompt = plot:FindFirstChild("ActionPrompt")
+        if actionPrompt and (actionPrompt.ActionText:find("Purchase") or actionPrompt.ActionText:find("Unlock")) then
+            log.info("🏪 Purchase/unlock action detected, using direct action")
+            -- For purchase/unlock, still use the direct action
+            return PlotInteractionManager.predictPurchasePlotInteraction(plot, plotId)
+        end
+        
+        -- Open the plot UI
+        log.info("✨ Opening Plot UI with data:", plotData.state, plotData.seedType)
+        plotUIHandler(plotData)
+        return true
+    else
+        log.warn("❌ No plotUIHandler available!")
+    end
+    
+    -- Fallback to old prediction system if no UI handler
+    -- Check if shift key is held - if so, try to cut the plant
+    local UserInputService = game:GetService("UserInputService")
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
+        log.debug("Shift held - attempting to cut plant on plot", plotId)
+        return PlotInteractionManager.predictCutPlantInteraction(plot, plotId)
+    end
+    
     -- Get the ActionPrompt to determine current action
     local actionPrompt = plot:FindFirstChild("ActionPrompt")
     if not actionPrompt then return false end
@@ -62,6 +124,8 @@ function PlotInteractionManager.predictContextualAction(plot, plotId)
         return PlotInteractionManager.predictHarvestInteraction(plot, plotId)
     elseif actionText:find("Clear") then
         return PlotInteractionManager.predictClearDeadPlantInteraction(plot, plotId)
+    elseif actionText:find("Purchase") or actionText:find("Unlock") then
+        return PlotInteractionManager.predictPurchasePlotInteraction(plot, plotId)
     else
         -- Unknown action, provide generic feedback
         local countdownGui = plot:FindFirstChild("CountdownDisplay")
@@ -204,6 +268,40 @@ function PlotInteractionManager.predictHarvestInteraction(plot, plotId)
     return true
 end
 
+-- Predict harvest ALL interaction with immediate visual feedback
+function PlotInteractionManager.predictHarvestAllInteraction(plot, plotId)
+    -- Get countdown display
+    local countdownGui = plot:FindFirstChild("CountdownDisplay")
+    local countdownLabel = countdownGui and countdownGui:FindFirstChild("TextLabel")
+    if not countdownLabel then return false end
+    
+    -- Check if it looks ready to harvest
+    local currentText = countdownLabel.Text
+    if not currentText:find("Ready") then
+        return false -- Doesn't look ready
+    end
+    
+    -- Store original state for potential rollback
+    pendingInteractions[plotId] = {
+        type = "harvestAll",
+        timestamp = tick(),
+        originalText = countdownLabel.Text,
+        originalColor = countdownLabel.TextColor3
+    }
+    
+    -- Immediate visual feedback for harvest all
+    countdownLabel.Text = "Harvesting ALL..."
+    countdownLabel.TextColor3 = Color3.fromRGB(255, 165, 0) -- Orange for harvest all
+    
+    -- Send harvest all request to server
+    if remotes.harvestAll then
+        remotes.harvestAll:FireServer(plotId)
+    end
+    
+    log.debug("Predicted harvest ALL interaction for plot", plotId)
+    return true
+end
+
 -- Predict clear dead plant interaction with immediate visual feedback
 function PlotInteractionManager.predictClearDeadPlantInteraction(plot, plotId)
     -- Get countdown display
@@ -232,6 +330,66 @@ function PlotInteractionManager.predictClearDeadPlantInteraction(plot, plotId)
     -- Note: Do NOT call the remote here - the server-side FarmingSystem handles the actual clearing
     
     log.debug("Predicted clear dead plant interaction for plot", plotId)
+    return true
+end
+
+-- Cut/remove any plant from a plot (with shift+click or right-click)
+function PlotInteractionManager.predictCutPlantInteraction(plot, plotId)
+    -- Get countdown display
+    local countdownGui = plot:FindFirstChild("CountdownDisplay")
+    local countdownLabel = countdownGui and countdownGui:FindFirstChild("TextLabel")
+    if not countdownLabel then return false end
+    
+    -- Check if there's something to cut (not empty)
+    local currentText = countdownLabel.Text
+    if currentText:find("Empty") or currentText:find("Click") then
+        return false -- Plot is empty
+    end
+    
+    -- Store original state for potential rollback
+    pendingInteractions[plotId] = {
+        type = "cut",
+        timestamp = tick(),
+        originalText = countdownLabel.Text,
+        originalColor = countdownLabel.TextColor3
+    }
+    
+    -- Immediate visual feedback
+    countdownLabel.Text = "Cutting..."
+    countdownLabel.TextColor3 = Color3.fromRGB(255, 150, 50) -- Orange
+    
+    -- Send cut request to server
+    remotes.cut:FireServer(plotId)
+    
+    log.debug("Predicted cut plant interaction for plot", plotId)
+    return true
+end
+
+-- Purchase plot interaction (for locked plots)
+function PlotInteractionManager.predictPurchasePlotInteraction(plot, plotId)
+    -- Get countdown display
+    local countdownGui = plot:FindFirstChild("CountdownDisplay")
+    local countdownLabel = countdownGui and countdownGui:FindFirstChild("TextLabel")
+    if not countdownLabel then return false end
+    
+    -- Store original state for potential rollback
+    pendingInteractions[plotId] = {
+        type = "purchase",
+        timestamp = tick(),
+        originalText = countdownLabel.Text,
+        originalColor = countdownLabel.TextColor3
+    }
+    
+    -- Immediate visual feedback
+    countdownLabel.Text = "Processing Purchase..."
+    countdownLabel.TextColor3 = Color3.fromRGB(100, 255, 100) -- Green
+    
+    -- Send purchase request to server
+    if remotes.buyPlot then
+        remotes.buyPlot:FireServer()
+    end
+    
+    log.debug("Predicted purchase plot interaction for plot", plotId)
     return true
 end
 

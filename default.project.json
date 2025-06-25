@@ -3,6 +3,13 @@
   "tree": {
     "$className": "DataModel",
     
+    "Workspace": {
+      "$className": "Workspace",
+      "FarmTemplate": {
+        "$path": "assets/FarmTemplate.rbxm"
+      }
+    },
+    
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "Packages": {

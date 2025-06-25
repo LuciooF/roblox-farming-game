@@ -8,32 +8,40 @@ local log = ClientLogger.getModuleLogger("PlotUtils")
 
 local PlotUtils = {}
 
--- Find plot by ID in workspace (searches across all farm areas)
-function PlotUtils.findPlotById(plotId)
+-- Find plot by global ID (converts to farm+local ID system)
+function PlotUtils.findPlotById(globalPlotId)
     local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
     if not farmsContainer then 
-        log.warn("No PlayerFarms found in Workspace when looking for plot", plotId)
+        log.warn("No PlayerFarms found in Workspace when looking for plot", globalPlotId)
         return nil 
     end
     
-    -- Search through all farm areas
-    local availablePlots = {}
-    for _, farmFolder in pairs(farmsContainer:GetChildren()) do
-        if farmFolder.Name:match("^Farm_") then
-            for _, plot in pairs(farmFolder:GetChildren()) do
-                local plotIdValue = plot:FindFirstChild("PlotId")
-                if plotIdValue then
-                    table.insert(availablePlots, tostring(plotIdValue.Value))
-                    if plotIdValue.Value == plotId then
-                        log.debug("Found plot", plotId, "successfully in", farmFolder.Name)
-                        return plot
-                    end
-                end
+    -- Convert global plot ID to farm ID and local plot ID
+    local MAX_PLOTS_PER_FARM = 40
+    local farmId = math.floor((globalPlotId - 1) / MAX_PLOTS_PER_FARM) + 1
+    local localPlotId = ((globalPlotId - 1) % MAX_PLOTS_PER_FARM) + 1
+    
+    log.debug("Looking for global plot", globalPlotId, "-> farm", farmId, "local plot", localPlotId)
+    
+    -- Find the specific farm
+    local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
+    if not farmFolder then
+        log.warn("Could not find Farm_" .. farmId .. " for global plot", globalPlotId)
+        return nil
+    end
+    
+    -- Search for plot with matching local PlotId in this farm
+    for _, child in pairs(farmFolder:GetDescendants()) do
+        if child:IsA("BasePart") and child.Name:match("Plot") then
+            local plotIdValue = child:FindFirstChild("PlotId")
+            if plotIdValue and plotIdValue.Value == localPlotId then
+                log.debug("Found global plot", globalPlotId, "as local plot", localPlotId, "in", farmFolder.Name)
+                return child
             end
         end
     end
     
-    log.warn("Could not find plot", plotId, "in workspace. Available plots:", table.concat(availablePlots, ", "))
+    log.debug("Plot", localPlotId, "not found in farm", farmId, "- may not be created yet for global plot", globalPlotId)
     return nil
 end
 

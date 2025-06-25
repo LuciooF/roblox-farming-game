@@ -189,6 +189,7 @@ local function TutorialPanel(props)
                 })
             }),
             
+            
             -- Next Button (conditional)
             NextButton = step.action == "continue" and e("TextButton", {
                 Name = "NextButton",

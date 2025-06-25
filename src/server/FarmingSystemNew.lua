@@ -17,6 +17,12 @@ local RemoteManager = require(script.Parent.modules.RemoteManager)
 local SoundManager = require(script.Parent.modules.SoundManager)
 local TutorialManager = require(script.Parent.modules.TutorialManager)
 local FarmManager = require(script.Parent.modules.FarmManager)
+local WeatherSystem = require(script.Parent.modules.WeatherSystem)
+local FarmEnvironment = require(script.Parent.modules.FarmEnvironment)
+
+-- Disable auto-spawning so we can control when players spawn
+Players.CharacterAutoLoads = false
+local ConfigManager = require(script.Parent.modules.ConfigManager)
 
 -- Import WorldBuilder (keeping this for now since it works)
 local WorldBuilder = require(script.Parent.WorldBuilder)
@@ -33,6 +39,9 @@ function FarmingSystem.initialize()
     log.info("New Modular Farming System: Initializing...")
     
     -- Initialize PlayerDataManager with ProfileStore first
+    -- Initialize configuration system
+    ConfigManager.initialize()
+    
     PlayerDataManager.initialize()
     
     -- Initialize RemoteEvents
@@ -44,6 +53,9 @@ function FarmingSystem.initialize()
     -- Initialize farm management system
     FarmManager.initialize()
     
+    -- Initialize weather system
+    WeatherSystem.initialize()
+    
     -- Build the farm world
     local success, farm = pcall(function()
         return WorldBuilder.buildFarm()
@@ -54,8 +66,8 @@ function FarmingSystem.initialize()
         return
     end
     
-    -- Set up plot interactions
-    FarmingSystem.setupPlotInteractions()
+    -- Plot interactions are now set up per-farm when players join (in FarmManager.onFarmAssigned)
+    -- FarmingSystem.setupPlotInteractions()
     
     -- Set up NPC interactions  
     FarmingSystem.setupNPCInteractions()
@@ -63,37 +75,20 @@ function FarmingSystem.initialize()
     -- Start the main game loop
     FarmingSystem.startMainLoop()
     
+    -- Initialize farm environment system after everything else is ready
+    -- TEMPORARILY DISABLED - causing spawn issues
+    -- log.info("🚀 About to initialize FarmEnvironment...")
+    -- FarmEnvironment.initialize()
+    -- log.info("🚀 FarmEnvironment initialization complete")
+    
     log.info("New Modular Farming System: Ready!")
 end
 
--- Setup ProximityPrompt interactions for plots
+-- Setup ProximityPrompt interactions for plots (now handled by WorldBuilder)
 function FarmingSystem.setupPlotInteractions()
-    local plots = WorldBuilder.getAllPlots()
-    
-    for _, plot in pairs(plots) do
-        local plotIdValue = plot:FindFirstChild("PlotId")
-        if plotIdValue then
-            local plotId = plotIdValue.Value
-            
-            -- Initialize plot in PlotManager (no owner during world setup)
-            PlotManager.initializePlot(plotId, nil)
-            
-            -- Connect to single ActionPrompt
-            local actionPrompt = plot:FindFirstChild("ActionPrompt")
-            
-            if actionPrompt then
-                actionPrompt.Triggered:Connect(function(player)
-                    FarmingSystem.handlePlotAction(player, plotId)
-                end)
-                
-                -- Tutorial: Detect when player approaches a plot for the first time
-                actionPrompt.PromptShown:Connect(function(player)
-                    log.trace("Player", player.Name, "approached plot", plotId)
-                    TutorialManager.checkGameAction(player, "approach_plot")
-                end)
-            end
-        end
-    end
+    -- Plot interactions are now set up in WorldBuilder.setupPlotComponents()
+    -- This includes separate plant and water interactions with water hoses
+    log.info("Plot interactions are set up by WorldBuilder during plot creation")
 end
 
 -- Setup NPC interactions
@@ -140,14 +135,24 @@ function FarmingSystem.handlePlotAction(player, plotId)
         return 
     end
     
+    log.debug("handlePlotAction for plot", plotId, "state:", plotState.state, "player:", player.Name)
+    
     -- Route to appropriate handler based on current state
     if plotState.state == "empty" then
+        log.debug("Routing to plant interaction for empty plot")
         FarmingSystem.handlePlantInteraction(player, plotId)
     elseif plotState.state == "planted" or plotState.state == "growing" then
+        log.debug("Routing to water interaction for planted/growing plot")
         FarmingSystem.handleWaterInteraction(player, plotId)
+    elseif plotState.state == "watered" then
+        -- For watered plots, allow planting more (stacking) since they're growing
+        log.debug("Routing to plant interaction for watered plot (stacking)")
+        FarmingSystem.handlePlantInteraction(player, plotId)
     elseif plotState.state == "ready" then
+        log.debug("Routing to harvest interaction for ready plot")
         FarmingSystem.handleHarvestInteraction(player, plotId)
     elseif plotState.state == "dead" then
+        log.debug("Routing to clear dead plant interaction")
         FarmingSystem.handleClearDeadPlantInteraction(player, plotId)
     else
         log.warn("Unknown plot state:", plotState.state, "for plot", plotId)
@@ -162,43 +167,34 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
     
     -- Get the player's selected item from hotbar
     local selectedItem = RemoteManager.getSelectedItem(player)
-    local selectedSeed = nil
+    local selectedCrop = nil
     
-    log.debug("Planting - Got selected item:", selectedItem and (selectedItem.type .. ":" .. selectedItem.name) or "none")
-    
-    -- Use selected seed if it's a seed and available
-    if selectedItem and selectedItem.type == "seed" then
-        local seedCount = playerData.inventory.seeds[selectedItem.name] or 0
-        if seedCount > 0 then
-            selectedSeed = selectedItem.name
-            log.debug("Player", player.Name, "using selected seed:", selectedSeed)
-        else
-            log.debug("Player", player.Name, "selected seed not available:", selectedItem.name, "count:", seedCount)
+    -- Use selected crop if it's a crop and available
+    if selectedItem and selectedItem.type == "crop" then
+        local cropCount = playerData.inventory.crops[selectedItem.name] or 0
+        if cropCount > 0 then
+            selectedCrop = selectedItem.name
         end
-    else
-        log.debug("Planting - No valid selected item:", selectedItem and tostring(selectedItem.type) or "nil")
     end
     
-    -- Fallback to first available seed if no valid selection
-    if not selectedSeed then
-        for seedType, count in pairs(playerData.inventory.seeds) do
+    -- Fallback to first available crop if no valid selection
+    if not selectedCrop then
+        for cropType, count in pairs(playerData.inventory.crops) do
             if count > 0 then
-                selectedSeed = seedType
-                log.debug("Player", player.Name, "falling back to first available seed:", selectedSeed)
+                selectedCrop = cropType
                 break
             end
         end
     end
     
-    if not selectedSeed then
-        log.debug("Player", player.Name, "has no seeds available")
-        NotificationManager.sendError(player, "🌱 No seeds available! Buy some from the shop.")
+    if not selectedCrop then
+        NotificationManager.sendCenterNotification(player, "🌱 No crops available to plant!\nHarvest some crops first or buy from shop.", "error")
         -- Send interaction failure to client for prediction rollback
-        RemoteManager.sendInteractionFailure(player, plotId, "plant", "no_seeds")
+        RemoteManager.sendInteractionFailure(player, plotId, "plant", "no_crops")
         return
     end
     
-    local success, message = PlotManager.plantSeed(player, plotId, selectedSeed)
+    local success, message = PlotManager.plantCrop(player, plotId, selectedCrop)
     if success then
         RemoteManager.syncPlayerData(player)
         
@@ -206,8 +202,8 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
         local plot = WorldBuilder.getPlotById(plotId)
         local plotState = PlotManager.getPlotState(plotId)
         if plot and plotState then
-            log.trace("Updating plot visual - plotId:", plotId, "seed:", selectedSeed, "variation:", plotState.variation)
-            WorldBuilder.updatePlotState(plot, "planted", selectedSeed, plotState.variation)
+            log.trace("Updating plot visual - plotId:", plotId, "seed:", selectedCrop, "variation:", plotState.variation)
+            WorldBuilder.updatePlotState(plot, "planted", selectedCrop, plotState.variation)
             -- Play plant sound at plot location
             -- SoundManager.playPlantSound(plot.Position)
         else
@@ -225,7 +221,12 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
     if success then
         NotificationManager.sendSuccess(player, "🌱 " .. message)
     else
-        NotificationManager.sendError(player, "❌ " .. message)
+        -- Use center notification for critical gameplay errors
+        if message:find("crops") or message:find("locked") or message:find("different crop") or message:find("ownership") then
+            NotificationManager.sendCenterNotification(player, "❌ " .. message, "error")
+        else
+            NotificationManager.sendError(player, "❌ " .. message)
+        end
     end
 end
 
@@ -340,12 +341,39 @@ end
 
 -- Player connection handlers
 function FarmingSystem.onPlayerJoined(player)
-    -- Load player data with ProfileStore first
-    PlayerDataManager.onPlayerJoined(player)
-    -- Assign farm after data is loaded
-    FarmManager.onPlayerJoined(player)
-    -- Then handle remote connections
+    log.info("🔵 Player joining:", player.Name)
+    
+    -- Initialize remotes immediately (for loading screen communication)
+    log.info("🔵 Initializing remotes for:", player.Name)
     RemoteManager.onPlayerJoined(player)
+    
+    -- Load player data with ProfileStore (this takes 3-4 seconds)
+    log.info("🔵 Loading player data for:", player.Name)
+    PlayerDataManager.onPlayerJoined(player)
+    log.info("🔵 Player data loaded for:", player.Name)
+    
+    -- Assign farm after data is loaded
+    log.info("🔵 Assigning farm for:", player.Name)
+    local farmId = FarmManager.onPlayerJoined(player)
+    log.info("🔵 Farm", farmId, "assigned to:", player.Name)
+    
+    -- Sync the real data once loaded
+    log.info("🔵 Syncing data for:", player.Name)
+    RemoteManager.syncPlayerData(player)
+    log.info("🔵 Data synced for:", player.Name)
+    
+    -- Connect respawn handler before first spawn
+    player.CharacterAdded:Connect(FarmingSystem.onCharacterAdded)
+    
+    -- NOW spawn the character after everything is ready
+    if farmId then
+        log.info("Farm assigned, spawning player:", player.Name, "at farm", farmId)
+        player:LoadCharacter()
+    else
+        log.error("Failed to assign farm for player:", player.Name)
+        -- Still spawn but at default location
+        player:LoadCharacter()
+    end
 end
 
 function FarmingSystem.onPlayerLeft(player)
@@ -355,6 +383,28 @@ function FarmingSystem.onPlayerLeft(player)
     RemoteManager.onPlayerLeft(player)
     -- Release ProfileStore profile last
     PlayerDataManager.onPlayerLeaving(player)
+end
+
+-- Handle respawning
+function FarmingSystem.onCharacterAdded(character)
+    local player = Players:GetPlayerFromCharacter(character)
+    if not player then return end
+    
+    -- Wait a frame for character to fully load
+    RunService.Heartbeat:Wait()
+    
+    -- Teleport to farm spawn point
+    local farmId = FarmManager.getPlayerFarm(player.UserId)
+    if farmId then
+        local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+        local farmModel = workspace.PlayerFarms:FindFirstChild("Farm_" .. farmId)
+        local spawnPoint = farmModel and farmModel:FindFirstChild("FarmSpawn_" .. farmId)
+        if spawnPoint then
+            humanoidRootPart.CFrame = spawnPoint.CFrame + Vector3.new(0, 3, 0)
+        else
+            log.error("No spawn point found for farm", farmId)
+        end
+    end
 end
 
 return FarmingSystem

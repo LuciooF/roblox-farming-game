@@ -4,6 +4,9 @@
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local TweenService = game:GetService("TweenService")
 local e = React.createElement
+local ClientLogger = require(script.Parent.Parent.ClientLogger)
+
+local log = ClientLogger.getModuleLogger("HotbarInventory")
 
 local InventorySlot = require(script.Parent.InventorySlot)
 local HandItem = require(script.Parent.HandItem)
@@ -13,6 +16,7 @@ local function HotbarInventory(props)
     local visible = props.visible or false
     local remotes = props.remotes or {}
     local onShowInfo = props.onShowInfo -- Handler from parent to show info modal
+    
     
     -- Responsive sizing
     local screenSize = props.screenSize or Vector2.new(1024, 768)
@@ -39,18 +43,7 @@ local function HotbarInventory(props)
     local function getInventoryItems()
         local items = {}
         
-        -- Add seeds first (left side) in consistent order
-        if playerData.inventory and playerData.inventory.seeds then
-            local seedTypes = {"wheat", "carrot", "tomato", "potato", "corn"} -- Consistent order
-            for _, seedType in ipairs(seedTypes) do
-                local quantity = playerData.inventory.seeds[seedType] or 0
-                if quantity > 0 then
-                    table.insert(items, {type = "seed", name = seedType, quantity = quantity})
-                end
-            end
-        end
-        
-        -- Add crops after seeds in consistent order
+        -- Add crops in consistent order (crops are now plantable)
         if playerData.inventory and playerData.inventory.crops then
             local cropTypes = {"wheat", "carrot", "tomato", "potato", "corn"} -- Consistent order
             for _, cropType in ipairs(cropTypes) do
@@ -60,12 +53,6 @@ local function HotbarInventory(props)
                 end
             end
             
-            -- Add any variation crops (shiny, rainbow, etc.)
-            for cropType, quantity in pairs(playerData.inventory.crops) do
-                if quantity > 0 and not table.find(cropTypes, cropType) then
-                    table.insert(items, {type = "crop", name = cropType, quantity = quantity})
-                end
-            end
         end
         
         return items
@@ -100,23 +87,23 @@ local function HotbarInventory(props)
     local function handleSlotSelect(slotIndex)
         -- Check if slot has an item before selecting
         local item = getItemForSlot(slotIndex)
+        
         if item then
             setSelectedSlot(slotIndex)
         end
-        -- Note: Selection sync is handled by React.useEffect above
     end
     
     -- Handle crop info display
     local function handleCropInfo(item)
         if onShowInfo then
-            -- Extract the base seed type from the item name (remove variation prefixes)
-            local seedType = item.name
+            -- Extract the base crop type from the item name (remove variation prefixes)
+            local cropType = item.name
             if item.type == "crop" then
                 -- Remove variation prefixes for crops
-                seedType = item.name:gsub("Shiny ", ""):gsub("Rainbow ", ""):gsub("Golden ", ""):gsub("Diamond ", "")
+                cropType = item.name:gsub("Shiny ", ""):gsub("Rainbow ", ""):gsub("Golden ", ""):gsub("Diamond ", "")
             end
             
-            onShowInfo(seedType)
+            onShowInfo(cropType)
         end
     end
     
@@ -146,10 +133,10 @@ local function HotbarInventory(props)
                 if slotNumber and slotNumber <= MAIN_SLOTS then
                     -- Check if slot has an item before selecting
                     local item = getItemForSlot(slotNumber)
+                    
                     if item then
                         setSelectedSlot(slotNumber)
                     end
-                    -- Note: Selection sync is handled by React.useEffect above
                 end
             end
         end
@@ -161,14 +148,15 @@ local function HotbarInventory(props)
         end
     end, {visible, MAIN_SLOTS})
     
-    -- Sync selection to server when selectedSlot changes 
+    -- Sync selection to server when selectedSlot changes OR when inventory updates
     React.useEffect(function()
-        -- Send current selection to server whenever slot changes
+        -- Send current selection to server whenever slot changes or inventory updates
         local selectedItem = getItemForSlot(selectedSlot)
+        
         if remotes.selectedItem then
             remotes.selectedItem:FireServer(selectedItem)
         end
-    end, {selectedSlot}) -- Only sync when selectedSlot changes, not on every inventory update
+    end, {selectedSlot, playerData}) -- Sync when selectedSlot changes OR when playerData updates
     
     -- Hand item management - show selected item in player's hand
     React.useEffect(function()
@@ -226,6 +214,47 @@ local function HotbarInventory(props)
         end
     end
     
+    -- Handle right-click on inventory slot to cycle through available crops
+    local function handleSlotRightClick(slotIndex, currentItem)
+        if not currentItem or currentItem.type ~= "crop" then return end
+        
+        log.debug("Right-clicked slot", slotIndex, "- cycling through available crops")
+        
+        -- Get all available crop types (crops with quantity > 0)
+        local availableCrops = {}
+        local cropsOrder = {"wheat", "carrot", "tomato", "potato", "corn"} -- Consistent order
+        
+        for _, cropType in ipairs(cropsOrder) do
+            local quantity = (playerData.inventory and playerData.inventory.crops and playerData.inventory.crops[cropType]) or 0
+            if quantity > 0 then
+                table.insert(availableCrops, cropType)
+            end
+        end
+        
+        if #availableCrops <= 1 then
+            log.debug("Only one crop type available, no cycling needed")
+            return
+        end
+        
+        -- Find current crop in available list and cycle to next one
+        local currentIndex = 1
+        for i, cropType in ipairs(availableCrops) do
+            if cropType == currentItem.name then
+                currentIndex = i
+                break
+            end
+        end
+        
+        -- Cycle to next crop (wrap around to beginning)
+        local nextIndex = (currentIndex % #availableCrops) + 1
+        local nextCrop = availableCrops[nextIndex]
+        
+        log.debug("Cycling from", currentItem.name, "to", nextCrop, "in slot", slotIndex)
+        
+        -- Select this slot and it will automatically show the next available crop
+        setSelectedSlot(slotIndex)
+    end
+    
     -- Tooltip state
     local showTooltip, setShowTooltip = React.useState(false)
     
@@ -252,7 +281,8 @@ local function HotbarInventory(props)
                 isMainSlot = isMainSlot,
                 displayNumber = displayNumber,
                 onSelect = handleSlotSelect,
-                onInfoClick = item and (item.type == "crop" or item.type == "seed") and handleCropInfo or nil,
+                onInfoClick = item and item.type == "crop" and handleCropInfo or nil,
+                onRightClick = handleSlotRightClick,
                 screenSize = screenSize,
                 LayoutOrder = i -- Explicitly set layout order
             }))

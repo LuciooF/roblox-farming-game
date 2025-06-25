@@ -12,9 +12,10 @@ local FarmManager = {}
 
 -- Configuration
 local TOTAL_FARMS = 6 -- Maximum number of farms available
-local PLOTS_PER_FARM = 9 -- Each farm starts with 9 plots (3x3 grid)
-local FARM_SIZE = Vector3.new(100, 1, 100) -- Size of each farm area
-local FARM_SPACING = 120 -- Space between farm centers
+local BASE_PLOTS_PER_FARM = 9 -- Each farm starts with 9 plots (3x3 grid)  
+local MAX_PLOTS_PER_FARM = 40 -- Maximum plots per farm (from template)
+local FARM_SIZE = Vector3.new(200, 1, 200) -- Increased size for template farms
+local FARM_SPACING = 300 -- Increased spacing for larger template farms
 
 -- Storage
 local farmAssignments = {} -- [farmId] = {userId, playerName, joinTime}
@@ -42,7 +43,9 @@ end
 -- Calculate positions for all farms in a circle around spawn
 function FarmManager.calculateFarmPositions()
     local spawnPosition = Vector3.new(0, 0, 0) -- Center spawn
-    local radius = FARM_SPACING * 2 -- Distance from spawn to farms
+    local radius = FARM_SPACING * 1.2 -- Reduced distance from spawn to farms (was *2)
+    
+    log.info("Calculating positions for", TOTAL_FARMS, "farms at radius", radius, "from center")
     
     for i = 1, TOTAL_FARMS do
         local angle = (i - 1) * (2 * math.pi / TOTAL_FARMS) -- Evenly distributed around circle
@@ -51,7 +54,7 @@ function FarmManager.calculateFarmPositions()
         local y = spawnPosition.Y
         
         farmPositions[i] = Vector3.new(x, y, z)
-        log.debug("Farm", i, "positioned at", farmPositions[i])
+        log.info("Farm", i, "positioned at", farmPositions[i]) -- Changed to info to see in logs
     end
 end
 
@@ -64,14 +67,16 @@ function FarmManager.onPlayerJoined(player)
         -- Enable the spawn location for this farm
         FarmManager.setPlayerSpawn(player, farmId)
         
-        -- If player already has a character (studio testing), respawn them
-        if player.Character then
-            player:LoadCharacter()
-        end
+        -- Don't respawn here - let FarmingSystemNew handle spawning
+        -- if player.Character then
+        --     player:LoadCharacter()
+        -- end
     else
         log.warn("No available farms for player", player.Name, "- server is full")
         -- Could implement a queue system or spectator mode here
     end
+    
+    return farmId
 end
 
 -- Handle player leaving - free up their farm
@@ -140,9 +145,13 @@ function FarmManager.onFarmAssigned(farmId, player)
     local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
     WorldBuilder.updateFarmSign(farmId, player.Name, player)
     
-    -- Initialize farm plots in PlotManager (loads saved states from player data)
+    -- Get player's unlocked plots count
+    local PlayerDataManager = require(script.Parent.PlayerDataManager)
+    local unlockedPlots = PlayerDataManager.getUnlockedPlots(player)
+    
+    -- Initialize farm plots in PlotManager (only for unlocked plots)
     local PlotManager = require(script.Parent.PlotManager)
-    for plotIndex = 1, PLOTS_PER_FARM do
+    for plotIndex = 1, unlockedPlots do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
         PlotManager.initializePlot(globalPlotId, player.UserId, player) -- Pass player object directly
         
@@ -151,20 +160,45 @@ function FarmManager.onFarmAssigned(farmId, player)
         if plotState then
             log.info("Restoring plot", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
             
-            -- DEBUG PRINT for live game testing
-            print("🔧 [PLOT DEBUG] RESTORING plot", plotIndex, "for", player.Name, "state:", plotState.state, "seed:", plotState.seedType)
-            
             local plot = WorldBuilder.getPlotById(globalPlotId)
             if plot then
                 WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
                 log.info("Updated visual state for plot", plotIndex)
             else
                 log.warn("Could not find plot object for globalPlotId", globalPlotId)
-                print("🔧 [PLOT DEBUG] ERROR: Could not find plot object for globalPlotId", globalPlotId)
             end
+            
+            -- Send plot data to client so countdown display works for restored plots
+            local RemoteManager = require(script.Parent.RemoteManager)
+            RemoteManager.sendPlotUpdate(globalPlotId, plotState)
+            log.debug("Sent restored plot data to client for plot", plotIndex)
         else
             log.info("No saved state found for plot", plotIndex, "- will be empty")
-            print("🔧 [PLOT DEBUG] NO SAVED STATE for plot", plotIndex, "player:", player.Name)
+        end
+    end
+    
+    -- Mark remaining plots based on progressive visibility system
+    local PlayerDataManager = require(script.Parent.PlayerDataManager)
+    
+    for plotIndex = unlockedPlots + 1, MAX_PLOTS_PER_FARM do
+        local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
+        local plot = WorldBuilder.getPlotById(globalPlotId)
+        if plot then
+            local visibilityState, requiredRebirth = PlayerDataManager.getPlotVisibilityState(player, plotIndex)
+            
+            if visibilityState == "locked" then
+                -- Plot is available for purchase (red with price)
+                WorldBuilder.updatePlotState(plot, "locked", "", nil, nil, nil, plotIndex)
+                log.debug("Marked plot", plotIndex, "as purchasable for", player.Name)
+            elseif visibilityState == "next_tier" then
+                -- Visible but shows rebirth requirement (gray, no price)
+                WorldBuilder.updatePlotState(plot, "rebirth_locked", "", nil, nil, nil, plotIndex, requiredRebirth)
+                log.debug("Marked plot", plotIndex, "as next-tier (rebirth", requiredRebirth, "required) for", player.Name)
+            else -- invisible
+                -- Completely hidden for future rebirth tiers
+                WorldBuilder.updatePlotState(plot, "invisible", "")
+                log.debug("Marked plot", plotIndex, "as invisible for", player.Name)
+            end
         end
     end
     
@@ -173,6 +207,10 @@ function FarmManager.onFarmAssigned(farmId, player)
     PlayerDataManager.setAssignedFarm(player, farmId)
     
     log.info("Farm", farmId, "assigned to", player.Name, "- restored plot states from player data")
+    
+    -- Notify player about online boost
+    local NotificationManager = require(script.Parent.NotificationManager)
+    NotificationManager.sendSuccess(player, "⚡ Online Boost Active! Crops grow 2x faster while you're here!")
 end
 
 -- Called when a farm is unassigned from a player
@@ -184,7 +222,7 @@ function FarmManager.onFarmUnassigned(farmId, userId)
     -- Reset plot visuals to empty state but keep plot states in PlotManager memory
     -- (plot states are preserved in player data and will be restored when they rejoin)
     local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
-    for plotIndex = 1, PLOTS_PER_FARM do
+    for plotIndex = 1, MAX_PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
         local plot = WorldBuilder.getPlotById(globalPlotId)
         if plot then
@@ -195,7 +233,7 @@ function FarmManager.onFarmUnassigned(farmId, userId)
     
     -- Clear plot states from memory (but they remain in player data)
     local PlotManager = require(script.Parent.PlotManager)
-    for plotIndex = 1, PLOTS_PER_FARM do
+    for plotIndex = 1, MAX_PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
         PlotManager.clearPlotFromMemory(globalPlotId)
     end
@@ -213,13 +251,13 @@ end
 
 -- Convert farm and plot index to global plot ID
 function FarmManager.getGlobalPlotId(farmId, plotIndex)
-    return (farmId - 1) * PLOTS_PER_FARM + plotIndex
+    return (farmId - 1) * MAX_PLOTS_PER_FARM + plotIndex
 end
 
 -- Convert global plot ID back to farm and plot index
 function FarmManager.getFarmAndPlotFromGlobalId(globalPlotId)
-    local farmId = math.floor((globalPlotId - 1) / PLOTS_PER_FARM) + 1
-    local plotIndex = ((globalPlotId - 1) % PLOTS_PER_FARM) + 1
+    local farmId = math.floor((globalPlotId - 1) / MAX_PLOTS_PER_FARM) + 1
+    local plotIndex = ((globalPlotId - 1) % MAX_PLOTS_PER_FARM) + 1
     return farmId, plotIndex
 end
 
@@ -371,11 +409,79 @@ function FarmManager.printAssignments()
     end
 end
 
+-- Unlock a new plot for a player
+function FarmManager.unlockPlot(player)
+    local farmId = playerFarms[player.UserId]
+    if not farmId then
+        return false, "Player doesn't have a farm assigned"
+    end
+    
+    local PlayerDataManager = require(script.Parent.PlayerDataManager)
+    local success, message = PlayerDataManager.purchasePlot(player)
+    
+    if success then
+        -- Get the newly unlocked plot count
+        local unlockedPlots = PlayerDataManager.getUnlockedPlots(player)
+        local newPlotIndex = unlockedPlots
+        
+        -- Initialize the new plot
+        local PlotManager = require(script.Parent.PlotManager)
+        local globalPlotId = FarmManager.getGlobalPlotId(farmId, newPlotIndex)
+        PlotManager.initializePlot(globalPlotId, player.UserId, player)
+        
+        -- Update the visual state to unlocked/empty
+        local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+        local plot = WorldBuilder.getPlotById(globalPlotId)
+        if plot then
+            WorldBuilder.updatePlotState(plot, "empty", "")
+            log.info("Unlocked plot", newPlotIndex, "for", player.Name)
+        end
+        
+        -- Update all plots for this farm to reflect new unlock status
+        for plotIndex = 1, MAX_PLOTS_PER_FARM do
+            local checkGlobalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
+            local checkPlot = WorldBuilder.getPlotById(checkGlobalPlotId)
+            if checkPlot then
+                if plotIndex <= unlockedPlots then
+                    -- Plot is unlocked, ensure it's not showing locked state
+                    local plotState = PlotManager.getPlotState(checkGlobalPlotId)
+                    if plotState then
+                        WorldBuilder.updatePlotState(checkPlot, plotState.state, plotState.seedType, plotState.variation)
+                    else
+                        WorldBuilder.updatePlotState(checkPlot, "empty", "")
+                    end
+                else
+                    -- Plot is still locked - use progressive visibility system
+                    local visibilityState, requiredRebirth = PlayerDataManager.getPlotVisibilityState(player, plotIndex)
+                    
+                    if visibilityState == "locked" then
+                        WorldBuilder.updatePlotState(checkPlot, "locked", "", nil, nil, nil, plotIndex) -- Purchasable with price
+                    elseif visibilityState == "next_tier" then
+                        WorldBuilder.updatePlotState(checkPlot, "rebirth_locked", "", nil, nil, nil, plotIndex, requiredRebirth) -- Visible, needs rebirth
+                    else -- invisible
+                        WorldBuilder.updatePlotState(checkPlot, "invisible", "") -- Hidden
+                    end
+                end
+            end
+        end
+        
+        -- Send updates to client
+        local RemoteManager = require(script.Parent.RemoteManager)
+        if RemoteManager.sendPlotUpdate then
+            local plotState = PlotManager.getPlotState(globalPlotId)
+            RemoteManager.sendPlotUpdate(globalPlotId, plotState)
+        end
+    end
+    
+    return success, message
+end
+
 -- Get farm configuration info
 function FarmManager.getFarmConfig()
     return {
         totalFarms = TOTAL_FARMS,
-        plotsPerFarm = PLOTS_PER_FARM,
+        basePlotsPerFarm = BASE_PLOTS_PER_FARM,
+        maxPlotsPerFarm = MAX_PLOTS_PER_FARM,
         farmSize = FARM_SIZE,
         farmSpacing = FARM_SPACING
     }

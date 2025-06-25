@@ -308,6 +308,93 @@ function NotificationManager.sendMoney(player, message)
     NotificationManager.sendNotification(player, message, "money")
 end
 
+-- Send center-screen notification for critical game actions
+function NotificationManager.sendCenterNotification(player, message, notificationType)
+    local playerGui = player:WaitForChild("PlayerGui", 5)
+    if not playerGui then return end
+    
+    -- Create temporary center notification
+    local centerGui = Instance.new("ScreenGui")
+    centerGui.Name = "CenterNotification"
+    centerGui.ResetOnSpawn = false
+    centerGui.Parent = playerGui
+    
+    local frame = Instance.new("Frame")
+    frame.Name = "NotificationFrame"
+    frame.Size = UDim2.new(0, 400, 0, 80)
+    frame.Position = UDim2.new(0.5, -200, 0.5, -40) -- Center of screen
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    frame.BackgroundTransparency = 0.1
+    frame.BorderSizePixel = 0
+    frame.Parent = centerGui
+    
+    -- Add rounded corners
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = frame
+    
+    -- Add stroke based on type
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 3
+    if notificationType == "error" then
+        stroke.Color = Color3.fromRGB(220, 50, 50)
+    elseif notificationType == "warning" then
+        stroke.Color = Color3.fromRGB(255, 200, 50)
+    else
+        stroke.Color = Color3.fromRGB(100, 150, 255)
+    end
+    stroke.Parent = frame
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 1, -20)
+    label.Position = UDim2.new(0, 10, 0, 10)
+    label.BackgroundTransparency = 1
+    label.Text = message
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextScaled = true
+    label.Font = Enum.Font.SourceSansBold
+    label.TextStrokeTransparency = 0
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.Parent = frame
+    
+    -- Animate in
+    frame.Position = UDim2.new(0.5, -200, 0.5, -100) -- Start above center
+    frame.BackgroundTransparency = 1
+    label.TextTransparency = 1
+    stroke.Transparency = 1
+    
+    local tweenIn = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+        Position = UDim2.new(0.5, -200, 0.5, -40),
+        BackgroundTransparency = 0.1
+    })
+    local textTweenIn = TweenService:Create(label, TweenInfo.new(0.3), {TextTransparency = 0})
+    local strokeTweenIn = TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 0})
+    
+    tweenIn:Play()
+    textTweenIn:Play()
+    strokeTweenIn:Play()
+    
+    -- Auto-remove after delay using spawn to avoid blocking
+    spawn(function()
+        wait(3)
+        
+        local tweenOut = TweenService:Create(frame, TweenInfo.new(0.3), {
+            Position = UDim2.new(0.5, -200, 0.5, 20),
+            BackgroundTransparency = 1
+        })
+        local textTweenOut = TweenService:Create(label, TweenInfo.new(0.3), {TextTransparency = 1})
+        local strokeTweenOut = TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 1})
+        
+        tweenOut:Play()
+        textTweenOut:Play()
+        strokeTweenOut:Play()
+        
+        tweenOut.Completed:Connect(function()
+            centerGui:Destroy()
+        end)
+    end)
+end
+
 -- Clean up when player leaves
 function NotificationManager.onPlayerLeft(player)
     if activeNotifications[player] then
@@ -346,7 +433,8 @@ function NotificationManager.sendAutomationNotification(player, success, message
             for _, amount in pairs(details.itemsSold) do
                 totalItems = totalItems + amount
             end
-            message = "💰 Sold " .. totalItems .. " items"
+            local profit = details.profit or 0
+            message = "💰 Sold " .. totalItems .. " items for $" .. profit
         elseif details.plantsWatered then
             message = "💧 Watered " .. details.plantsWatered .. " plants"
         elseif details.seedsPlanted then

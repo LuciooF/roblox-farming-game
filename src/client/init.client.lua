@@ -2,8 +2,26 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
--- Initialize client-side logging
-local ClientLogger = require(script.ClientLogger)
+-- Initialize client-side logging with fallback
+local ClientLogger
+local hasLogger = pcall(function()
+    ClientLogger = require(script.ClientLogger)
+end)
+
+if not hasLogger then
+    -- Fallback logging
+    ClientLogger = {
+        getModuleLogger = function(name)
+            return {
+                info = function(...) print("[INFO]", name, ...) end,
+                debug = function(...) print("[DEBUG]", name, ...) end,
+                warn = function(...) warn("[WARN]", name, ...) end,
+                error = function(...) error("[ERROR] " .. name .. ": " .. table.concat({...}, " ")) end
+            }
+        end
+    }
+end
+
 local log = ClientLogger.getModuleLogger("ClientMain")
 
 -- Wait for React packages and components to be available
@@ -27,7 +45,6 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 -- Import main UI component
 local MainUI = require(script.components.MainUI)
-local LoadingScreen = require(script.components.LoadingScreen)
 local PlotCountdownManager = require(script.PlotCountdownManager)
 local PlotInteractionManager = require(script.PlotInteractionManager)
 local PlotProximityHandler = require(script.PlotProximityHandler)
@@ -56,6 +73,10 @@ local selectedItemRemote = farmingRemotes:WaitForChild("SelectedItem")
 local buySlotRemote = farmingRemotes:WaitForChild("BuySlot")
 local plotUpdateRemote = farmingRemotes:WaitForChild("PlotUpdate")
 local characterTrackingRemote = farmingRemotes:WaitForChild("CharacterTracking")
+local weatherRemote = farmingRemotes:WaitForChild("WeatherData")
+local cutPlantRemote = farmingRemotes:WaitForChild("CutPlant")
+local automationRemote = farmingRemotes:WaitForChild("Automation")
+local openPlotUIRemote = farmingRemotes:WaitForChild("OpenPlotUI")
 
 -- Player data state
 local playerData = {
@@ -71,38 +92,53 @@ local playerData = {
 -- Tutorial data state
 local tutorialData = nil
 
--- Loading state
-local isLoading = true
+-- Weather data state
+local weatherData = {}
+
+-- Remove loading state - no more loading screen
 
 -- Create React root
+log.debug("Creating React root in PlayerGui")
 local root = ReactRoblox.createRoot(playerGui)
+log.debug("React root created successfully")
 
 -- Remote objects for passing to components
 local remotes = {
     syncRemote = syncRemote,
-    buyRemote = buyRemote,
-    sellRemote = sellRemote,
+    buy = buyRemote,
+    sell = sellRemote,
     togglePremiumRemote = togglePremiumRemote,
     rebirthRemote = rebirthRemote,
     tutorialActionRemote = tutorialActionRemote,
     selectedItem = selectedItemRemote,
-    buySlot = buySlotRemote
+    buySlot = buySlotRemote,
+    weatherRemote = weatherRemote,
+    cutPlant = cutPlantRemote,
+    automation = automationRemote,
+    farmAction = farmingRemotes:WaitForChild("PlotAction") -- New universal plot action remote
 }
 
--- Update UI function
+-- Handler for plot UI interactions
+local plotUIHandler = nil
+local plotUIUpdater = nil -- Function to update the currently open Plot UI
+
+-- Update UI function - always render main UI
 local function updateUI()
-    if isLoading then
-        root:render(React.createElement(LoadingScreen, {
-            visible = true,
-            screenSize = Vector2.new(1024, 768)
-        }))
-    else
-        root:render(React.createElement(MainUI, {
-            playerData = playerData,
-            remotes = remotes,
-            tutorialData = tutorialData
-        }))
-    end
+    log.info("✅ Rendering main UI")
+    root:render(React.createElement(MainUI, {
+        playerData = playerData,
+        remotes = remotes,
+        tutorialData = tutorialData,
+        weatherData = weatherData,
+        onPlotUIHandler = function(handler)
+            plotUIHandler = handler
+            -- Update PlotInteractionManager with the handler
+            PlotInteractionManager.setPlotUIHandler(handler)
+        end,
+        onPlotUIUpdater = function(updater)
+            plotUIUpdater = updater
+        end
+    }))
 end
 
 -- Handle player data sync from server
@@ -116,6 +152,7 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
     -- Update PlotInteractionManager with current inventory data
     PlotInteractionManager.updatePlayerData(playerData)
     
+    -- Update UI with new data
     updateUI()
 end)
 
@@ -129,6 +166,13 @@ tutorialRemote.OnClientEvent:Connect(function(newTutorialData)
     updateUI()
 end)
 
+-- Handle weather updates
+weatherRemote.OnClientEvent:Connect(function(newWeatherData)
+    log.trace("Weather data received:", newWeatherData.current and newWeatherData.current.name or "unknown")
+    weatherData = newWeatherData
+    updateUI()
+end)
+
 -- Cleanup old UI if it exists
 local existingUI = playerGui:FindFirstChild("FarmingUI")
 if existingUI then
@@ -137,53 +181,75 @@ end
 
 -- Handle plot updates from server
 plotUpdateRemote.OnClientEvent:Connect(function(plotData)
+    log.info("📊 Received plot update for plot", plotData.plotId, "state:", plotData.state, "updater exists:", plotUIUpdater ~= nil)
+    
     PlotCountdownManager.updatePlotData(plotData.plotId, plotData)
     
     -- Also handle as server response for interaction prediction
     PlotInteractionManager.onServerResponse(plotData.plotId, true, plotData.state)
+    
+    -- Update the currently open Plot UI if it's for this plot
+    if plotUIUpdater then
+        log.info("📡 Calling plotUIUpdater with data:", plotData.plotId, plotData.state, "plants:", plotData.maxHarvests and plotData.harvestCount and (plotData.maxHarvests - plotData.harvestCount) or "unknown")
+        plotUIUpdater(plotData)
+    else
+        log.warn("❌ No plotUIUpdater available for plot update")
+    end
+    
+    -- Check if we should trigger rain effect
+    if plotData.triggerRainEffect then
+        local PlotUtils = require(script.PlotUtils)
+        local RainEffectManager = require(script.RainEffectManager)
+        local plot = PlotUtils.findPlotById(plotData.plotId)
+        if plot then
+            RainEffectManager.createRainEffect(plot)
+        end
+    end
 end)
 
--- Initialize React UI with loading screen
+-- Handle plot UI open requests from server
+openPlotUIRemote.OnClientEvent:Connect(function(plotData)
+    log.info("📋 Received plot UI open request for plot", plotData.plotId)
+    
+    -- Call the plot UI handler if it exists
+    if plotUIHandler then
+        log.info("✨ Opening Plot UI for plot", plotData.plotId)
+        plotUIHandler(plotData)
+    else
+        log.warn("❌ No plot UI handler available!")
+    end
+end)
+
+-- Initialize client systems
+PlotCountdownManager.initialize()
+PlotInteractionManager.initialize(farmingRemotes)
+PlotInteractionManager.updatePlayerData(playerData)
+-- PlotProximityHandler.initialize() -- Disabled: using simpler server-side UI opening
+FlyController.initialize()
+CharacterFaceTracker.initialize()
+
+log.info("🌾 Client systems initialized")
+
+-- Render initial UI
 updateUI()
 
--- Initialize client systems after UI is ready
+-- Initialize character-dependent features in background (non-blocking)
 spawn(function()
-    log.info("Initializing client systems...")
-    
-    -- Initialize all systems immediately
-    PlotCountdownManager.initialize()
-    PlotInteractionManager.initialize(farmingRemotes)
-    PlotInteractionManager.updatePlayerData(playerData) -- Initialize with current player data
-    PlotProximityHandler.initialize()
-    FlyController.initialize() -- Initialize fly controller for easy testing
-    CharacterFaceTracker.initialize() -- Make character displays always face the player
-    
-    -- Hide loading screen once character spawns
     local character = player.Character or player.CharacterAdded:Wait()
     local hrp = character:WaitForChild("HumanoidRootPart", 10)
-    
-    -- Hide loading screen and show main UI immediately
-    isLoading = false
-    updateUI()
-    
-    log.info("🌾 Farming Game fully loaded and ready!")
+    log.info("Character ready for advanced features")
 end)
 
--- Start cleanup timer for pending interactions and stale connections
+-- Start cleanup timer for pending interactions
 spawn(function()
     while true do
         wait(30) -- Clean up every 30 seconds
         PlotInteractionManager.cleanupPendingInteractions()
-        PlotProximityHandler.cleanupStaleConnections()
+        -- PlotProximityHandler.cleanupStaleConnections() -- Disabled: not using proximity handler
     end
 end)
 
-log.info("React 3D Farming Game Client Ready!")
-log.info("Responsive UI activated - supports mobile and desktop!")
-log.info("Enhanced with emojis and smooth animations!")
-log.info("Client-side plot countdown system active!")
-log.info("✈️ Fly Controller: Press F to toggle fly mode for easy testing!")
-log.info("👀 Character Face Tracker: All farm avatars will always look at you!")
+log.info("3D Farming Game Client Ready!")
 
 -- Development hot reload support (optional)
 if game:GetService("RunService"):IsStudio() then

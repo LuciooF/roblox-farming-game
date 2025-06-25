@@ -78,7 +78,11 @@ function PlotCountdownManager.scanExistingPlots()
         end
     end
     
-    log.info("Initialized", totalPlotCount, "total plots across all farms")
+    if totalPlotCount > 0 then
+        log.info("Initialized", totalPlotCount, "total plots across all farms")
+    else
+        log.debug("No existing plots found - will initialize when player is assigned a farm")
+    end
 end
 
 -- Initialize plots in a container (Farm or Plots folder)
@@ -113,7 +117,22 @@ function PlotCountdownManager.updatePlotData(plotId, plotData)
     
     log.info("Received plot update for plot", plotId, "state:", plotData.state, "seedType:", plotData.seedType or "none", "isOwner:", plotData.isOwner)
     
-    -- Store plot timing information
+    -- Check if this is a harvest (harvestCount increased)
+    local previousData = plotTimers[plotId]
+    local wasHarvested = false
+    if previousData and previousData.harvestCount and plotData.harvestCount then
+        if plotData.harvestCount > previousData.harvestCount then
+            wasHarvested = true
+            log.debug("Plot", plotId, "was harvested - resetting firstReadyTime")
+        end
+    end
+    
+    -- Store plot timing information (preserve firstReadyTime unless harvest occurred)
+    local existingFirstReadyTime = nil
+    if previousData and not wasHarvested then
+        existingFirstReadyTime = previousData.firstReadyTime
+    end
+    
     plotTimers[plotId] = {
         startTime = plotData.plantedAt or currentTime,
         growthTime = plotData.growthTime or 60, -- Default 60 seconds
@@ -124,7 +143,14 @@ function PlotCountdownManager.updatePlotData(plotId, plotData)
         lastWateredAt = plotData.lastWateredAt or 0,
         variation = plotData.variation or "normal",
         isOwner = plotData.isOwner or false,
-        ownerName = plotData.ownerName
+        ownerName = plotData.ownerName,
+        harvestCount = plotData.harvestCount or 0,
+        maxHarvests = plotData.maxHarvests or 0,
+        accumulatedCrops = plotData.accumulatedCrops or 0,
+        wateredCount = plotData.wateredCount or 0,
+        waterNeeded = plotData.waterNeeded or 0,
+        countdownInfo = plotData.countdownInfo, -- Rich display information from server
+        firstReadyTime = existingFirstReadyTime -- Preserve client-side timing unless harvest occurred
     }
     
     log.debug("Updated plot", plotId, "data:", plotData.state, plotData.seedType, "owner:", plotData.ownerName or "none")
@@ -234,79 +260,48 @@ function PlotCountdownManager.updateCountdownDisplay(plotId, countdownLabel)
         return
     end
     
+    -- Use enhanced display with real-time countdowns for owned plots
     local currentTime = tick()
     local state = plotData.state
     
     if state == "empty" then
         countdownLabel.Text = ""
-        countdownLabel.Visible = false  -- Hide text for empty plots
-        
-    elseif state == "planted" then
-        -- Calculate time until needs water and death time
-        countdownLabel.Visible = true
-        local timeSincePlanted = currentTime - plotData.startTime
-        local timeUntilWater = plotData.waterTime - timeSincePlanted
-        local timeUntilDeath = plotData.deathTime - timeSincePlanted
-        
-        if timeUntilWater > 0 then
-            countdownLabel.Text = "Water in: " .. PlotCountdownManager.formatTime(timeUntilWater)
-            countdownLabel.TextColor3 = Color3.fromRGB(100, 200, 255) -- Light blue
-        elseif timeUntilDeath > 0 then
-            countdownLabel.Text = "Dies in: " .. PlotCountdownManager.formatTime(timeUntilDeath)
-            countdownLabel.TextColor3 = Color3.fromRGB(255, 100, 100) -- Red
-        else
-            countdownLabel.Text = "Dead!"
-            countdownLabel.TextColor3 = Color3.fromRGB(120, 50, 50) -- Dark red
-        end
+        countdownLabel.Visible = false
+        return
+    end
+    
+    -- Show simplified information (detailed info is now in the UI)
+    countdownLabel.Visible = true
+    local displayText = ""
+    local color = Color3.fromRGB(255, 255, 255)
+    
+    if state == "planted" or state == "growing" then
+        -- Simple display: just crop name and needs water
+        local plantName = plotData.seedType:gsub("^%l", string.upper)
+        displayText = "🌱 " .. plantName .. "\n💧 Needs Water"
+        color = Color3.fromRGB(150, 200, 255) -- Light blue
         
     elseif state == "watered" then
-        -- Calculate time until ready to harvest
-        countdownLabel.Visible = true
-        local timeSinceWatered = currentTime - plotData.lastWateredAt
-        local timeUntilReady = plotData.growthTime - timeSinceWatered
-        
-        if timeUntilReady > 0 then
-            local baseText = "Ready in: " .. PlotCountdownManager.formatTime(timeUntilReady)
-            
-            -- Add harvest count if available and enabled
-            if plotData.harvestCount and plotData.maxHarvests and plotData.maxHarvests > 0 then
-                local harvestsLeft = plotData.maxHarvests - plotData.harvestCount
-                baseText = baseText .. " (" .. harvestsLeft .. " left)"
-            end
-            
-            countdownLabel.Text = baseText
-            countdownLabel.TextColor3 = Color3.fromRGB(100, 255, 100) -- Green
-        else
-            local baseText = "Ready to Harvest!"
-            
-            -- Add harvest count if available and enabled
-            if plotData.harvestCount and plotData.maxHarvests and plotData.maxHarvests > 0 then
-                local harvestsLeft = plotData.maxHarvests - plotData.harvestCount
-                baseText = baseText .. " (" .. harvestsLeft .. " left)"
-            end
-            
-            countdownLabel.Text = baseText
-            countdownLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold
-        end
+        -- Simple display: crop name and growing status
+        local plantName = plotData.seedType:gsub("^%l", string.upper)
+        displayText = "🌿 " .. plantName .. "\n⚡ Growing..."
+        color = Color3.fromRGB(100, 255, 200) -- Bright green
         
     elseif state == "ready" then
-        countdownLabel.Visible = true
-        local baseText = "Ready to Harvest!"
+        -- Simple display: crop ready to harvest
+        local plantName = plotData.seedType:gsub("^%l", string.upper)
+        local accumulatedCrops = plotData.accumulatedCrops or 1
+        displayText = "🌟 " .. plantName .. "\n✨ Ready (" .. accumulatedCrops .. ")"
+        color = Color3.fromRGB(255, 255, 100) -- Gold
         
-        -- Add harvest count if available and enabled
-        if plotData.harvestCount and plotData.maxHarvests and plotData.maxHarvests > 0 then
-            local harvestsLeft = plotData.maxHarvests - plotData.harvestCount
-            baseText = baseText .. " (" .. harvestsLeft .. " left)"
-        end
-        
-        countdownLabel.Text = baseText
-        countdownLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold
-        
-    else
-        -- For any unknown state, hide the text instead of showing the raw state name
-        countdownLabel.Text = ""
-        countdownLabel.Visible = false
+    elseif state == "dead" then
+        local plantName = plotData.seedType:gsub("^%l", string.upper)
+        displayText = "💀 " .. plantName .. " Dead"
+        color = Color3.fromRGB(255, 50, 50) -- Red
     end
+    
+    countdownLabel.Text = displayText
+    countdownLabel.TextColor3 = color
 end
 
 -- Update display for non-owned plots (no countdown, just basic info)
@@ -379,6 +374,12 @@ function PlotCountdownManager.onPlotStateUpdate(plotId, newState, additionalData
     
     local currentTime = tick()
     
+    -- Reset firstReadyTime when plot transitions away from ready state
+    if plotData.state == "ready" and newState ~= "ready" then
+        plotTimers[plotId].firstReadyTime = nil
+        log.debug("Plot", plotId, "reset firstReadyTime due to state change from ready to", newState)
+    end
+    
     -- Update state and timing based on new state
     plotData.state = newState
     
@@ -396,6 +397,7 @@ function PlotCountdownManager.onPlotStateUpdate(plotId, newState, additionalData
         -- Plot is empty, reset data
         plotData.seedType = ""
         plotData.lastWateredAt = 0
+        plotTimers[plotId].firstReadyTime = nil -- Clear timer when plot becomes empty
     end
     
     log.debug("Plot", plotId, "state updated to", newState)

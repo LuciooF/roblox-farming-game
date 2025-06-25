@@ -4,20 +4,32 @@
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+-- Import unified crop system - REQUIRED for the refactored system
+local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+-- Try to import ClientLogger, fallback if not available
+local ClientLogger
+local hasClientLogger = pcall(function()
+    ClientLogger = require(script.Parent.Parent.ClientLogger)
+end)
+
+if not hasClientLogger then
+    ClientLogger = {
+        getModuleLogger = function(name)
+            return {
+                info = function(...) print("[INFO]", name, ...) end,
+                debug = function(...) print("[DEBUG]", name, ...) end,
+                warn = function(...) warn("[WARN]", name, ...) end,
+                error = function(...) error("[ERROR] " .. name .. ": " .. table.concat({...}, " ")) end
+            }
+        end
+    }
+end
+
+local log = ClientLogger.getModuleLogger("HandItem")
 
 local HandItem = {}
 
--- Item colors for different seeds/crops
-local itemColors = {
-    -- Seeds
-    wheat = Color3.fromRGB(255, 215, 0), -- Golden
-    carrot = Color3.fromRGB(255, 140, 0), -- Orange
-    tomato = Color3.fromRGB(255, 69, 0),  -- Red-orange
-    potato = Color3.fromRGB(160, 82, 45), -- Brown
-    corn = Color3.fromRGB(255, 215, 0),   -- Golden
-}
-
--- Get item color based on type and name
+-- Get item color based on type and name using CropRegistry
 local function getItemColor(item)
     if not item then return Color3.fromRGB(100, 100, 100) end
     
@@ -27,7 +39,51 @@ local function getItemColor(item)
         key = item.name:gsub("Shiny ", ""):gsub("Rainbow ", ""):gsub("Golden ", ""):gsub("Diamond ", "")
     end
     
-    return itemColors[key] or Color3.fromRGB(100, 200, 100)
+    local cropData = CropRegistry.getCrop(key)
+    if cropData then
+        return cropData.color
+    end
+    
+    return Color3.fromRGB(100, 200, 100) -- Default for non-crops
+end
+
+-- Create 3D model for specific items
+local function create3DModel(item)
+    if not item then return nil end
+    
+    local key = item.name
+    -- Remove variation prefixes for crops
+    if item.type == "crop" then
+        key = item.name:gsub("Shiny ", ""):gsub("Rainbow ", ""):gsub("Golden ", ""):gsub("Diamond ", "")
+    end
+    
+    local modelId
+    
+    local cropData = CropRegistry.getCrop(key)
+    if cropData and cropData.meshId then
+        modelId = cropData.meshId
+    end
+    
+    if not modelId then return nil end
+    
+    -- Create part with mesh (avoiding MeshPart due to security restrictions)
+    local part = Instance.new("Part")
+    part.Name = "HandItem"
+    part.Size = Vector3.new(0.8, 0.8, 0.8) -- Base size for hand item
+    part.Material = Enum.Material.Plastic
+    part.Transparency = 1 -- Make base part invisible
+    part.CanCollide = false
+    part.Anchored = false
+    
+    -- Create the mesh
+    local mesh = Instance.new("SpecialMesh")
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId = "rbxassetid://" .. modelId
+    mesh.Scale = Vector3.new(0.4, 0.4, 0.4) -- Scale for hand item
+    mesh.Parent = part
+    
+    log.debug("Created hand item 3D model for", key, "with mesh ID", modelId)
+    return part
 end
 
 -- Create or update hand item
@@ -48,17 +104,22 @@ function HandItem.updateHandItem(player, selectedItem)
     -- Don't create item if no selection
     if not selectedItem then return end
     
-    -- Create new hand item
-    local handItem = Instance.new("Part")
-    handItem.Name = "HandItem"
-    handItem.Size = Vector3.new(0.8, 0.8, 0.8) -- Small sphere
-    handItem.Shape = Enum.PartType.Ball
-    handItem.Material = Enum.Material.Neon
-    handItem.Color = getItemColor(selectedItem)
-    handItem.Anchored = false
-    handItem.CanCollide = false
-    handItem.TopSurface = Enum.SurfaceType.Smooth
-    handItem.BottomSurface = Enum.SurfaceType.Smooth
+    -- Try to create 3D model first, fall back to colored sphere
+    local handItem = create3DModel(selectedItem)
+    
+    if not handItem then
+        -- Create default colored sphere
+        handItem = Instance.new("Part")
+        handItem.Name = "HandItem"
+        handItem.Size = Vector3.new(0.8, 0.8, 0.8) -- Small sphere
+        handItem.Shape = Enum.PartType.Ball
+        handItem.Material = Enum.Material.Neon
+        handItem.Color = getItemColor(selectedItem)
+        handItem.Anchored = false
+        handItem.CanCollide = false
+        handItem.TopSurface = Enum.SurfaceType.Smooth
+        handItem.BottomSurface = Enum.SurfaceType.Smooth
+    end
     
     -- Add special effects for rare crops
     if selectedItem.type == "crop" and selectedItem.name:find("Shiny") then
@@ -92,31 +153,15 @@ function HandItem.updateHandItem(player, selectedItem)
         end)
     end
     
-    -- Weld to hand
+    -- Simple weld to hand without animation (no physics interference)
     local weld = Instance.new("WeldConstraint")
     weld.Part0 = rightArm
     weld.Part1 = handItem
     weld.Parent = handItem
     
-    -- Position in hand
+    -- Position in hand (static, no animation)
     handItem.CFrame = rightArm.CFrame * CFrame.new(0, -1, -0.5)
     handItem.Parent = rightArm
-    
-    -- Add gentle floating animation
-    spawn(function()
-        local startTime = tick()
-        local connection
-        connection = RunService.Heartbeat:Connect(function()
-            if not handItem.Parent then
-                connection:Disconnect()
-                return
-            end
-            
-            local elapsed = tick() - startTime
-            local offset = math.sin(elapsed * 3) * 0.1
-            handItem.CFrame = rightArm.CFrame * CFrame.new(0, -1 + offset, -0.5)
-        end)
-    end)
 end
 
 -- Remove hand item
@@ -128,6 +173,7 @@ function HandItem.removeHandItem(player)
     
     if not rightArm then return end
     
+    -- Remove hand item
     local existingItem = rightArm:FindFirstChild("HandItem")
     if existingItem then
         existingItem:Destroy()

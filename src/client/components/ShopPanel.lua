@@ -3,6 +3,9 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
+local ClientLogger = require(script.Parent.Parent.ClientLogger)
+
+local log = ClientLogger.getModuleLogger("ShopPanel")
 
 local ShopSeedCard = require(script.Parent.ShopSeedCard)
 local SeedDetailModal = require(script.Parent.SeedDetailModal)
@@ -12,6 +15,13 @@ local function ShopPanel(props)
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local remotes = props.remotes or {}
+    
+    -- Debug shop visibility
+    React.useEffect(function()
+        log.debug("ShopPanel visibility changed to:", visible)
+        log.debug("ShopPanel BackgroundTransparency:", visible and 0.05 or 1)
+        log.debug("ShopPanel Visible property:", visible)
+    end, {visible})
     
     -- Responsive sizing
     local screenSize = props.screenSize or Vector2.new(1024, 768)
@@ -24,7 +34,7 @@ local function ShopPanel(props)
     local selectedSeed, setSelectedSeed = React.useState(nil)
     local modalVisible, setModalVisible = React.useState(false)
     
-    -- Shop seeds with pricing (matching server GameConfig.Plants seedCost)
+    -- Shop crops with pricing (matching server GameConfig.Plants basePrice)
     local shopSeeds = {
         {type = "wheat", price = 10},
         {type = "carrot", price = 25}, 
@@ -41,8 +51,12 @@ local function ShopPanel(props)
     
     -- Handle buy button click
     local function handleSeedPurchase(seedType, price)
-        if remotes.buyRemote then
-            remotes.buyRemote:FireServer("seeds", seedType, price)
+        log.debug("Trying to buy:", seedType, "for", price, "- remotes.buy exists:", remotes.buy ~= nil)
+        if remotes.buy then
+            remotes.buy:FireServer("crops", seedType, price)
+            log.debug("Sent buy request to server")
+        else
+            log.error("remotes.buy is nil!")
         end
     end
     
@@ -62,7 +76,7 @@ local function ShopPanel(props)
         ShopPanel = e("Frame", {
             Name = "ShopPanel",
             Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
-            Position = UDim2.new(0, (isMobile and 55 or 60) * scale, 0, (isMobile and 130 or 110) * scale),
+            Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -panelHeight * scale / 2), -- Center the panel
             BackgroundColor3 = Color3.fromRGB(30, 25, 35),
             BackgroundTransparency = visible and 0.05 or 1,
             BorderSizePixel = 0,

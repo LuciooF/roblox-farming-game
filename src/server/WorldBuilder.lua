@@ -4,11 +4,288 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Logger = require(script.Parent.modules.Logger)
+-- Import unified crop system - REQUIRED for the refactored system
+local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 
 local WorldBuilder = {}
 
 -- Get module logger
 local log = Logger.getModuleLogger("WorldBuilder")
+
+-- Template farm system
+local USE_TEMPLATE_FARM = true -- Template is ready!
+
+-- Setup necessary components for plot interactions
+local function setupPlotComponents(plot)
+    -- Add plot-specific planting prompt
+    local actionPrompt = plot:FindFirstChild("ActionPrompt")
+    if not actionPrompt then
+        actionPrompt = Instance.new("ProximityPrompt")
+        actionPrompt.Name = "ActionPrompt"
+        actionPrompt.ActionText = "Plant Crop"
+        actionPrompt.KeyboardKeyCode = Enum.KeyCode.E
+        actionPrompt.RequiresLineOfSight = false
+        actionPrompt.MaxActivationDistance = 6
+        actionPrompt.Parent = plot
+        
+        -- Connect plot interaction to open UI
+        actionPrompt.Triggered:Connect(function(player)
+            local plotIdValue = plot:FindFirstChild("PlotId")
+            local farmIdValue = plot:FindFirstChild("FarmId")
+            if plotIdValue and farmIdValue then
+                local FarmManager = require(script.Parent.modules.FarmManager)
+                local globalPlotId = FarmManager.getGlobalPlotId(farmIdValue.Value, plotIdValue.Value)
+                
+                -- Send plot UI open request to client
+                local RemoteManager = require(script.Parent.modules.RemoteManager)
+                RemoteManager.openPlotUI(player, globalPlotId)
+            end
+        end)
+    end
+    
+    -- Create water hose next to plot
+    local waterHose = plot:FindFirstChild("WaterHose")
+    if not waterHose then
+        waterHose = Instance.new("Part")
+        waterHose.Name = "WaterHose"
+        waterHose.Size = Vector3.new(0.5, 1, 0.5) -- Small cylinder-like size
+        waterHose.Shape = Enum.PartType.Cylinder
+        waterHose.Material = Enum.Material.Metal
+        waterHose.BrickColor = BrickColor.new("Dark blue") -- Blue like water
+        waterHose.Anchored = true
+        waterHose.CanCollide = false
+        waterHose.Transparency = 1 -- Start hidden
+        
+        -- Position next to plot (further away)
+        local plotPosition = plot.Position
+        waterHose.Position = plotPosition + Vector3.new(4, 0.5, 0) -- Further offset to the side
+        waterHose.Rotation = Vector3.new(0, 0, 90) -- Rotate to stand upright
+        waterHose.Parent = plot
+        
+        -- Copy plot identification to water hose
+        local hoseePlotId = Instance.new("IntValue")
+        hoseePlotId.Name = "PlotId"
+        hoseePlotId.Value = plot:FindFirstChild("PlotId").Value
+        hoseePlotId.Parent = waterHose
+        
+        local hoseFarmId = Instance.new("IntValue") 
+        hoseFarmId.Name = "FarmId"
+        hoseFarmId.Value = plot:FindFirstChild("FarmId").Value
+        hoseFarmId.Parent = waterHose
+        
+        -- Add water prompt to hose
+        local waterPrompt = Instance.new("ProximityPrompt")
+        waterPrompt.Name = "WaterPrompt"
+        waterPrompt.ActionText = "Water Plant"
+        waterPrompt.KeyboardKeyCode = Enum.KeyCode.E
+        waterPrompt.RequiresLineOfSight = false
+        waterPrompt.MaxActivationDistance = 6
+        waterPrompt.Enabled = false -- Start disabled
+        waterPrompt.Parent = waterHose
+        
+        -- Watering is now handled through the Plot UI system
+        -- waterPrompt.Triggered:Connect(function(player)
+        --     local plotIdValue = waterHose:FindFirstChild("PlotId")
+        --     local farmIdValue = waterHose:FindFirstChild("FarmId")
+        --     if plotIdValue and farmIdValue then
+        --         local FarmManager = require(script.Parent.modules.FarmManager)
+        --         local globalPlotId = FarmManager.getGlobalPlotId(farmIdValue.Value, plotIdValue.Value)
+        --         
+        --         local FarmingSystem = require(script.Parent.FarmingSystemNew)
+        --         FarmingSystem.handleWaterInteraction(player, globalPlotId) -- Only watering
+        --     end
+        -- end)
+    end
+    
+    -- Store plot data if it doesn't exist
+    local plotData = plot:FindFirstChild("PlotData")
+    if not plotData then
+        plotData = Instance.new("StringValue")
+        plotData.Name = "PlotData"
+        plotData.Value = "empty"
+        plotData.Parent = plot
+    end
+    
+    -- Add seed type value if it doesn't exist
+    local seedTypeValue = plot:FindFirstChild("SeedType")
+    if not seedTypeValue then
+        seedTypeValue = Instance.new("StringValue")
+        seedTypeValue.Name = "SeedType"
+        seedTypeValue.Value = ""
+        seedTypeValue.Parent = plot
+    end
+    
+    -- Add planted time value if it doesn't exist
+    local plantedTimeValue = plot:FindFirstChild("PlantedTime")
+    if not plantedTimeValue then
+        plantedTimeValue = Instance.new("NumberValue")
+        plantedTimeValue.Name = "PlantedTime"
+        plantedTimeValue.Value = 0
+        plantedTimeValue.Parent = plot
+    end
+    
+    -- Add watered time value if it doesn't exist
+    local wateredTimeValue = plot:FindFirstChild("WateredTime")
+    if not wateredTimeValue then
+        wateredTimeValue = Instance.new("NumberValue")
+        wateredTimeValue.Name = "WateredTime"
+        wateredTimeValue.Value = 0
+        wateredTimeValue.Parent = plot
+    end
+    
+    -- Create invisible plant position marker if it doesn't exist
+    local plantPosition = plot:FindFirstChild("PlantPosition")
+    if not plantPosition then
+        plantPosition = Instance.new("Part")
+        plantPosition.Name = "PlantPosition"
+        plantPosition.Size = Vector3.new(0.1, 0.1, 0.1)
+        plantPosition.Position = plot.Position + Vector3.new(0, 0.55, 0)
+        plantPosition.Anchored = true
+        plantPosition.Transparency = 1
+        plantPosition.CanCollide = false
+        plantPosition.Parent = plot
+    end
+    
+    -- Create countdown display if it doesn't exist
+    local countdownGui = plot:FindFirstChild("CountdownDisplay")
+    if not countdownGui then
+        countdownGui = Instance.new("BillboardGui")
+        countdownGui.Name = "CountdownDisplay"
+        countdownGui.Size = UDim2.new(0, 160, 0, 80) -- Smaller, more compact size
+        countdownGui.StudsOffset = Vector3.new(0, 4.5, 0) -- Higher up to avoid blocking crop
+        countdownGui.LightInfluence = 0
+        countdownGui.Parent = plot
+        
+        local countdownLabel = Instance.new("TextLabel")
+        countdownLabel.Size = UDim2.new(1, 0, 1, 0)
+        countdownLabel.BackgroundTransparency = 1
+        countdownLabel.Text = ""
+        countdownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        countdownLabel.TextScaled = true
+        countdownLabel.Font = Enum.Font.SourceSansBold
+        countdownLabel.TextStrokeTransparency = 0
+        countdownLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        countdownLabel.TextXAlignment = Enum.TextXAlignment.Center -- Center align for better readability
+        countdownLabel.TextYAlignment = Enum.TextYAlignment.Center
+        countdownLabel.Parent = countdownGui
+    end
+end
+
+-- Update plot references after cloning from template
+local function updatePlotReferences(farmFolder, farmId)
+    local plotIndex = 1
+    local plots = {}
+    
+    -- Find all plots in the template farm and sort them
+    for _, child in ipairs(farmFolder:GetDescendants()) do
+        if child.Name:match("Plot") and child:IsA("BasePart") then
+            table.insert(plots, child)
+        end
+    end
+    
+    -- Sort plots by name for consistent ordering (numerically, not alphabetically)
+    table.sort(plots, function(a, b) 
+        local numA = tonumber(a.Name:match("(%d+)")) or 0
+        local numB = tonumber(b.Name:match("(%d+)")) or 0
+        return numA < numB
+    end)
+    
+    -- Update each plot with proper ID and ensure all components exist
+    for _, plot in ipairs(plots) do
+        -- Update plot ID for PlotManager (local ID 1-40)
+        local plotIdValue = plot:FindFirstChild("PlotId")
+        if not plotIdValue then
+            plotIdValue = Instance.new("IntValue")
+            plotIdValue.Name = "PlotId"
+            plotIdValue.Parent = plot
+        end
+        
+        -- Use local plot ID (1-40 per farm)
+        plotIdValue.Value = plotIndex
+        
+        -- Also add farm ID for easy reference
+        local farmIdValue = plot:FindFirstChild("FarmId") 
+        if not farmIdValue then
+            farmIdValue = Instance.new("IntValue")
+            farmIdValue.Name = "FarmId"
+            farmIdValue.Parent = plot
+        end
+        farmIdValue.Value = farmId
+        
+        -- Ensure plot has all necessary components for interactions
+        setupPlotComponents(plot)
+        
+        log.debug("Updated plot", plot.Name, "to local ID", plotIndex, "in farm", farmId)
+        plotIndex = plotIndex + 1
+    end
+    
+    log.info("Updated", #plots, "plots in farm", farmId)
+    return #plots -- Return actual plot count
+end
+
+-- Create farm from template
+local function createFarmFromTemplate(farmId, position)
+    local templateFarm = Workspace:FindFirstChild("FarmTemplate")
+    if not templateFarm then
+        log.error("FarmTemplate not found in Workspace!")
+        return nil
+    end
+    
+    log.info("Creating farm", farmId, "from template at position", position)
+    
+    -- Clone the template
+    local newFarm = templateFarm:Clone()
+    newFarm.Name = "Farm_" .. farmId
+    
+    -- Ensure PlayerFarms folder exists
+    local playerFarms = Workspace:FindFirstChild("PlayerFarms")
+    if not playerFarms then
+        playerFarms = Instance.new("Folder")
+        playerFarms.Name = "PlayerFarms"
+        playerFarms.Parent = Workspace
+    end
+    
+    newFarm.Parent = playerFarms
+    
+    -- Move farm to correct position
+    local templateCFrame, templateSize = templateFarm:GetBoundingBox()
+    local templateCenter = templateCFrame.Position
+    
+    -- Calculate the lowest Y position in the template
+    local lowestY = math.huge
+    for _, child in ipairs(newFarm:GetDescendants()) do
+        if child:IsA("BasePart") then
+            local partBottom = child.Position.Y - (child.Size.Y / 2)
+            if partBottom < lowestY then
+                lowestY = partBottom
+            end
+        end
+    end
+    
+    -- Calculate offset to ensure farm sits on ground level
+    local horizontalOffset = Vector3.new(position.X - templateCenter.X, 0, position.Z - templateCenter.Z)
+    local groundLevel = 0
+    
+    -- Calculate Y offset so the lowest part sits exactly at ground level
+    local yOffset = groundLevel - lowestY
+    local offset = Vector3.new(horizontalOffset.X, yOffset, horizontalOffset.Z)
+    
+    -- Move all parts in the farm
+    for _, child in ipairs(newFarm:GetDescendants()) do
+        if child:IsA("BasePart") then
+            child.Position = child.Position + offset
+        end
+    end
+    
+    -- Update plot references for PlotManager
+    updatePlotReferences(newFarm, farmId)
+    
+    -- Create farm sign with character display
+    WorldBuilder.createFarmSign(newFarm, position, farmId)
+    
+    log.info("Farm", farmId, "created from template successfully")
+    return newFarm
+end
 
 -- Farm plot configuration
 local PLOT_SIZE = Vector3.new(8, 1, 8)
@@ -53,8 +330,8 @@ local function createFarmPlot(position, plotId)
     -- Add single context-sensitive ProximityPrompt
     local actionPrompt = Instance.new("ProximityPrompt")
     actionPrompt.Name = "ActionPrompt"
-    actionPrompt.ActionText = "Plant Seed" -- Default action
-    actionPrompt.KeyboardKeyCode = Enum.KeyCode.E -- Single key for all actions
+    actionPrompt.ActionText = "Open Plot UI" -- Opens the plot management UI
+    actionPrompt.KeyboardKeyCode = Enum.KeyCode.E 
     actionPrompt.RequiresLineOfSight = false
     actionPrompt.MaxActivationDistance = 6
     actionPrompt.Parent = plot
@@ -140,31 +417,64 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         [3] = Vector3.new(1.5, 3, 1.5)    -- Full grown
     }
     
-    local plant = Instance.new("Part")
-    plant.Name = "Plant"
-    plant.Size = sizes[growthStage] or sizes[1]
-    plant.Shape = Enum.PartType.Cylinder
-    plant.Material = Enum.Material.Neon
+    local plant
     
-    -- Apply variation coloring
-    if variation == "normal" then
-        plant.BrickColor = BrickColor.new(plantColors[seedType] or "Bright green")
-    elseif variation == "shiny" then
-        plant.BrickColor = BrickColor.new("Bright yellow")
-        plant.Material = Enum.Material.ForceField
-    elseif variation == "rainbow" then
-        plant.BrickColor = BrickColor.new("Magenta")
-        plant.Material = Enum.Material.ForceField
-    elseif variation == "golden" then
-        plant.BrickColor = BrickColor.new("Bright yellow")
-        plant.Material = Enum.Material.Gold
-    elseif variation == "diamond" then
-        plant.BrickColor = BrickColor.new("Institutional white")
-        plant.Material = Enum.Material.Diamond
-    elseif variation == "dead" then
-        plant.BrickColor = BrickColor.new("Really black")
+    -- Get crop data from registry
+    local cropData = CropRegistry.getCrop(seedType)
+    local visualData = CropRegistry.getVisuals(seedType, variation)
+    
+    if not cropData then
+        log.error("Unknown crop type:", seedType, "- check CropRegistry")
+        error("Invalid crop type: " .. tostring(seedType))
+    end
+    
+    -- Use 3D mesh if available, otherwise basic part
+    if cropData.meshId then
+        -- Create Part with SpecialMesh for 3D assets
+        plant = Instance.new("Part")
+        plant.Name = "Plant"
+        plant.Size = Vector3.new(2, 2, 2) -- Base size for asset scaling
+        plant.Material = Enum.Material.Plastic
+        plant.Transparency = 0 -- Make visible now that we use CropRegistry
+        
+        -- Add the 3D mesh
+        local mesh = Instance.new("SpecialMesh")
+        mesh.MeshType = Enum.MeshType.FileMesh
+        mesh.MeshId = "rbxassetid://" .. cropData.meshId
+        
+        -- Scale based on growth stage
+        local scaleMultipliers = {
+            [1] = 0.3, -- Just planted - small
+            [2] = 0.6, -- Growing - medium
+            [3] = 1.0  -- Full grown - full size
+        }
+        local scale = scaleMultipliers[growthStage] or 0.3
+        mesh.Scale = Vector3.new(scale, scale, scale)
+        mesh.Parent = plant
+        
+        log.debug("Created 3D mesh for", seedType, "with ID", cropData.meshId, "scale", scale)
+    else
+        -- Use basic part for crops without 3D assets
+        plant = Instance.new("Part")
+        plant.Name = "Plant"
+        plant.Size = sizes[growthStage] or sizes[1]
+        plant.Shape = Enum.PartType.Cylinder
+        plant.Material = Enum.Material.Neon
+    end
+    
+    -- Apply basic crop coloring from CropRegistry
+    if visualData and visualData.color then
+        plant.Color = visualData.color
+    else
+        -- Fallback to a default color if no visual data
+        plant.Color = Color3.fromRGB(100, 200, 100)
+    end
+    
+    -- Handle dead plants specially
+    if variation == "dead" then
+        plant.Color = Color3.fromRGB(100, 50, 50) -- Dark reddish-brown for dead plants
         plant.Material = Enum.Material.Concrete
-        plant.Transparency = 0.3  -- Make it slightly transparent/withered
+        plant.Transparency = 0.3
     end
     
     plant.Anchored = true
@@ -172,10 +482,20 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
     plant.TopSurface = Enum.SurfaceType.Smooth
     plant.BottomSurface = Enum.SurfaceType.Smooth
     
-    -- Position above the plot
+    -- Position the plant
     local plotPosition = plot.Position
-    plant.Position = plotPosition + Vector3.new(0, plot.Size.Y/2 + plant.Size.Y/2, 0)
-    plant.Orientation = Vector3.new(0, 0, 90) -- Rotate cylinder to be vertical
+    
+    if cropData.meshId then
+        -- Position 3D mesh assets appropriately
+        plant.Position = plotPosition + Vector3.new(0, plot.Size.Y/2 + 0.5, 0) -- Slightly above ground
+        plant.Orientation = Vector3.new(0, math.random(0, 360), 0) -- Random Y rotation for variety
+        log.debug("Positioned 3D crop", seedType, "at", plant.Position)
+    else
+        -- Position other plants above the plot
+        plant.Position = plotPosition + Vector3.new(0, plot.Size.Y/2 + plant.Size.Y/2, 0)
+        plant.Orientation = Vector3.new(0, 0, 90) -- Rotate cylinder to be vertical
+    end
+    
     plant.Parent = plot
     
     log.debug("Plant created successfully! Size:", plant.Size, "Position:", plant.Position, "Color:", plant.BrickColor.Name)
@@ -297,9 +617,11 @@ function WorldBuilder.addVariationEffects(plant, variation)
 end
 
 -- Update plot visual state with variation support
-function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterProgress)
+function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterProgress, _, plotIndex, requiredRebirth)
     variation = variation or "normal"
     waterProgress = waterProgress or {current = 0, needed = 1}
+    plotIndex = plotIndex or 1
+    requiredRebirth = requiredRebirth or 0
     
     local plotData = plot:FindFirstChild("PlotData")
     local actionPrompt = plot:FindFirstChild("ActionPrompt")
@@ -310,14 +632,32 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
     plotData.Value = state
     
     if state == "empty" then
+        -- Restore visibility first (in case it was invisible)
+        plot.Transparency = 0
+        if plantPosition then
+            plantPosition.Transparency = 1 -- Keep plant position invisible
+        end
+        
+        -- Restore border if it exists
+        local border = plot:FindFirstChild("Border")
+        if border then
+            border.Transparency = 0
+        end
+        
+        -- Restore countdown display
+        local countdownDisplay = plot:FindFirstChild("CountdownDisplay")
+        if countdownDisplay then
+            countdownDisplay.Enabled = true
+        end
+        
         -- Dry brown dirt
         plot.BrickColor = BrickColor.new("CGA brown")
         if plantPosition then
             plantPosition.BrickColor = BrickColor.new("CGA brown")
         end
         
-        -- Set prompt for planting
-        actionPrompt.ActionText = "Plant Seed"
+        -- All plots use the same UI prompt
+        actionPrompt.ActionText = "Open Plot UI"
         actionPrompt.Enabled = true
         
         -- Remove any existing plant
@@ -326,28 +666,42 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             existingPlant:Destroy()
         end
         
+        -- Remove lock indicator if present (plot was unlocked)
+        local lockIndicator = plot:FindFirstChild("LockIndicator")
+        if lockIndicator then
+            lockIndicator:Destroy()
+        end
+        
+        -- Remove rebirth effects if present
+        local rebirthIndicator = plot:FindFirstChild("RebirthIndicator")
+        if rebirthIndicator then
+            rebirthIndicator:Destroy()
+        end
+        
+        local mysticalGlow = plot:FindFirstChild("MysticalGlow")
+        if mysticalGlow then
+            mysticalGlow:Destroy()
+        end
+        
+        local proximityShine = plot:FindFirstChild("ProximityShine")
+        if proximityShine then
+            proximityShine:Destroy()
+        end
+        
     elseif state == "planted" then
         -- Show small plant with variation
         WorldBuilder.createPlant(plot, seedType, 1, variation)
         
-        -- Set prompt for watering
-        local waterText = "Water Plant"
-        if waterProgress and waterProgress.needed > 1 then
-            waterText = "Water Plant (" .. waterProgress.current .. "/" .. waterProgress.needed .. ")"
-        end
-        actionPrompt.ActionText = waterText
+        -- All plots use the same UI prompt
+        actionPrompt.ActionText = "Open Plot UI"
         actionPrompt.Enabled = true
         
     elseif state == "growing" then
         -- Show partially grown plant (needs more water) with variation
         WorldBuilder.createPlant(plot, seedType, 1, variation)
         
-        -- Set prompt for additional watering
-        local waterText = "Water Plant"
-        if waterProgress and waterProgress.needed > 1 then
-            waterText = "Water Plant (" .. waterProgress.current .. "/" .. waterProgress.needed .. ")"
-        end
-        actionPrompt.ActionText = waterText
+        -- All plots use the same UI prompt
+        actionPrompt.ActionText = "Open Plot UI"
         actionPrompt.Enabled = true
         
     elseif state == "watered" then
@@ -360,9 +714,9 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         -- Show growing plant with variation
         WorldBuilder.createPlant(plot, seedType, 2, variation)
         
-        -- Plant is growing, no action needed
-        actionPrompt.ActionText = "Growing..."
-        actionPrompt.Enabled = false
+        -- All plots use the same UI prompt
+        actionPrompt.ActionText = "Open Plot UI"
+        actionPrompt.Enabled = true
         
     elseif state == "ready" then
         -- Show full grown plant with variation
@@ -392,9 +746,253 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             log.debug("Added harvest ready particles to " .. variation .. " " .. seedType .. " crop!")
         end
         
-        -- Set prompt for harvesting
-        actionPrompt.ActionText = "Harvest " .. (seedType or "Crop")
+        -- All plots use the same UI prompt
+        actionPrompt.ActionText = "Open Plot UI"
         actionPrompt.Enabled = true
+        
+    elseif state == "locked" then
+        -- Restore visibility first (in case it was invisible)
+        plot.Transparency = 0
+        if plantPosition then
+            plantPosition.Transparency = 1 -- Keep plant position invisible
+        end
+        
+        -- Restore border if it exists
+        local border = plot:FindFirstChild("Border")
+        if border then
+            border.Transparency = 0
+        end
+        
+        -- Restore countdown display
+        local countdownDisplay = plot:FindFirstChild("CountdownDisplay")
+        if countdownDisplay then
+            countdownDisplay.Enabled = true
+        end
+        
+        -- Show locked plot appearance - bright red to be distinct
+        plot.BrickColor = BrickColor.new("Bright red")
+        if plantPosition then
+            plantPosition.BrickColor = BrickColor.new("Bright red")
+        end
+        
+        -- Remove any existing plant
+        local existingPlant = plot:FindFirstChild("Plant")
+        if existingPlant then
+            existingPlant:Destroy()
+        end
+        
+        -- Remove rebirth effects if transitioning from rebirth_locked state
+        local rebirthIndicator = plot:FindFirstChild("RebirthIndicator")
+        if rebirthIndicator then
+            rebirthIndicator:Destroy()
+        end
+        
+        local mysticalGlow = plot:FindFirstChild("MysticalGlow")
+        if mysticalGlow then
+            mysticalGlow:Destroy()
+        end
+        
+        local proximityShine = plot:FindFirstChild("ProximityShine")
+        if proximityShine then
+            proximityShine:Destroy()
+        end
+        
+        -- Create price indicator if it doesn't exist
+        local lockIndicator = plot:FindFirstChild("LockIndicator")
+        if not lockIndicator then
+            -- Create invisible attachment point for the GUI
+            lockIndicator = Instance.new("Part")
+            lockIndicator.Name = "LockIndicator"
+            lockIndicator.Size = Vector3.new(0.1, 0.1, 0.1)
+            lockIndicator.Position = plot.Position + Vector3.new(0, 2, 0)
+            lockIndicator.Anchored = true
+            lockIndicator.CanCollide = false
+            lockIndicator.Transparency = 1 -- Make it invisible
+            lockIndicator.Parent = plot
+            
+            -- Add price display GUI with better scaling
+            local priceGui = Instance.new("BillboardGui")
+            priceGui.Name = "PriceGui"
+            priceGui.Size = UDim2.new(0, 100, 0, 60)
+            priceGui.StudsOffset = Vector3.new(0, 0, 0)
+            priceGui.MaxDistance = 50 -- Prevent it from being visible too far away
+            priceGui.LightInfluence = 0 -- Always bright
+            priceGui.Parent = lockIndicator
+            
+            -- Calculate the price for this specific plot using local plot ID
+            local plotIdValue = plot:FindFirstChild("PlotId")
+            local localPlotId = plotIdValue and plotIdValue.Value or 1
+            
+            -- Progressive pricing based on local plot number (1-40)
+            local basePrice = 50
+            local priceMultiplier = math.pow(1.5, localPlotId - 10) -- Progressive pricing after plot 10
+            local plotPrice = math.max(50, math.floor(basePrice * priceMultiplier))
+            
+            -- Background frame for better visibility
+            local background = Instance.new("Frame")
+            background.Size = UDim2.new(1, 0, 1, 0)
+            background.Position = UDim2.new(0, 0, 0, 0)
+            background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            background.BackgroundTransparency = 0.3
+            background.BorderSizePixel = 0
+            background.Parent = priceGui
+            
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = background
+            
+            -- Single combined text label
+            local priceLabel = Instance.new("TextLabel")
+            priceLabel.Size = UDim2.new(1, -10, 1, -10)
+            priceLabel.Position = UDim2.new(0, 5, 0, 5)
+            priceLabel.BackgroundTransparency = 1
+            priceLabel.Text = "💰 $" .. plotPrice
+            priceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            priceLabel.TextScaled = true
+            priceLabel.Font = Enum.Font.SourceSansBold
+            priceLabel.TextStrokeTransparency = 0
+            priceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            priceLabel.Parent = priceGui
+        end
+        
+        -- Enable action prompt for locked plots to allow purchase
+        local plotIdValue = plot:FindFirstChild("PlotId")
+        local localPlotId = plotIdValue and plotIdValue.Value or 1
+        local basePrice = 50
+        local priceMultiplier = math.pow(1.5, localPlotId - 10)
+        local plotPrice = math.max(50, math.floor(basePrice * priceMultiplier))
+        
+        actionPrompt.ActionText = "Purchase Plot ($" .. plotPrice .. ")"
+        actionPrompt.Enabled = true
+        
+    elseif state == "rebirth_locked" then
+        -- Restore visibility first (in case it was invisible)
+        plot.Transparency = 0
+        if plantPosition then
+            plantPosition.Transparency = 1 -- Keep plant position invisible
+        end
+        
+        -- Restore border if it exists
+        local border = plot:FindFirstChild("Border")
+        if border then
+            border.Transparency = 0
+        end
+        
+        -- Restore countdown display
+        local countdownDisplay = plot:FindFirstChild("CountdownDisplay")
+        if countdownDisplay then
+            countdownDisplay.Enabled = true
+        end
+        
+        -- Show rebirth-locked plot appearance - dark gray to indicate unavailable
+        plot.BrickColor = BrickColor.new("Dark stone grey")
+        if plantPosition then
+            plantPosition.BrickColor = BrickColor.new("Dark stone grey")
+        end
+        
+        -- Remove any existing plant
+        local existingPlant = plot:FindFirstChild("Plant")
+        if existingPlant then
+            existingPlant:Destroy()
+        end
+        
+        -- Remove old lock indicator since these show rebirth requirements
+        local lockIndicator = plot:FindFirstChild("LockIndicator")
+        if lockIndicator then
+            lockIndicator:Destroy()
+        end
+        
+        -- Create rebirth requirement indicator
+        local rebirthIndicator = plot:FindFirstChild("RebirthIndicator")
+        if not rebirthIndicator then
+            rebirthIndicator = Instance.new("Part")
+            rebirthIndicator.Name = "RebirthIndicator"
+            rebirthIndicator.Size = Vector3.new(0.1, 0.1, 0.1)
+            rebirthIndicator.Position = plot.Position + Vector3.new(0, 2, 0)
+            rebirthIndicator.Anchored = true
+            rebirthIndicator.CanCollide = false
+            rebirthIndicator.Transparency = 1
+            rebirthIndicator.Parent = plot
+            
+            -- Add rebirth requirement GUI
+            local rebirthGui = Instance.new("BillboardGui")
+            rebirthGui.Name = "RebirthGui"
+            rebirthGui.Size = UDim2.new(0, 120, 0, 80)
+            rebirthGui.StudsOffset = Vector3.new(0, 0, 0)
+            rebirthGui.MaxDistance = 50
+            rebirthGui.LightInfluence = 0
+            rebirthGui.Parent = rebirthIndicator
+            
+            -- Background frame
+            local background = Instance.new("Frame")
+            background.Size = UDim2.new(1, 0, 1, 0)
+            background.Position = UDim2.new(0, 0, 0, 0)
+            background.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+            background.BackgroundTransparency = 0.2
+            background.BorderSizePixel = 0
+            background.Parent = rebirthGui
+            
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = background
+            
+            -- Rebirth requirement text
+            local rebirthLabel = Instance.new("TextLabel")
+            rebirthLabel.Size = UDim2.new(1, -10, 1, -10)
+            rebirthLabel.Position = UDim2.new(0, 5, 0, 5)
+            rebirthLabel.BackgroundTransparency = 1
+            rebirthLabel.Text = "🔄 REBIRTH " .. requiredRebirth .. "\nREQUIRED"
+            rebirthLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+            rebirthLabel.TextScaled = true
+            rebirthLabel.Font = Enum.Font.SourceSansBold
+            rebirthLabel.TextStrokeTransparency = 0
+            rebirthLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            rebirthLabel.Parent = rebirthGui
+        end
+        
+        -- Add mystical glow effect
+        WorldBuilder.addMysticalGlow(plot)
+        
+        -- Add proximity-based shine effect
+        WorldBuilder.addProximityShine(plot, requiredRebirth)
+        
+        -- Show rebirth requirement message
+        actionPrompt.ActionText = "Requires Rebirth " .. requiredRebirth
+        actionPrompt.Enabled = false -- Can't purchase yet
+        
+    elseif state == "invisible" then
+        -- Make plot completely invisible - future rebirth tiers
+        plot.Transparency = 1
+        if plantPosition then
+            plantPosition.Transparency = 1
+        end
+        
+        -- Hide border if it exists
+        local border = plot:FindFirstChild("Border")
+        if border then
+            border.Transparency = 1
+        end
+        
+        -- Remove any existing plant
+        local existingPlant = plot:FindFirstChild("Plant")
+        if existingPlant then
+            existingPlant:Destroy()
+        end
+        
+        -- Remove all UI elements
+        local lockIndicator = plot:FindFirstChild("LockIndicator")
+        if lockIndicator then
+            lockIndicator:Destroy()
+        end
+        
+        local countdownDisplay = plot:FindFirstChild("CountdownDisplay")
+        if countdownDisplay then
+            countdownDisplay.Enabled = false
+        end
+        
+        -- Disable interaction completely
+        actionPrompt.Enabled = false
+        actionPrompt.ActionText = ""
         
     elseif state == "dead" then
         -- Show withered/dead plant
@@ -406,9 +1004,35 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             plantPosition.BrickColor = BrickColor.new("Really black")
         end
         
-        -- Set prompt for clearing
-        actionPrompt.ActionText = "Clear Dead Plant"
+        -- All plots use the same UI prompt
+        actionPrompt.ActionText = "Open Plot UI"
         actionPrompt.Enabled = true
+    end
+    
+    -- Update water hose visibility based on plot state
+    WorldBuilder.updateWaterHoseVisibility(plot, state)
+end
+
+-- Update water hose visibility based on plot state
+function WorldBuilder.updateWaterHoseVisibility(plot, state)
+    local waterHose = plot:FindFirstChild("WaterHose")
+    if not waterHose then return end
+    
+    -- Show water hose only when plot has crops that need watering (not watered/growing)
+    if state == "planted" or state == "growing" then
+        -- Show water hose for crops that need watering
+        waterHose.Transparency = 0
+        local waterPrompt = waterHose:FindFirstChild("WaterPrompt")
+        if waterPrompt then
+            waterPrompt.Enabled = true
+        end
+    else
+        -- Hide water hose for empty, watered, ready, dead, locked, or invisible plots
+        waterHose.Transparency = 1
+        local waterPrompt = waterHose:FindFirstChild("WaterPrompt")
+        if waterPrompt then
+            waterPrompt.Enabled = false
+        end
     end
 end
 
@@ -443,9 +1067,37 @@ function WorldBuilder.buildFarm()
     -- Create individual farm areas
     local totalPlotsCreated = 0
     for farmId = 1, config.totalFarms do
-        local farmFolder = WorldBuilder.createIndividualFarm(farmId, config)
-        farmFolder.Parent = farmsContainer
-        totalPlotsCreated = totalPlotsCreated + config.plotsPerFarm
+        log.info("Creating farm", farmId, "of", config.totalFarms)
+        local farmFolder
+        
+        if USE_TEMPLATE_FARM then
+            -- Use template system
+            local FarmManager = require(script.Parent.modules.FarmManager)
+            local farmPosition = FarmManager.getFarmPosition(farmId)
+            log.info("Creating template farm", farmId, "at position", farmPosition)
+            farmFolder = createFarmFromTemplate(farmId, farmPosition)
+            if farmFolder then
+                farmFolder.Parent = farmsContainer
+                -- Count actual plots in template
+                local plotCount = 0
+                for _, child in ipairs(farmFolder:GetDescendants()) do
+                    if child.Name:match("Plot") and child:IsA("BasePart") then
+                        plotCount = plotCount + 1
+                    end
+                end
+                totalPlotsCreated = totalPlotsCreated + plotCount
+                log.info("Successfully created farm", farmId, "with", plotCount, "plots")
+            else
+                log.error("Failed to create template farm", farmId)
+            end
+        else
+            -- Use original code generation
+            farmFolder = WorldBuilder.createIndividualFarm(farmId, config)
+            farmFolder.Parent = farmsContainer
+            if farmFolder then
+                totalPlotsCreated = totalPlotsCreated + config.maxPlotsPerFarm
+            end
+        end
     end
     
     log.info("Built", config.totalFarms, "individual farms with", totalPlotsCreated, "total plots!")
@@ -535,13 +1187,13 @@ function WorldBuilder.createIndividualFarm(farmId, config)
     -- Create farm sign
     WorldBuilder.createFarmSign(farmFolder, farmPosition, farmId)
     
-    -- Create plots in a 3x3 grid within the farm
-    local globalPlotId = (farmId - 1) * config.plotsPerFarm + 1
-    for row = 1, 3 do
-        for col = 1, 3 do
-            local plotIndex = (row - 1) * 3 + col
-            local plotOffsetX = (col - 2) * (PLOT_SIZE.X + PLOT_SPACING) -- Center the grid
-            local plotOffsetZ = (row - 2) * (PLOT_SIZE.Z + PLOT_SPACING)
+    -- Create plots in a 4x4 grid within the farm (16 max plots)
+    local globalPlotId = (farmId - 1) * config.maxPlotsPerFarm + 1
+    for row = 1, 4 do
+        for col = 1, 4 do
+            local plotIndex = (row - 1) * 4 + col
+            local plotOffsetX = (col - 2.5) * (PLOT_SIZE.X + PLOT_SPACING) -- Center the 4x4 grid
+            local plotOffsetZ = (row - 2.5) * (PLOT_SIZE.Z + PLOT_SPACING)
             local plotPosition = farmPosition + Vector3.new(plotOffsetX, PLOT_SIZE.Y / 2, plotOffsetZ)
             
             local plot = createFarmPlot(plotPosition, globalPlotId)
@@ -551,7 +1203,7 @@ function WorldBuilder.createIndividualFarm(farmId, config)
         end
     end
     
-    log.debug("Created farm", farmId, "at position", farmPosition, "with", config.plotsPerFarm, "plots")
+    log.debug("Created farm", farmId, "at position", farmPosition, "with", config.maxPlotsPerFarm, "plots")
     return farmFolder
 end
 
@@ -580,19 +1232,47 @@ function WorldBuilder.createFarmBoundary(farmFolder, farmPosition, farmSize)
     end
 end
 
--- Create a sign for the farm with character display capability (simplified - no visual clutter)
+-- Create a sign for the farm with character display capability
 function WorldBuilder.createFarmSign(farmFolder, farmPosition, farmId)
-    -- Create invisible character display area (no platform or wooden sign clutter)
+    -- Create invisible character display area
     local characterDisplay = Instance.new("Part")
     characterDisplay.Name = "CharacterDisplay"
     characterDisplay.Size = Vector3.new(15, 20, 5) -- Big display area for character
-    characterDisplay.Position = farmPosition + Vector3.new(0, 45, 0) -- High above farm, centered
+    characterDisplay.Position = farmPosition + Vector3.new(0, 100, 0) -- Much higher above farm
     characterDisplay.Anchored = true
     characterDisplay.Transparency = 1 -- Completely invisible
     characterDisplay.CanCollide = false
     characterDisplay.Parent = farmFolder
     
-    -- No player name display - clean farm appearance
+    -- Create farm name display
+    local nameDisplay = Instance.new("Part")
+    nameDisplay.Name = "FarmNameDisplay"
+    nameDisplay.Size = Vector3.new(0.1, 0.1, 0.1) -- Small invisible part for GUI
+    nameDisplay.Position = farmPosition + Vector3.new(0, 120, 0) -- Above character display
+    nameDisplay.Anchored = true
+    nameDisplay.Transparency = 1
+    nameDisplay.CanCollide = false
+    nameDisplay.Parent = farmFolder
+    
+    local nameGui = Instance.new("BillboardGui")
+    nameGui.Name = "FarmNameGui"
+    nameGui.Size = UDim2.new(0, 200, 0, 40)  -- Smaller size
+    nameGui.StudsOffset = Vector3.new(0, 0, 0)
+    nameGui.MaxDistance = 100  -- Default for available farms
+    nameGui.LightInfluence = 0
+    nameGui.Parent = nameDisplay
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "FarmNameLabel"
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = "Available Farm"
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.Parent = nameGui
 end
 
 -- Create spawn platform sign
@@ -621,16 +1301,24 @@ function WorldBuilder.createSpawnSign(spawn)
 end
 
 -- Get plot by ID (now searches across all farm areas)
-function WorldBuilder.getPlotById(plotId)
+function WorldBuilder.getPlotById(globalPlotId)
     local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
     if not farmsContainer then return nil end
     
-    -- Search through all farm areas
-    for _, farmFolder in pairs(farmsContainer:GetChildren()) do
-        if farmFolder.Name:match("^Farm_") then
-            local plot = farmFolder:FindFirstChild("FarmPlot_" .. plotId)
-            if plot then
-                return plot
+    -- Convert global plot ID to farm ID and local plot ID
+    local FarmManager = require(script.Parent.modules.FarmManager)
+    local farmId, localPlotId = FarmManager.getFarmAndPlotFromGlobalId(globalPlotId)
+    
+    -- Find the specific farm
+    local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
+    if not farmFolder then return nil end
+    
+    -- Search through all parts in the farm looking for the right PlotId value
+    for _, child in pairs(farmFolder:GetDescendants()) do
+        if child:IsA("BasePart") and child.Name:match("Plot") then
+            local plotIdValue = child:FindFirstChild("PlotId")
+            if plotIdValue and plotIdValue.Value == localPlotId then
+                return child
             end
         end
     end
@@ -676,7 +1364,7 @@ function WorldBuilder.getFarmPlots(farmId)
 end
 
 
--- Update farm sign to show ownership with character display (no clutter signs)
+-- Update farm sign to show ownership with character display and farm name
 function WorldBuilder.updateFarmSign(farmId, playerName, player)
     local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
     if not farmsContainer then return end
@@ -684,7 +1372,7 @@ function WorldBuilder.updateFarmSign(farmId, playerName, player)
     local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
     if not farmFolder then return end
     
-    -- Update character display (no name display anymore)
+    -- Update character display
     local characterDisplay = farmFolder:FindFirstChild("CharacterDisplay")
     if characterDisplay then
         if player then
@@ -696,7 +1384,25 @@ function WorldBuilder.updateFarmSign(farmId, playerName, player)
         end
     end
     
-    log.debug("Updated farm", farmId, "character display:", playerName or "Available")
+    -- Update farm name display
+    local nameDisplay = farmFolder:FindFirstChild("FarmNameDisplay")
+    if nameDisplay then
+        local nameGui = nameDisplay:FindFirstChild("FarmNameGui")
+        if nameGui then
+            local nameLabel = nameGui:FindFirstChild("FarmNameLabel")
+            if nameLabel then
+                if playerName then
+                    nameLabel.Text = playerName .. "'s Farm"
+                    nameGui.MaxDistance = 250  -- Occupied farms visible from further away
+                else
+                    nameLabel.Text = "Available Farm"
+                    nameGui.MaxDistance = 100  -- Available farms only visible when closer
+                end
+            end
+        end
+    end
+    
+    log.debug("Updated farm", farmId, "display:", playerName or "Available")
 end
 
 -- Create a real 3D Roblox character display for the farm sign
@@ -1021,6 +1727,117 @@ function WorldBuilder.clearCharacterDisplay(characterDisplay)
     if existingModel then
         existingModel:Destroy()
     end
+end
+
+-- Add mystical glow effect to next-tier plots
+function WorldBuilder.addMysticalGlow(plot)
+    -- Remove existing glow if any
+    local existingGlow = plot:FindFirstChild("MysticalGlow")
+    if existingGlow then
+        existingGlow:Destroy()
+    end
+    
+    -- Create mystical glow effect
+    local glowPart = Instance.new("Part")
+    glowPart.Name = "MysticalGlow"
+    glowPart.Size = plot.Size + Vector3.new(1, 0.2, 1) -- Slightly larger than plot
+    glowPart.Position = plot.Position + Vector3.new(0, 0.1, 0)
+    glowPart.Anchored = true
+    glowPart.CanCollide = false
+    glowPart.Material = Enum.Material.ForceField
+    glowPart.BrickColor = BrickColor.new("Bright yellow")
+    glowPart.Transparency = 0.7
+    glowPart.Parent = plot
+    
+    -- Add pulsing effect
+    spawn(function()
+        while glowPart.Parent do
+            for i = 0.7, 0.9, 0.05 do
+                if not glowPart.Parent then break end
+                glowPart.Transparency = i
+                wait(0.1)
+            end
+            for i = 0.9, 0.7, -0.05 do
+                if not glowPart.Parent then break end
+                glowPart.Transparency = i
+                wait(0.1)
+            end
+        end
+    end)
+    
+    -- Add light source for extra effect
+    local pointLight = Instance.new("PointLight")
+    pointLight.Color = Color3.fromRGB(255, 215, 0)
+    pointLight.Brightness = 1
+    pointLight.Range = 15
+    pointLight.Parent = glowPart
+end
+
+-- Add proximity-based shine effect
+function WorldBuilder.addProximityShine(plot, requiredRebirth)
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    
+    -- Create shine effect (initially hidden)
+    local shinePart = Instance.new("Part")
+    shinePart.Name = "ProximityShine"
+    shinePart.Size = plot.Size + Vector3.new(0.5, 1, 0.5)
+    shinePart.Position = plot.Position + Vector3.new(0, 0.5, 0)
+    shinePart.Anchored = true
+    shinePart.CanCollide = false
+    shinePart.Material = Enum.Material.Neon
+    shinePart.BrickColor = BrickColor.new("Bright yellow")
+    shinePart.Transparency = 1 -- Start hidden
+    shinePart.Parent = plot
+    
+    -- Add particles for extra effect
+    local attachment = Instance.new("Attachment")
+    attachment.Position = Vector3.new(0, 0, 0)
+    attachment.Parent = shinePart
+    
+    local particles = Instance.new("ParticleEmitter")
+    particles.Name = "ShineParticles"
+    particles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    particles.Lifetime = NumberRange.new(1.0, 2.0)
+    particles.Rate = 0 -- Start with no particles
+    particles.SpreadAngle = Vector2.new(45, 45)
+    particles.Speed = NumberRange.new(2, 5)
+    particles.Color = ColorSequence.new(Color3.fromRGB(255, 215, 0))
+    particles.Size = NumberSequence.new(0.2)
+    particles.Parent = attachment
+    
+    -- Proximity detection
+    local proximityConnection
+    proximityConnection = RunService.Heartbeat:Connect(function()
+        if not plot.Parent then
+            proximityConnection:Disconnect()
+            return
+        end
+        
+        local nearbyPlayer = nil
+        local closestDistance = math.huge
+        
+        for _, player in pairs(Players:GetPlayers()) do
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local distance = (player.Character.HumanoidRootPart.Position - plot.Position).Magnitude
+                if distance < 20 and distance < closestDistance then -- Within 20 studs
+                    nearbyPlayer = player
+                    closestDistance = distance
+                end
+            end
+        end
+        
+        if nearbyPlayer and closestDistance < 20 then
+            -- Player is nearby - show shine effect
+            local intensity = 1 - (closestDistance / 20) -- Closer = more intense
+            shinePart.Transparency = 0.3 + (0.4 * intensity) -- 0.3 to 0.7 transparency
+            particles.Rate = math.floor(50 * intensity) -- 0 to 50 particles
+        else
+            -- No player nearby - hide effect
+            shinePart.Transparency = 1
+            particles.Rate = 0
+        end
+    end)
 end
 
 return WorldBuilder
