@@ -6,6 +6,7 @@ local e = React.createElement
 local ClientLogger = require(script.Parent.Parent.ClientLogger)
 local RainEffectManager = require(script.Parent.Parent.RainEffectManager)
 local PlotUtils = require(script.Parent.Parent.PlotUtils)
+local Modal = require(script.Parent.Modal)
 
 local log = ClientLogger.getModuleLogger("PlotUI")
 
@@ -51,6 +52,59 @@ local function PlotUI(props)
     local onlineBonus = plotData.onlineBonus or false
     local variation = plotData.variation or "normal"
     
+    -- Maintenance watering data
+    local needsMaintenanceWater = plotData.needsMaintenanceWater or false
+    local lastMaintenanceWater = plotData.lastMaintenanceWater or 0
+    local maintenanceWaterInterval = plotData.maintenanceWaterInterval or 43200 -- 12 hours
+    
+    -- Calculate maintenance watering status
+    local function getMaintenanceWaterStatus()
+        -- Safety check - ensure we have basic data
+        if not state then
+            return "💧 Loading...", Color3.fromRGB(160, 160, 160), Enum.Font.SourceSans
+        end
+        
+        -- Ensure currentTime is valid
+        local safeCurrentTime = currentTime or tick()
+        
+        if state == "empty" or state == "planted" or state == "growing" then
+            -- For non-harvestable states, show initial watering status
+            if wateredCount < waterNeeded then
+                return "💧 Water: " .. wateredCount .. "/" .. waterNeeded .. " (needs water)", Color3.fromRGB(255, 200, 100), Enum.Font.SourceSansBold
+            else
+                return "💧 Fully watered", Color3.fromRGB(100, 200, 255), Enum.Font.SourceSans
+            end
+        else
+            -- For harvestable states (watered/ready), show maintenance watering countdown
+            if needsMaintenanceWater then
+                return "🚿 Needs maintenance watering now!", Color3.fromRGB(255, 100, 100), Enum.Font.SourceSansBold
+            else
+                -- Ensure we have valid timing data
+                local safeLastMaintenanceWater = lastMaintenanceWater or 0
+                local safeMaintenanceInterval = maintenanceWaterInterval or 43200
+                
+                local timeSinceLastMaintenance = safeCurrentTime - safeLastMaintenanceWater
+                local timeUntilNextMaintenance = safeMaintenanceInterval - timeSinceLastMaintenance
+                
+                if timeUntilNextMaintenance > 0 then
+                    local hours = math.floor(timeUntilNextMaintenance / 3600)
+                    local minutes = math.floor((timeUntilNextMaintenance % 3600) / 60)
+                    local timeText = ""
+                    
+                    if hours > 0 then
+                        timeText = hours .. "h " .. minutes .. "m"
+                    else
+                        timeText = minutes .. "m"
+                    end
+                    
+                    return "🚿 " .. timeText .. " till next watering", Color3.fromRGB(100, 200, 255), Enum.Font.SourceSans
+                else
+                    return "🚿 Maintenance watering overdue", Color3.fromRGB(255, 150, 100), Enum.Font.SourceSansBold
+                end
+            end
+        end
+    end
+    
     -- Get available seeds from player inventory
     -- Check both seeds and crops (crops can be planted)
     local availableSeeds = {}
@@ -85,6 +139,9 @@ local function PlotUI(props)
     -- Real-time countdown state
     local currentTime, setCurrentTime = React.useState(tick())
     
+    -- Track recent water action for immediate UI response
+    local recentWaterActionTime, setRecentWaterActionTime = React.useState(0)
+    
     -- Update timer every second for real-time countdown
     React.useEffect(function()
         local connection = game:GetService("RunService").Heartbeat:Connect(function()
@@ -95,6 +152,14 @@ local function PlotUI(props)
             connection:Disconnect()
         end
     end, {})
+    
+    -- Clear local water action tracking when server data updates
+    React.useEffect(function()
+        if lastWaterActionTime > recentWaterActionTime then
+            -- Server has newer water action time, clear our local tracking
+            setRecentWaterActionTime(0)
+        end
+    end, {lastWaterActionTime})
     
     -- Action handlers
     local function handlePlant(quantity)
@@ -109,6 +174,11 @@ local function PlotUI(props)
     local function handleWater()
         if remotes.farmAction then
             log.info("Watering plot", plotId)
+            
+            -- Track local water action time for immediate UI response
+            local actionTime = tick()
+            setRecentWaterActionTime(actionTime)
+            
             remotes.farmAction:FireServer("water", plotId)
             
             -- Create rain effect on the plot
@@ -159,24 +229,32 @@ local function PlotUI(props)
     local waterCooldownText = ""
     local waterBlockReason = ""
     
-    -- Check if plot needs more water
-    if wateredCount >= waterNeeded then
+    -- Check if plot needs more water (either initial or maintenance)
+    local needsInitialWater = wateredCount < waterNeeded
+    local isMaintenanceWateringNeeded = needsMaintenanceWater
+    
+    if not needsInitialWater and not isMaintenanceWateringNeeded then
         canWater = false
-        waterBlockReason = "Fully watered"
-    elseif lastWaterActionTime > 0 then
-        local timeSinceLastWater = currentTime - lastWaterActionTime
-        waterCooldownRemaining = waterCooldownSeconds - timeSinceLastWater
+        waterBlockReason = "No watering needed"
+    else
+        -- Use the most recent water action time (local action or server data)
+        local effectiveLastWaterTime = math.max(lastWaterActionTime or 0, recentWaterActionTime)
         
-        if waterCooldownRemaining > 0 then
-            canWater = false
-            local minutes = math.floor(waterCooldownRemaining / 60)
-            local seconds = math.floor(waterCooldownRemaining % 60)
-            if minutes > 0 then
-                waterCooldownText = string.format("%dm %ds", minutes, seconds)
-            else
-                waterCooldownText = string.format("%ds", seconds)
+        if effectiveLastWaterTime > 0 then
+            local timeSinceLastWater = currentTime - effectiveLastWaterTime
+            waterCooldownRemaining = waterCooldownSeconds - timeSinceLastWater
+            
+            if waterCooldownRemaining > 0 then
+                canWater = false
+                local minutes = math.floor(waterCooldownRemaining / 60)
+                local seconds = math.floor(waterCooldownRemaining % 60)
+                if minutes > 0 then
+                    waterCooldownText = string.format("%dm %ds", minutes, seconds)
+                else
+                    waterCooldownText = string.format("%ds", seconds)
+                end
+                waterBlockReason = "Cooldown: " .. waterCooldownText
             end
-            waterBlockReason = "Cooldown: " .. waterCooldownText
         end
     end
     
@@ -247,8 +325,8 @@ local function PlotUI(props)
         productionRate = math.floor(totalProductionPerHour * 10) / 10 -- Round to 1 decimal
     end
     
-    if state == "watered" and maxHarvests > harvestCount then
-        -- Plants are growing, show when next crop will be ready
+    if state == "watered" and activePlants > 0 then
+        -- Plants are growing - show when next batch will be ready
         local timeSinceWater = currentTime - lastWateredAt
         local timeRemaining = effectiveGrowthTime - timeSinceWater
         
@@ -265,14 +343,34 @@ local function PlotUI(props)
             nextCropTime = "Ready now!"
             showNextReadyCountdown = true
         end
-    elseif state == "ready" and maxHarvests > harvestCount then
-        -- Some crops ready, more still growing - show production rate but no timer
-        nextCropTime = "" -- Don't show timer here to avoid duplication
-        showNextReadyCountdown = false
-    elseif state == "ready" and maxHarvests <= harvestCount then
-        -- All plants consumed, only crops remain - time to harvest
-        nextCropTime = ""
-        showFinalHarvest = true
+    elseif state == "ready" and activePlants > 0 then
+        -- Some crops ready, but plants continue producing - show when next batch will be ready
+        -- Calculate based on the last production cycle, not the original watering time
+        local timeSinceWater = currentTime - lastWateredAt
+        local cyclesCompleted = math.floor(timeSinceWater / effectiveGrowthTime)
+        local timeInCurrentCycle = timeSinceWater - (cyclesCompleted * effectiveGrowthTime)
+        local timeUntilNextCycle = effectiveGrowthTime - timeInCurrentCycle
+        
+        if timeUntilNextCycle > 1 then -- Show timer if more than 1 second remaining
+            local minutes = math.floor(timeUntilNextCycle / 60)
+            local seconds = math.floor(timeUntilNextCycle % 60)
+            if minutes > 0 then
+                nextCropTime = string.format("%dm %ds", minutes, seconds)
+            else
+                nextCropTime = string.format("%ds", seconds)
+            end
+            showNextReadyCountdown = true
+        else
+            -- When very close, show the next full cycle time
+            local minutes = math.floor(effectiveGrowthTime / 60)
+            local seconds = math.floor(effectiveGrowthTime % 60)
+            if minutes > 0 then
+                nextCropTime = string.format("%dm %ds", minutes, seconds)
+            else
+                nextCropTime = string.format("%ds", seconds)
+            end
+            showNextReadyCountdown = true
+        end
     elseif state == "planted" or state == "growing" then
         nextCropTime = "Needs water first"
         showNextReadyCountdown = false
@@ -363,16 +461,29 @@ local function PlotUI(props)
         }
     end
 
-    return e("Frame", {
-        Name = "PlotUI",
-        Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
-        Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -panelHeight * scale / 2),
-        BackgroundColor3 = Color3.fromRGB(25, 20, 30),
-        BackgroundTransparency = visible and 0.05 or 1,
-        BorderSizePixel = 0,
-        Visible = visible,
-        ZIndex = 20
+    -- Use reusable Modal component for proper click handling
+    return e(Modal, {
+        visible = visible,
+        onClose = onClose,
+        zIndex = 20,
+        closeOnBackgroundClick = true
     }, {
+        -- Main plot UI panel with click blocking
+        PlotPanel = e("TextButton", {
+            Name = "PlotUI",
+            Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
+            Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -panelHeight * scale / 2),
+            BackgroundColor3 = Color3.fromRGB(25, 20, 30),
+            BackgroundTransparency = 0.05,
+            BorderSizePixel = 0,
+            ZIndex = 20,
+            Text = "",
+            AutoButtonColor = false,
+            Active = true,
+            [React.Event.Activated] = function()
+                -- Do nothing - this prevents clicks from propagating to background
+            end
+        }, {
         Corner = e("UICorner", {
             CornerRadius = UDim.new(0, 12)
         }),
@@ -473,9 +584,9 @@ local function PlotUI(props)
                     Position = UDim2.new(0, 10, 0, 30),
                     BackgroundTransparency = 1,
                     Text = state == "empty" and "🌱 Empty Plot - Ready for planting!" or
-                           state == "planted" and "🌱 " .. plantName .. " planted - " .. nextCropTime or
-                           state == "growing" and "🌱 " .. plantName .. " planted - " .. nextCropTime or
-                           state == "watered" and "🌿 " .. plantName .. " growing - Next: " .. nextCropTime or
+                           state == "planted" and "🌱 " .. plantName .. " planted" or
+                           state == "growing" and "🌱 " .. plantName .. " planted" or
+                           state == "watered" and "🌿 " .. plantName .. " growing" or
                            state == "ready" and "🌟 " .. plantName .. " ready! (" .. accumulatedCrops .. " crops)" or
                            state == "dead" and "💀 " .. plantName .. " has died" or "Unknown state",
                     TextColor3 = state == "ready" and Color3.fromRGB(255, 215, 0) or 
@@ -490,7 +601,7 @@ local function PlotUI(props)
             
             -- Status & Timing Section (if not empty)
             StatusSection = state ~= "empty" and e("Frame", {
-                Size = UDim2.new(1, 0, 0, 135),
+                Size = UDim2.new(1, 0, 0, state == "dead" and 80 or 135),
                 BackgroundColor3 = Color3.fromRGB(40, 35, 45),
                 BackgroundTransparency = 0.3,
                 BorderSizePixel = 0,
@@ -504,18 +615,49 @@ local function PlotUI(props)
                     Size = UDim2.new(1, -20, 0, 25),
                     Position = UDim2.new(0, 10, 0, 5),
                     BackgroundTransparency = 1,
-                    Text = "📊 Plot Status & Timing",
-                    TextColor3 = Color3.fromRGB(200, 200, 200),
+                    Text = state == "dead" and "☠️ Dead Crop" or "📊 Plot Status & Timing",
+                    TextColor3 = state == "dead" and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(200, 200, 200),
                     TextScaled = true,
                     Font = Enum.Font.SourceSansBold,
                     TextXAlignment = Enum.TextXAlignment.Left
                 }),
                 
                 StatusGrid = e("Frame", {
-                    Size = UDim2.new(1, -20, 0, 100),
+                    Size = UDim2.new(1, -20, 0, state == "dead" and 40 or 100),
                     Position = UDim2.new(0, 10, 0, 30),
                     BackgroundTransparency = 1
-                }, {
+                }, state == "dead" and {
+                    -- Simple layout for dead crops
+                    Layout = e("UIListLayout", {
+                        FillDirection = Enum.FillDirection.Vertical,
+                        HorizontalAlignment = Enum.HorizontalAlignment.Left,
+                        Padding = UDim.new(0, 5),
+                        SortOrder = Enum.SortOrder.LayoutOrder
+                    }),
+                    
+                    -- Death reason (placeholder - would need to be passed from server)
+                    DeathReason = e("TextLabel", {
+                        Size = UDim2.new(1, 0, 0, 20),
+                        BackgroundTransparency = 1,
+                        Text = "💀 Died from lack of water",
+                        TextColor3 = Color3.fromRGB(255, 150, 150),
+                        TextScaled = true,
+                        Font = Enum.Font.SourceSans,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        LayoutOrder = 1
+                    }),
+                    
+                    ClearInstruction = e("TextLabel", {
+                        Size = UDim2.new(1, 0, 0, 15),
+                        BackgroundTransparency = 1,
+                        Text = "Use the Clear button below to remove and replant.",
+                        TextColor3 = Color3.fromRGB(200, 200, 200),
+                        TextScaled = true,
+                        Font = Enum.Font.SourceSans,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        LayoutOrder = 2
+                    })
+                } or {
                     GridLayout = e("UIGridLayout", {
                         CellSize = UDim2.new(0.5, -5, 0, 18),
                         CellPadding = UDim2.new(0, 5, 0, 2),
@@ -525,7 +667,7 @@ local function PlotUI(props)
                     -- Plant Count
                     PlantsInfo = e("TextLabel", {
                         BackgroundTransparency = 1,
-                        Text = "🌱 Plants: " .. (maxHarvests - harvestCount) .. "/" .. maxHarvests,
+                        Text = "🌱 Plants: " .. (maxHarvests - harvestCount),
                         TextColor3 = Color3.fromRGB(255, 255, 255),
                         TextScaled = true,
                         Font = Enum.Font.SourceSans,
@@ -545,62 +687,56 @@ local function PlotUI(props)
                     }) or nil,
                     
                     -- Water Status
-                    WaterStatus = e("TextLabel", {
-                        BackgroundTransparency = 1,
-                        Text = "💧 Water: " .. wateredCount .. "/" .. waterNeeded,
-                        TextColor3 = Color3.fromRGB(100, 200, 255),
-                        TextScaled = true,
-                        Font = Enum.Font.SourceSans,
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                        LayoutOrder = 3
-                    }),
+                    WaterStatus = (function()
+                        local waterText, waterColor, waterFont = getMaintenanceWaterStatus()
+                        return e("TextLabel", {
+                            BackgroundTransparency = 1,
+                            Text = waterText,
+                            TextColor3 = waterColor,
+                            TextScaled = true,
+                            Font = waterFont,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            LayoutOrder = 3
+                        })
+                    end)(),
                     
-                    -- Water Status/Cooldown (if can't water)
-                    WaterStatus = not canWater and e("TextLabel", {
+                    -- Water Cooldown/Block Status (if can't water)
+                    WaterCooldownStatus = not canWater and waterCooldownRemaining > 0 and e("TextLabel", {
                         BackgroundTransparency = 1,
-                        Text = waterCooldownRemaining > 0 and "⏳ Water in: " .. waterCooldownText or "✅ " .. waterBlockReason,
-                        TextColor3 = waterCooldownRemaining > 0 and Color3.fromRGB(255, 150, 150) or Color3.fromRGB(150, 255, 150),
+                        Text = "⏳ Water in: " .. waterCooldownText,
+                        TextColor3 = Color3.fromRGB(255, 150, 150),
                         TextScaled = true,
                         Font = Enum.Font.SourceSansBold,
                         TextXAlignment = Enum.TextXAlignment.Left,
                         LayoutOrder = 4
                     }) or nil,
                     
-                    -- Next Crop Timer (if applicable)
-                    NextCropTimer = showNextReadyCountdown and nextCropTime ~= "" and e("TextLabel", {
-                        BackgroundTransparency = 1,
-                        Text = nextCropTime == "Ready now!" and "⚡ Ready now!" or "⏰ Next in: " .. nextCropTime,
-                        TextColor3 = nextCropTime == "Ready now!" and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 200, 100),
-                        TextScaled = true,
-                        Font = nextCropTime == "Ready now!" and Enum.Font.SourceSansBold or Enum.Font.SourceSans,
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                        LayoutOrder = 5
-                    }) or nil,
                     
-                    -- Production Rate (if producing)
+                    -- Production Rate (show potential if not watered, actual if producing)
                     ProductionRate = productionRate > 0 and activePlants > 0 and e("TextLabel", {
                         BackgroundTransparency = 1,
                         Text = (function()
-                            local baseTotal = activePlants * baseProductionPerHour
-                            local hasMultipliers = (weatherEffects.growthMultiplier and weatherEffects.growthMultiplier ~= 1.0) or onlineBonus
-                            
-                            if hasMultipliers then
-                                return "📈 " .. activePlants .. " plants × " .. baseProductionPerHour .. "/h → " .. productionRate .. "/h"
+                            if state == "planted" or state == "growing" then
+                                -- Not watered yet, show potential
+                                return "📈 Potential: " .. productionRate .. " " .. plantName .. "/hour (when watered)"
+                            elseif state == "watered" or state == "ready" then
+                                -- Actually producing
+                                return "📈 Production: " .. productionRate .. " " .. plantName .. "/hour"
                             else
-                                return "📈 " .. activePlants .. " plants × " .. baseProductionPerHour .. "/h = " .. productionRate .. "/h"
+                                return ""
                             end
                         end)(),
-                        TextColor3 = Color3.fromRGB(150, 255, 150),
+                        TextColor3 = (state == "watered" or state == "ready") and Color3.fromRGB(150, 255, 150) or Color3.fromRGB(200, 200, 200),
                         TextScaled = true,
-                        Font = Enum.Font.SourceSans,
+                        Font = Enum.Font.SourceSansBold,
                         TextXAlignment = Enum.TextXAlignment.Left,
                         LayoutOrder = 6
                     }) or nil
                 })
             }) or nil,
             
-            -- Active Boosts Section (if there are boosts)
-            BoostsSection = #activeBoosts > 0 and e("Frame", {
+            -- Active Boosts Section (if there are boosts and not dead)
+            BoostsSection = #activeBoosts > 0 and state ~= "dead" and e("Frame", {
                 Size = UDim2.new(1, 0, 0, 40 + math.ceil(#activeBoosts / 2) * 25),
                 BackgroundColor3 = Color3.fromRGB(50, 45, 55),
                 BackgroundTransparency = 0.3,
@@ -739,7 +875,7 @@ local function PlotUI(props)
                     Size = UDim2.new(1, -20, 1, -20),
                     Position = UDim2.new(0, 10, 0, 10),
                     BackgroundTransparency = 1,
-                    Text = "🌱 Next ready: " .. nextCropTime .. " (+" .. (maxHarvests - harvestCount) .. " plants growing)",
+                    Text = "🌱 Next " .. activePlants .. " ready in " .. nextCropTime,
                     TextColor3 = Color3.fromRGB(150, 255, 150),
                     TextScaled = true,
                     Font = Enum.Font.SourceSansBold,
@@ -920,11 +1056,27 @@ local function PlotUI(props)
                     })
                 }) or nil,
                 
-                -- Water Button
-                WaterButton = (state == "planted" or state == "growing") and e("TextButton", {
+                -- Water Button (for initial watering or maintenance watering)
+                WaterButton = ((state == "planted" or state == "growing") or isMaintenanceWateringNeeded) and e("TextButton", {
                     Size = UDim2.new(1, 0, 0, 45),
                     BackgroundColor3 = canWater and Color3.fromRGB(100, 150, 255) or Color3.fromRGB(80, 80, 80),
-                    Text = canWater and "💧 Water Crops" or "💧 " .. (waterCooldownRemaining > 0 and "On Cooldown" or "Fully Watered"),
+                    Text = (function()
+                        if canWater then
+                            if isMaintenanceWateringNeeded then
+                                return "🚿 Maintenance Water"
+                            else
+                                return "💧 Water Crops"
+                            end
+                        elseif waterCooldownRemaining > 0 then
+                            if isMaintenanceWateringNeeded then
+                                return "🚿 Maintenance Water (" .. waterCooldownText .. ")"
+                            else
+                                return "💧 Water Crops (" .. waterCooldownText .. ")"
+                            end
+                        else
+                            return "💧 No Watering Needed"
+                        end
+                    end)(),
                     TextColor3 = canWater and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 160),
                     TextScaled = true,
                     Font = Enum.Font.SourceSansBold,
@@ -938,8 +1090,8 @@ local function PlotUI(props)
                     })
                 }) or nil,
                 
-                -- Harvest Button
-                HarvestButton = state == "ready" and e("TextButton", {
+                -- Harvest Button (only show when there are crops to harvest)
+                HarvestButton = (state == "ready" and accumulatedCrops > 0) and e("TextButton", {
                     Size = UDim2.new(1, 0, 0, 45),
                     BackgroundColor3 = Color3.fromRGB(255, 215, 0),
                     Text = "🎁 Harvest " .. accumulatedCrops .. " " .. plantName,
@@ -1040,7 +1192,8 @@ local function PlotUI(props)
                 }) or nil
             })
         })
-    })
+    }) -- Close PlotPanel Frame
+    }) -- Close Modal children
 end
 
 return PlotUI

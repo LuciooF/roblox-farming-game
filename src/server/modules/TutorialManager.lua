@@ -18,73 +18,83 @@ local TUTORIAL_STEPS = {
         id = "welcome",
         title = "🌱 Welcome to the Farm!",
         description = "Welcome to your new farming adventure! Let's learn the basics.",
-        instruction = "Click 'Next' to continue or 'Skip' to skip the tutorial (you'll miss rewards!)",
-        reward = {money = 50},
-        action = "continue"
+        instruction = "Click 'Start Tutorial' to begin or 'Skip' to skip the tutorial (you'll miss rewards!)",
+        reward = {money = 25},
+        action = "continue",
+        arrowTarget = nil -- No arrow for welcome screen
     },
     {
-        id = "buy_crops",
-        title = "🛒 Buy Your First Crops", 
-        description = "You need crops to start farming! Any crops will work to get started.",
-        instruction = "Click the 🛒 Shop button on the left, then buy any crops (like wheat or carrot)",
+        id = "first_plot",
+        title = "🏡 Your First Plot",
+        description = "You start with no plots! Let's get your first plot for FREE.",
+        instruction = "Follow the yellow trail to the FREE plot and press E to claim it!",
         reward = {money = 25},
-        action = "buy_crop"
+        action = "buy_plot",
+        arrowTarget = {type = "plot", plotId = nil} -- Points to closest unowned plot
     },
     {
         id = "plant_seed",
-        title = "🌱 Plant Your Crop",
-        description = "Great! Now you have crops. Time to plant your first crop.",
-        instruction = "Walk to any brown farm plot and press E when the 'Plant Seed' prompt appears",
-        reward = {money = 50},
-        action = "plant_seed"
+        title = "🌱 Plant Your First Crop",
+        description = "Perfect! You own a plot. Now plant one of your starter crops.",
+        instruction = "Walk to your brown plot and press E to plant a crop",
+        reward = {money = 30},
+        action = "plant_seed",
+        arrowTarget = {type = "plot", plotId = 1} -- Points to first owned plot
     },
     {
         id = "water_plant",
         title = "💧 Water Your Plant",
         description = "Excellent! Your seed is planted. Now it needs water to grow.",
-        instruction = "Press R when the 'Water Plant' prompt appears",
-        reward = {money = 50},
-        action = "water_plant"
-    },
-    {
-        id = "wait_growth",
-        title = "⏰ Wait for Growth",
-        description = "Nice watering! Your plant is now growing. Wheat only takes 15 seconds.",
-        instruction = "Wait for your plant to sparkle with particles - then it's ready!",
-        reward = {money = 25},
-        action = "plant_ready"
+        instruction = "Open the Plot UI (press E on the plot) and click Water Crops",
+        reward = {money = 30},
+        action = "water_plant",
+        arrowTarget = {type = "plot", plotId = 1} -- Points to planted plot
     },
     {
         id = "harvest_crop",
         title = "🌾 Harvest Your Crop",
-        description = "Your plant is ready! Those sparkles mean it's time to harvest.",
-        instruction = "Press F when the 'Harvest Crop' prompt appears",
-        reward = {money = 100},
-        action = "harvest_crop"
+        description = "When your plant sparkles with particles, it's ready to harvest!",
+        instruction = "Wait for your crop to grow and harvest it!",
+        reward = {money = 40},
+        action = "harvest_crop",
+        arrowTarget = {type = "plot", plotId = 1} -- Points to ready plot
     },
     {
         id = "sell_crops",
         title = "💰 Sell Your Crops",
-        description = "Fantastic! You harvested your first crop. Now let's sell it for money.",
-        instruction = "Click the 💰 'Sell All' button on the left side panel to sell your crops",
+        description = "Great harvest! Now let's turn those crops into money.",
+        instruction = "Click the inventory button (🎒) then click 'Sell All'",
+        reward = {money = 50},
+        action = "sell_crops",
+        arrowTarget = nil -- No arrow, just shiny effect
+    },
+    {
+        id = "buy_corn",
+        title = "🌽 The Corn Challenge",
+        description = "Now for the real test! Corn costs $120 but sells for much more.",
+        instruction = "Farm and sell crops until you can buy corn from the shop!",
         reward = {money = 100},
-        action = "sell_crops"
+        action = "buy_crop",
+        target = "corn",
+        arrowTarget = nil -- No arrow, just shiny effect
     },
     {
-        id = "seed_drops",
-        title = "🎁 Discover Seed Drops",
-        description = "Amazing! You've completed the basic farming loop. There are rare seeds that drop from the sky!",
-        instruction = "Check out the seed drop tube on the far left for rare seeds",
-        reward = {money = 200},
-        action = "visit_seed_drops"
+        id = "plant_corn",
+        title = "🌽 Plant Your Corn",
+        description = "Excellent work saving up! Corn takes longer to grow but it's worth it.",
+        instruction = "Plant your corn seed in an empty plot",
+        reward = {money = 50},
+        action = "plant_corn",
+        arrowTarget = {type = "plot", plotId = nil} -- Points to any empty plot
     },
     {
-        id = "complete",
-        title = "🎉 Tutorial Complete!",
-        description = "Congratulations! You're now a farming expert! Keep growing crops, buying rare seeds, and earning money to unlock rebirths!",
-        instruction = "Tutorial completed! You earned 600 coins total. Happy farming!",
-        reward = {money = 0},
-        action = "complete"
+        id = "first_rebirth",
+        title = "🔄 Get Your First Rebirth!",
+        description = "Time for the ultimate test! Rebirths unlock new content and multipliers.",
+        instruction = "Farm until you have $10,000, then click the Rebirth button!",
+        reward = {money = 500},
+        action = "perform_rebirth",
+        arrowTarget = nil -- No arrow, step 9 should clean up previous arrows
     }
 }
 
@@ -141,7 +151,8 @@ function TutorialManager.sendTutorialStep(player)
         local tutorialData = {
             step = currentStep,
             stepNumber = tutorialProgress.currentStep,
-            totalSteps = #TUTORIAL_STEPS
+            totalSteps = #TUTORIAL_STEPS,
+            arrowTarget = currentStep.arrowTarget
         }
         log.debug("Sending tutorial step", tutorialProgress.currentStep, "to", player.Name, ":", currentStep.title)
         remotes.tutorialRemote:FireClient(player, tutorialData)
@@ -164,10 +175,15 @@ function TutorialManager.progressTutorial(player, action, data)
         return
     end
     
+    log.warn("📚 Tutorial progress check - Step:", tutorialProgress.currentStep, "Action:", action, "Player:", player.Name)
+    
     -- Check if action matches expected action OR if sending "continue" to a step that allows it
     if currentStep.action ~= action and not (currentStep.action == "continue" and action == "continue") then
-        log.debug("Tutorial action mismatch: expected", currentStep.action, "got", action)
-        return
+        -- Special override for plant_corn
+        if not (currentStep.action == "plant_corn" and action == "plant_seed") then
+            log.debug("Tutorial action mismatch: expected", currentStep.action, "got", action)
+            return
+        end
     end
     
     -- Special checks for specific actions
@@ -178,6 +194,17 @@ function TutorialManager.progressTutorial(player, action, data)
             return
         end
         log.debug("Buy crop passed target check")
+    end
+    
+    -- Check for plant_corn action (when planting corn specifically)
+    if action == "plant_seed" and currentStep.action == "plant_corn" then
+        if not data or data.seedType ~= "corn" then
+            log.debug("Plant corn check failed - expected corn, got", data and data.seedType or "nil")
+            return
+        end
+        log.debug("Plant corn check passed")
+        -- Override the action to match the expected action
+        action = "plant_corn"
     end
     
     -- Mark current step as completed and give reward
@@ -196,11 +223,14 @@ function TutorialManager.progressTutorial(player, action, data)
     local nextStep = tutorialProgress.currentStep + 1
     PlayerDataManager.setTutorialStep(player, nextStep)
     
+    log.warn("📈 Tutorial advanced to step", nextStep, "for", player.Name)
+    
     -- Check if tutorial is complete
     if nextStep > #TUTORIAL_STEPS then
         TutorialManager.completeTutorial(player)
     else
         -- Send next step
+        log.warn("📨 Sending tutorial step", nextStep, "to", player.Name)
         TutorialManager.sendTutorialStep(player)
     end
     
@@ -247,7 +277,7 @@ function TutorialManager.skipTutorial(player)
         })
     end
     
-    NotificationManager.sendWarning(player, "⚠️ Tutorial skipped. You missed out on 600 coins in rewards!")
+    NotificationManager.sendWarning(player, "⚠️ Tutorial skipped. You missed out on 950 coins in rewards!")
     log.info("Player skipped tutorial:", player.Name)
 end
 
@@ -260,7 +290,7 @@ function TutorialManager.handleTutorialAction(player, actionType, data)
         TutorialManager.skipTutorial(player)
     elseif actionType == "reset" then
         -- Debug action to reset tutorial
-        print("🎯 Resetting tutorial for", player.Name)
+        log.info("🎯 Resetting tutorial for", player.Name)
         PlayerDataManager.resetTutorial(player)
         TutorialManager.initializePlayer(player)
     else
@@ -271,23 +301,37 @@ end
 -- Check if player should receive tutorial progress for game actions
 function TutorialManager.checkGameAction(player, action, data)
     local tutorialProgress = PlayerDataManager.getTutorialProgress(player)
-    if not tutorialProgress then return end
+    if not tutorialProgress then 
+        log.warn("No tutorial progress found for", player.Name, "when checking action:", action)
+        return 
+    end
     
     if tutorialProgress.completed then
+        log.debug("Tutorial already completed for", player.Name, "- ignoring action:", action)
         return
     end
     
     local currentStep = TUTORIAL_STEPS[tutorialProgress.currentStep]
     if not currentStep then
+        log.warn("Invalid tutorial step", tutorialProgress.currentStep, "for", player.Name)
         return
+    end
+    
+    -- Special case: Check if this is a plant_corn step and we're planting corn
+    if currentStep.action == "plant_corn" and action == "plant_seed" then
+        if data and data.seedType == "corn" then
+            log.warn("🌽 Special case: Planting corn detected for plant_corn step!")
+            TutorialManager.progressTutorial(player, action, data)
+            return
+        end
     end
     
     -- Only progress if the action matches the current step's expected action
     if currentStep.action == action then
-        log.debug("Tutorial action matches current step:", action, "for step", tutorialProgress.currentStep)
+        log.warn("✅ Tutorial action matches! Action:", action, "Step:", tutorialProgress.currentStep, "Player:", player.Name)
         TutorialManager.progressTutorial(player, action, data)
     else
-        log.debug("Tutorial action ignored:", action, "expected:", currentStep.action, "for step", tutorialProgress.currentStep)
+        log.warn("❌ Tutorial action mismatch. Got:", action, "Expected:", currentStep.action, "Step:", tutorialProgress.currentStep, "Player:", player.Name)
     end
 end
 

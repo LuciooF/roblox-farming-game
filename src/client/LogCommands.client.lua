@@ -39,9 +39,4 @@ if game:GetService("RunService"):IsStudio() then
             player.Chatted:Connect(onChatted)
         end)
     end
-    log.info("📋 Log commands available:")
-    log.info("• /loglevel - show current level")
-    log.info("• /loglevel [ERROR|WARN|INFO|TRACE|DEBUG] - set level") 
-    log.info("• /logtest - test all log levels")
-    log.info("💡 Default level: WARN (shows WARN and ERROR only)")
 end

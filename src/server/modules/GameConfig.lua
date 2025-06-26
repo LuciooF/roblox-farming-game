@@ -26,7 +26,6 @@ for cropId, crop in pairs(CropRegistry.getAllCrops()) do
         seedCost = crop.seedCost,
         description = crop.description,
         harvestCooldown = crop.harvestCooldown,
-        deathTime = crop.deathTime
     }
 end
 
@@ -56,9 +55,9 @@ GameConfig.Settings = {
     waterCooldown = 30, -- 30 seconds between waterings for multi-water plants
     startingMoney = 100,
     startingCrops = {
-        wheat = 3,
-        tomato = 2,
-        carrot = 1,
+        wheat = 1,
+        tomato = 0,
+        carrot = 0,
         potato = 0,
         corn = 0
     }

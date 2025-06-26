@@ -22,6 +22,30 @@ local function BoostPanel(props)
     -- Calculate boosts
     local boosts = {}
     
+    -- Gamepass 2x Money Boost
+    -- Debug logging
+    print("BoostPanel - PlayerData gamepasses:", playerData.gamepasses)
+    if playerData.gamepasses then
+        print("BoostPanel - moneyMultiplier gamepass:", playerData.gamepasses.moneyMultiplier)
+    end
+    
+    if playerData.gamepasses and playerData.gamepasses.moneyMultiplier then
+        print("BoostPanel - Adding 2x Money Boost to boosts list")
+        table.insert(boosts, {
+            icon = "💰",
+            name = "2x Money Boost",
+            effect = "+100%",
+            effects = {
+                "Double money from all crop sales",
+                "Permanent gamepass benefit",
+                "Stacks with other boosts"
+            },
+            description = "Your 2x Money Boost gamepass doubles all money earned from selling crops!",
+            duration = "Permanent",
+            color = Color3.fromRGB(255, 215, 0) -- Gold color
+        })
+    end
+    
     -- Online Time Boost (multiple effects)
     table.insert(boosts, {
         icon = "⏰",
@@ -157,15 +181,12 @@ local function BoostPanel(props)
                 setHoveredBoost(nil)
             end,
             [React.Event.Activated] = function()
-                print("Boost clicked:", boost.name)
                 if boost.canInvite then
-                    print("Opening invite prompt")
                     -- Open Roblox invite friends prompt
                     local success, err = pcall(function()
                         SocialService:PromptGameInvite(player)
                     end)
                     if not success then
-                        print("Failed to open invite prompt:", err)
                     end
                 end
             end

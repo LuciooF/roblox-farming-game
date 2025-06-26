@@ -43,58 +43,11 @@ local function setupPlotComponents(plot)
         end)
     end
     
-    -- Create water hose next to plot
-    local waterHose = plot:FindFirstChild("WaterHose")
-    if not waterHose then
-        waterHose = Instance.new("Part")
-        waterHose.Name = "WaterHose"
-        waterHose.Size = Vector3.new(0.5, 1, 0.5) -- Small cylinder-like size
-        waterHose.Shape = Enum.PartType.Cylinder
-        waterHose.Material = Enum.Material.Metal
-        waterHose.BrickColor = BrickColor.new("Dark blue") -- Blue like water
-        waterHose.Anchored = true
-        waterHose.CanCollide = false
-        waterHose.Transparency = 1 -- Start hidden
-        
-        -- Position next to plot (further away)
-        local plotPosition = plot.Position
-        waterHose.Position = plotPosition + Vector3.new(4, 0.5, 0) -- Further offset to the side
-        waterHose.Rotation = Vector3.new(0, 0, 90) -- Rotate to stand upright
-        waterHose.Parent = plot
-        
-        -- Copy plot identification to water hose
-        local hoseePlotId = Instance.new("IntValue")
-        hoseePlotId.Name = "PlotId"
-        hoseePlotId.Value = plot:FindFirstChild("PlotId").Value
-        hoseePlotId.Parent = waterHose
-        
-        local hoseFarmId = Instance.new("IntValue") 
-        hoseFarmId.Name = "FarmId"
-        hoseFarmId.Value = plot:FindFirstChild("FarmId").Value
-        hoseFarmId.Parent = waterHose
-        
-        -- Add water prompt to hose
-        local waterPrompt = Instance.new("ProximityPrompt")
-        waterPrompt.Name = "WaterPrompt"
-        waterPrompt.ActionText = "Water Plant"
-        waterPrompt.KeyboardKeyCode = Enum.KeyCode.E
-        waterPrompt.RequiresLineOfSight = false
-        waterPrompt.MaxActivationDistance = 6
-        waterPrompt.Enabled = false -- Start disabled
-        waterPrompt.Parent = waterHose
-        
-        -- Watering is now handled through the Plot UI system
-        -- waterPrompt.Triggered:Connect(function(player)
-        --     local plotIdValue = waterHose:FindFirstChild("PlotId")
-        --     local farmIdValue = waterHose:FindFirstChild("FarmId")
-        --     if plotIdValue and farmIdValue then
-        --         local FarmManager = require(script.Parent.modules.FarmManager)
-        --         local globalPlotId = FarmManager.getGlobalPlotId(farmIdValue.Value, plotIdValue.Value)
-        --         
-        --         local FarmingSystem = require(script.Parent.FarmingSystemNew)
-        --         FarmingSystem.handleWaterInteraction(player, globalPlotId) -- Only watering
-        --     end
-        -- end)
+    -- Water hose removed - watering is now handled through the Plot UI system
+    -- Clean up any existing water hose
+    local existingHose = plot:FindFirstChild("WaterHose")
+    if existingHose then
+        existingHose:Destroy()
     end
     
     -- Store plot data if it doesn't exist
@@ -251,30 +204,77 @@ local function createFarmFromTemplate(farmId, position)
     local templateCFrame, templateSize = templateFarm:GetBoundingBox()
     local templateCenter = templateCFrame.Position
     
-    -- Calculate the lowest Y position in the template
-    local lowestY = math.huge
+    -- Find the FarmSpawn part to use as reference for ground level positioning
+    local farmSpawn = nil
+    for _, child in ipairs(newFarm:GetDescendants()) do
+        if child:IsA("SpawnLocation") and child.Name:match("FarmSpawn") then
+            farmSpawn = child
+            break
+        end
+    end
+    
+    if not farmSpawn then
+        log.warn("🏗️ FARM CREATION: No FarmSpawn found! Falling back to original method")
+        -- Fallback to old method if no spawn found
+        local lowestY = math.huge
+        for _, child in ipairs(newFarm:GetDescendants()) do
+            if child:IsA("BasePart") then
+                local partBottom = child.Position.Y - (child.Size.Y / 2)
+                if partBottom < lowestY then
+                    lowestY = partBottom
+                end
+            end
+        end
+        farmSpawn = {Position = Vector3.new(0, lowestY + 0.5, 0), Size = Vector3.new(1, 1, 1)} -- Mock object
+    end
+    
+    -- Use the spawn's bottom as our reference point for ground level
+    local spawnBottom = farmSpawn.Position.Y - (farmSpawn.Size.Y / 2)
+    log.warn("🏗️ FARM CREATION: Using FarmSpawn", farmSpawn.Name or "FALLBACK", "at position", farmSpawn.Position, "with bottom at Y:", spawnBottom)
+    
+    -- Find the actual ground level (top surface of baseplate)
+    local groundLevel = 0.5 -- Standard Roblox baseplate level
+    local baseplate = Workspace:FindFirstChild("Baseplate")
+    if baseplate then
+        -- Use the top surface of the baseplate as ground level
+        groundLevel = baseplate.Position.Y + (baseplate.Size.Y / 2)
+        log.warn("🏗️ FARM CREATION: Found baseplate - Position:", baseplate.Position, "Size:", baseplate.Size, "Top surface Y:", groundLevel)
+    else
+        log.warn("🏗️ FARM CREATION: No baseplate found, using default ground level:", groundLevel)
+    end
+    
+    -- Calculate ABSOLUTE positioning - put the FarmSpawn bottom at ground level
+    -- We want the spawn to sit exactly on the baseplate surface
+    local yOffsetNeeded = groundLevel - spawnBottom
+    
+    -- Calculate horizontal offset to move farm to target position
+    local horizontalOffset = Vector3.new(position.X - templateCenter.X, 0, position.Z - templateCenter.Z)
+    
+    -- Combine horizontal movement with vertical positioning
+    local absoluteOffset = Vector3.new(horizontalOffset.X, yOffsetNeeded, horizontalOffset.Z)
+    
+    log.warn("🏗️ FARM CREATION: Farm", farmId, "SPAWN positioning - TemplateCenter:", templateCenter, "SpawnBottom:", spawnBottom, "GroundLevel:", groundLevel, "YOffsetNeeded:", yOffsetNeeded, "AbsoluteOffset:", absoluteOffset)
+    
+    -- Move all parts in the farm using absolute positioning
+    local partsMoved = 0
     for _, child in ipairs(newFarm:GetDescendants()) do
         if child:IsA("BasePart") then
-            local partBottom = child.Position.Y - (child.Size.Y / 2)
-            if partBottom < lowestY then
-                lowestY = partBottom
+            local oldPos = child.Position
+            child.Position = child.Position + absoluteOffset
+            partsMoved = partsMoved + 1
+            if partsMoved <= 3 then -- Log first few parts
+                log.warn("🏗️ FARM CREATION: Moved part", child.Name, "from", oldPos, "to", child.Position)
             end
         end
     end
     
-    -- Calculate offset to ensure farm sits on ground level
-    local horizontalOffset = Vector3.new(position.X - templateCenter.X, 0, position.Z - templateCenter.Z)
-    local groundLevel = 0
+    log.warn("🏗️ FARM CREATION: Moved", partsMoved, "parts for farm", farmId, "with absolute offset:", absoluteOffset)
     
-    -- Calculate Y offset so the lowest part sits exactly at ground level
-    local yOffset = groundLevel - lowestY
-    local offset = Vector3.new(horizontalOffset.X, yOffset, horizontalOffset.Z)
-    
-    -- Move all parts in the farm
-    for _, child in ipairs(newFarm:GetDescendants()) do
-        if child:IsA("BasePart") then
-            child.Position = child.Position + offset
-        end
+    -- Verify the result by checking the spawn position
+    if farmSpawn and farmSpawn.Parent then
+        local newSpawnBottom = farmSpawn.Position.Y - (farmSpawn.Size.Y / 2)
+        log.warn("🏗️ FARM CREATION: VERIFICATION - FarmSpawn bottom now at Y:", newSpawnBottom, "(should be ~", groundLevel, ")")
+        log.warn("🏗️ FARM CREATION: ERROR ANALYSIS - Expected:", groundLevel, "Actual:", newSpawnBottom, "Difference:", newSpawnBottom - groundLevel, "studs")
     end
     
     -- Update plot references for PlotManager
@@ -470,12 +470,7 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         plant.Color = Color3.fromRGB(100, 200, 100)
     end
     
-    -- Handle dead plants specially
-    if variation == "dead" then
-        plant.Color = Color3.fromRGB(100, 50, 50) -- Dark reddish-brown for dead plants
-        plant.Material = Enum.Material.Concrete
-        plant.Transparency = 0.3
-    end
+    -- Dead plants no longer exist - variation "dead" removed
     
     plant.Anchored = true
     plant.CanCollide = false
@@ -489,7 +484,6 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         -- Position 3D mesh assets appropriately
         plant.Position = plotPosition + Vector3.new(0, plot.Size.Y/2 + 0.5, 0) -- Slightly above ground
         plant.Orientation = Vector3.new(0, math.random(0, 360), 0) -- Random Y rotation for variety
-        log.debug("Positioned 3D crop", seedType, "at", plant.Position)
     else
         -- Position other plants above the plot
         plant.Position = plotPosition + Vector3.new(0, plot.Size.Y/2 + plant.Size.Y/2, 0)
@@ -751,6 +745,25 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         actionPrompt.Enabled = true
         
     elseif state == "locked" then
+        -- Calculate the price for this specific plot first
+        local plotIdValue = plot:FindFirstChild("PlotId")
+        local globalPlotId = plotIdValue and plotIdValue.Value or 1
+        
+        -- Convert global plot ID to local plot index (1-10 for each farm)
+        local FarmManager = require(script.Parent.modules.FarmManager)
+        local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(globalPlotId)
+        
+        -- Use the same pricing formula as PlayerDataManager
+        local plotPrice = 0
+        if plotIndex == 1 then
+            plotPrice = 0 -- First plot is free
+        elseif plotIndex <= 10 then
+            local basePrice = 50
+            plotPrice = math.floor(basePrice * math.pow(1.3, plotIndex - 2))
+        else
+            local basePrice = 500
+            plotPrice = math.floor(basePrice * math.pow(1.5, plotIndex - 11))
+        end
         -- Restore visibility first (in case it was invisible)
         plot.Transparency = 0
         if plantPosition then
@@ -819,14 +832,7 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             priceGui.LightInfluence = 0 -- Always bright
             priceGui.Parent = lockIndicator
             
-            -- Calculate the price for this specific plot using local plot ID
-            local plotIdValue = plot:FindFirstChild("PlotId")
-            local localPlotId = plotIdValue and plotIdValue.Value or 1
-            
-            -- Progressive pricing based on local plot number (1-40)
-            local basePrice = 50
-            local priceMultiplier = math.pow(1.5, localPlotId - 10) -- Progressive pricing after plot 10
-            local plotPrice = math.max(50, math.floor(basePrice * priceMultiplier))
+            -- plotPrice is already calculated above
             
             -- Background frame for better visibility
             local background = Instance.new("Frame")
@@ -846,7 +852,7 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             priceLabel.Size = UDim2.new(1, -10, 1, -10)
             priceLabel.Position = UDim2.new(0, 5, 0, 5)
             priceLabel.BackgroundTransparency = 1
-            priceLabel.Text = "💰 $" .. plotPrice
+            priceLabel.Text = plotPrice == 0 and "💰 FREE" or "💰 $" .. plotPrice
             priceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             priceLabel.TextScaled = true
             priceLabel.Font = Enum.Font.SourceSansBold
@@ -856,13 +862,7 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         end
         
         -- Enable action prompt for locked plots to allow purchase
-        local plotIdValue = plot:FindFirstChild("PlotId")
-        local localPlotId = plotIdValue and plotIdValue.Value or 1
-        local basePrice = 50
-        local priceMultiplier = math.pow(1.5, localPlotId - 10)
-        local plotPrice = math.max(50, math.floor(basePrice * priceMultiplier))
-        
-        actionPrompt.ActionText = "Purchase Plot ($" .. plotPrice .. ")"
+        actionPrompt.ActionText = plotPrice == 0 and "Claim Free Plot" or "Purchase Plot ($" .. plotPrice .. ")"
         actionPrompt.Enabled = true
         
     elseif state == "rebirth_locked" then
@@ -962,15 +962,32 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         
     elseif state == "invisible" then
         -- Make plot completely invisible - future rebirth tiers
+        -- Hide the entire plot by making it non-existent visually
         plot.Transparency = 1
+        plot.CanCollide = false
+        plot.CanTouch = false
+        
         if plantPosition then
             plantPosition.Transparency = 1
+            plantPosition.CanCollide = false
+        end
+        
+        -- Hide all child parts recursively
+        for _, child in pairs(plot:GetChildren()) do
+            if child:IsA("BasePart") then
+                child.Transparency = 1
+                child.CanCollide = false
+                child.CanTouch = false
+            elseif child:IsA("SurfaceGui") or child:IsA("BillboardGui") then
+                child.Enabled = false
+            end
         end
         
         -- Hide border if it exists
         local border = plot:FindFirstChild("Border")
         if border then
             border.Transparency = 1
+            border.CanCollide = false
         end
         
         -- Remove any existing plant
@@ -993,52 +1010,22 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         -- Disable interaction completely
         actionPrompt.Enabled = false
         actionPrompt.ActionText = ""
+        actionPrompt.MaxActivationDistance = 0
         
-    elseif state == "dead" then
-        -- Show withered/dead plant
-        local plant = WorldBuilder.createPlant(plot, seedType, 1, "dead") -- Use special "dead" variation
-        
-        -- Change plot to dark/withered appearance
-        plot.BrickColor = BrickColor.new("Really black")
-        if plantPosition then
-            plantPosition.BrickColor = BrickColor.new("Really black")
-        end
-        
-        -- All plots use the same UI prompt
-        actionPrompt.ActionText = "Open Plot UI"
-        actionPrompt.Enabled = true
+    -- Dead state removed - plants no longer die
     end
     
-    -- Update water hose visibility based on plot state
-    WorldBuilder.updateWaterHoseVisibility(plot, state)
+    -- Water hose removed - watering is now handled through Plot UI
 end
 
--- Update water hose visibility based on plot state
+-- Water hose functionality removed - watering is now handled through the Plot UI
 function WorldBuilder.updateWaterHoseVisibility(plot, state)
-    local waterHose = plot:FindFirstChild("WaterHose")
-    if not waterHose then return end
-    
-    -- Show water hose only when plot has crops that need watering (not watered/growing)
-    if state == "planted" or state == "growing" then
-        -- Show water hose for crops that need watering
-        waterHose.Transparency = 0
-        local waterPrompt = waterHose:FindFirstChild("WaterPrompt")
-        if waterPrompt then
-            waterPrompt.Enabled = true
-        end
-    else
-        -- Hide water hose for empty, watered, ready, dead, locked, or invisible plots
-        waterHose.Transparency = 1
-        local waterPrompt = waterHose:FindFirstChild("WaterPrompt")
-        if waterPrompt then
-            waterPrompt.Enabled = false
-        end
-    end
+    -- Deprecated function - kept for compatibility
 end
 
 -- Build the entire farm world with individual player farm areas
 function WorldBuilder.buildFarm()
-    log.info("Building individual player farm areas...")
+    log.warn("🏗️ FARM SYSTEM: Building individual player farm areas - START")
     
     -- Get farm configuration from FarmManager
     local FarmManager = require(script.Parent.modules.FarmManager)
@@ -1074,7 +1061,7 @@ function WorldBuilder.buildFarm()
             -- Use template system
             local FarmManager = require(script.Parent.modules.FarmManager)
             local farmPosition = FarmManager.getFarmPosition(farmId)
-            log.info("Creating template farm", farmId, "at position", farmPosition)
+            log.warn("🏗️ FARM SYSTEM: Creating template farm", farmId, "at position", farmPosition)
             farmFolder = createFarmFromTemplate(farmId, farmPosition)
             if farmFolder then
                 farmFolder.Parent = farmsContainer
@@ -1100,8 +1087,52 @@ function WorldBuilder.buildFarm()
         end
     end
     
-    log.info("Built", config.totalFarms, "individual farms with", totalPlotsCreated, "total plots!")
+    log.warn("🏗️ FARM SYSTEM: Built", config.totalFarms, "individual farms with", totalPlotsCreated, "total plots! - COMPLETE")
     return farmsContainer
+end
+
+-- Debug function to recreate farms
+function WorldBuilder.recreateFarms()
+    log.warn("🔧 DEBUG: Recreating all farms...")
+    return WorldBuilder.buildFarm()
+end
+
+-- Simple function to fix farm spawn positions to match baseplate level
+function WorldBuilder.fixFarmSpawnPositions()
+    -- Find baseplate level
+    local groundLevel = 0.5 -- Default
+    local baseplate = Workspace:FindFirstChild("Baseplate")
+    if baseplate then
+        groundLevel = baseplate.Position.Y + (baseplate.Size.Y / 2)
+        log.warn("🔧 FIX SPAWNS: Found baseplate at Y level:", groundLevel)
+    else
+        log.warn("🔧 FIX SPAWNS: No baseplate found, using default:", groundLevel)
+    end
+    
+    -- Find all farms and fix their spawn positions
+    local playerFarms = Workspace:FindFirstChild("PlayerFarms")
+    if not playerFarms then
+        log.warn("🔧 FIX SPAWNS: No PlayerFarms folder found")
+        return
+    end
+    
+    local fixed = 0
+    for _, farmFolder in pairs(playerFarms:GetChildren()) do
+        if farmFolder.Name:match("^Farm_") then
+            -- Find the farm spawn
+            for _, child in pairs(farmFolder:GetChildren()) do
+                if child.Name:match("^FarmSpawn_") and child:IsA("SpawnLocation") then
+                    local oldY = child.Position.Y
+                    local newY = groundLevel + 0.5 -- Spawn slightly above ground
+                    child.Position = Vector3.new(child.Position.X, newY, child.Position.Z)
+                    log.warn("🔧 FIX SPAWNS: Fixed", child.Name, "from Y:", oldY, "to Y:", newY)
+                    fixed = fixed + 1
+                end
+            end
+        end
+    end
+    
+    log.warn("🔧 FIX SPAWNS: Fixed", fixed, "farm spawn positions")
 end
 
 -- Create an individual farm area for a player
@@ -1486,10 +1517,8 @@ function WorldBuilder.createPlayerCharacterDisplay(characterDisplay, player, far
                         relativePos = originalPositions[obj] or Vector3.new(0, 0, 0),
                         relativeCFrame = originalRotations[obj] or CFrame.new()
                     }
-                    log.debug("Stored part", obj.Name, "with relative position", characterParts[obj].relativePos)
                 elseif obj:IsA("Accessory") then
                     table.insert(accessories, obj)
-                    log.debug("Found accessory", obj.Name)
                 end
             end
             
@@ -1515,7 +1544,6 @@ function WorldBuilder.createPlayerCharacterDisplay(characterDisplay, player, far
                     local scaledRelativePos = data.relativePos * scale
                     part.CFrame = humanoidRootPart.CFrame * CFrame.new(scaledRelativePos) * data.relativeCFrame
                     
-                    log.debug("Repositioned", part.Name, "for", player.Name, "to", part.Position)
                 end
             end
             
@@ -1539,7 +1567,6 @@ function WorldBuilder.createPlayerCharacterDisplay(characterDisplay, player, far
                                     -- Position accessory relative to character attachment
                                     local offset = accessoryAttachment.CFrame
                                     handle.CFrame = characterAttachment.Parent.CFrame * characterAttachment.CFrame * offset:Inverse()
-                                    log.debug("Positioned accessory", accessory.Name, "relative to", part.Name)
                                     break
                                 end
                             end

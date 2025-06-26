@@ -1,6 +1,8 @@
 -- React-based 3D Farming Game Client
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
 
 -- Initialize client-side logging with fallback
 local ClientLogger
@@ -24,12 +26,17 @@ end
 
 local log = ClientLogger.getModuleLogger("ClientMain")
 
+-- Ensure mobile controls are enabled
+if UserInputService.TouchEnabled then
+    GuiService.TouchControlsEnabled = true
+    log.info("Mobile device detected - ensuring touch controls are enabled")
+end
+
 -- Wait for React packages and components to be available
 local packagesExist = ReplicatedStorage:WaitForChild("Packages", 5)
 local reactExists = packagesExist and packagesExist:FindFirstChild("react")
 local componentsExist = script:FindFirstChild("components")
 
-log.info("React 3D Farming Game Client Starting...")
 log.debug("packagesExist =", packagesExist ~= nil, "reactExists =", reactExists ~= nil, "componentsExist =", componentsExist ~= nil)
 
 if not reactExists or not componentsExist then
@@ -50,6 +57,7 @@ local PlotInteractionManager = require(script.PlotInteractionManager)
 local PlotProximityHandler = require(script.PlotProximityHandler)
 local FlyController = require(script.FlyController)
 local CharacterFaceTracker = require(script.CharacterFaceTracker)
+local TutorialArrowManager = require(script.TutorialArrowManager)
 
 -- Wait for farming remotes
 log.debug("Waiting for FarmingRemotes folder...")
@@ -77,10 +85,13 @@ local weatherRemote = farmingRemotes:WaitForChild("WeatherData")
 local cutPlantRemote = farmingRemotes:WaitForChild("CutPlant")
 local automationRemote = farmingRemotes:WaitForChild("Automation")
 local openPlotUIRemote = farmingRemotes:WaitForChild("OpenPlotUI")
+local gamepassPurchaseRemote = farmingRemotes:WaitForChild("GamepassPurchase")
+local gamepassDataRemote = farmingRemotes:WaitForChild("GamepassData")
 
--- Player data state
+-- Player data state (starts as loading)
 local playerData = {
-    money = 100,
+    loading = true,  -- Indicates data is still loading
+    money = 0,
     rebirths = 0,
     inventory = {
         seeds = {},
@@ -94,6 +105,9 @@ local tutorialData = nil
 
 -- Weather data state
 local weatherData = {}
+
+-- Gamepass data state (prices from server)
+local gamepassData = {}
 
 -- Remove loading state - no more loading screen
 
@@ -115,7 +129,9 @@ local remotes = {
     weatherRemote = weatherRemote,
     cutPlant = cutPlantRemote,
     automation = automationRemote,
-    farmAction = farmingRemotes:WaitForChild("PlotAction") -- New universal plot action remote
+    gamepassPurchase = gamepassPurchaseRemote,
+    gamepassData = gamepassDataRemote,
+    farmAction = farmingRemotes:WaitForChild("FarmAction") -- Farm action remote for PlotUI
 }
 
 -- Handler for plot UI interactions
@@ -124,12 +140,12 @@ local plotUIUpdater = nil -- Function to update the currently open Plot UI
 
 -- Update UI function - always render main UI
 local function updateUI()
-    log.info("✅ Rendering main UI")
     root:render(React.createElement(MainUI, {
         playerData = playerData,
         remotes = remotes,
         tutorialData = tutorialData,
         weatherData = weatherData,
+        gamepassData = gamepassData,
         onPlotUIHandler = function(handler)
             plotUIHandler = handler
             -- Update PlotInteractionManager with the handler
@@ -147,7 +163,10 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
     if newPlayerData.money then
         log.trace("Player data synced - Money:", newPlayerData.money)
     end
+    
+    -- Mark loading as complete and update data
     playerData = newPlayerData
+    playerData.loading = false
     
     -- Update PlotInteractionManager with current inventory data
     PlotInteractionManager.updatePlayerData(playerData)
@@ -163,6 +182,10 @@ tutorialRemote.OnClientEvent:Connect(function(newTutorialData)
         log.info("Tutorial step:", newTutorialData.stepNumber or "?")
     end
     tutorialData = newTutorialData
+    
+    -- Update tutorial arrows
+    TutorialArrowManager.updateForTutorialStep(newTutorialData)
+    
     updateUI()
 end)
 
@@ -170,6 +193,13 @@ end)
 weatherRemote.OnClientEvent:Connect(function(newWeatherData)
     log.trace("Weather data received:", newWeatherData.current and newWeatherData.current.name or "unknown")
     weatherData = newWeatherData
+    updateUI()
+end)
+
+-- Handle gamepass data updates
+gamepassDataRemote.OnClientEvent:Connect(function(newGamepassData)
+    log.debug("Gamepass data received with", newGamepassData and #newGamepassData or 0, "gamepasses")
+    gamepassData = newGamepassData
     updateUI()
 end)
 
@@ -181,7 +211,6 @@ end
 
 -- Handle plot updates from server
 plotUpdateRemote.OnClientEvent:Connect(function(plotData)
-    log.info("📊 Received plot update for plot", plotData.plotId, "state:", plotData.state, "updater exists:", plotUIUpdater ~= nil)
     
     PlotCountdownManager.updatePlotData(plotData.plotId, plotData)
     
@@ -190,10 +219,8 @@ plotUpdateRemote.OnClientEvent:Connect(function(plotData)
     
     -- Update the currently open Plot UI if it's for this plot
     if plotUIUpdater then
-        log.info("📡 Calling plotUIUpdater with data:", plotData.plotId, plotData.state, "plants:", plotData.maxHarvests and plotData.harvestCount and (plotData.maxHarvests - plotData.harvestCount) or "unknown")
         plotUIUpdater(plotData)
     else
-        log.warn("❌ No plotUIUpdater available for plot update")
     end
     
     -- Check if we should trigger rain effect
@@ -209,14 +236,11 @@ end)
 
 -- Handle plot UI open requests from server
 openPlotUIRemote.OnClientEvent:Connect(function(plotData)
-    log.info("📋 Received plot UI open request for plot", plotData.plotId)
     
     -- Call the plot UI handler if it exists
     if plotUIHandler then
-        log.info("✨ Opening Plot UI for plot", plotData.plotId)
         plotUIHandler(plotData)
     else
-        log.warn("❌ No plot UI handler available!")
     end
 end)
 
@@ -228,17 +252,21 @@ PlotInteractionManager.updatePlayerData(playerData)
 FlyController.initialize()
 CharacterFaceTracker.initialize()
 
-log.info("🌾 Client systems initialized")
 
 -- Render initial UI
 updateUI()
+
+-- Request gamepass data from server
+spawn(function()
+    wait(1) -- Wait a bit for remotes to be fully set up
+    gamepassDataRemote:FireServer()
+end)
 
 -- Initialize character-dependent features in background (non-blocking)
 spawn(function()
     local character = player.Character or player.CharacterAdded:Wait()
     local hrp = character:WaitForChild("HumanoidRootPart", 10)
-    log.info("Character ready for advanced features")
-end)
+    end)
 
 -- Start cleanup timer for pending interactions
 spawn(function()
@@ -249,7 +277,6 @@ spawn(function()
     end
 end)
 
-log.info("3D Farming Game Client Ready!")
 
 -- Development hot reload support (optional)
 if game:GetService("RunService"):IsStudio() then

@@ -3,10 +3,14 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
+local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 
 local function TopStats(props)
     local playerData = props.playerData or {}
     local onRebirthClick = props.onRebirthClick or function() end
+    
+    -- Check if data is loading
+    local isLoading = playerData.loading
     
     -- Calculate rebirth requirements
     local moneyRequired = math.floor(1000 * (2.5 ^ (playerData.rebirths or 0)))
@@ -30,7 +34,7 @@ local function TopStats(props)
             Name = "MoneyButton",
             Size = UDim2.new(0, 100 * scale, 0, 35 * scale),
             Position = UDim2.new(0, 0, 0, 0),
-            Text = "💰 $" .. (playerData.money or 0),
+            Text = isLoading and "💰 Loading..." or "💰 $" .. NumberFormatter.format(playerData.money or 0),
             TextColor3 = Color3.fromRGB(85, 255, 85),
             TextScaled = true,
             BackgroundColor3 = Color3.fromRGB(40, 40, 40),
@@ -60,7 +64,7 @@ local function TopStats(props)
             Name = "RebirthButton",
             Size = UDim2.new(0, 110 * scale, 0, 35 * scale),
             Position = UDim2.new(0, 110 * scale, 0, 0),
-            Text = "⭐ " .. (playerData.rebirths or 0),
+            Text = isLoading and "⭐ ..." or "⭐ " .. (playerData.rebirths or 0),
             TextColor3 = canRebirth and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200),
             TextScaled = true,
             BackgroundColor3 = canRebirth and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(60, 60, 60),
@@ -123,7 +127,7 @@ local function TopStats(props)
                 Name = "TooltipLabel",
                 Size = UDim2.new(1, -10, 1, -5),
                 Position = UDim2.new(0, 5, 0, 2),
-                Text = "Current: " .. multiplier .. "x multiplier\\nNext rebirth: $" .. moneyRequired,
+                Text = isLoading and "Loading..." or "Current: " .. multiplier .. "x multiplier\nNext rebirth: $" .. NumberFormatter.format(moneyRequired),
                 TextColor3 = Color3.fromRGB(255, 255, 255),
                 TextScaled = true,
                 BackgroundTransparency = 1,

@@ -31,7 +31,6 @@ local function TutorialResetButton(props)
         Font = Enum.Font.SourceSans,
         ZIndex = 100, -- High z-index to be on top
         [React.Event.Activated] = function()
-            print("🎯 Debug: Resetting tutorial")
             if remotes and remotes.tutorialActionRemote then
                 remotes.tutorialActionRemote:FireServer("reset")
             end

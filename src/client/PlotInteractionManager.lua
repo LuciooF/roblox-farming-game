@@ -41,7 +41,6 @@ function PlotInteractionManager.initialize(farmingRemotes)
         end
     end)
     
-    log.info("Plot interaction prediction system initialized")
 end
 
 -- Update current player data for inventory checks
@@ -52,7 +51,6 @@ end
 -- Set the plot UI handler function
 function PlotInteractionManager.setPlotUIHandler(handler)
     plotUIHandler = handler
-    log.info("Plot UI handler set")
 end
 
 -- Predict contextual action based on plot state

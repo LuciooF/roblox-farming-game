@@ -2,6 +2,7 @@
 -- Displays shop seed with info button and buy button
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
+local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local e = React.createElement
 
 local function ShopSeedCard(props)
@@ -85,7 +86,7 @@ local function ShopSeedCard(props)
             Name = "Price",
             Size = UDim2.new(1, -6, 0, 18 * scale),
             Position = UDim2.new(0, 3, 0, 55 * scale),
-            Text = "$" .. price,
+            Text = "$" .. NumberFormatter.format(price),
             TextColor3 = canAfford and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 150),
             TextScaled = true,
             BackgroundTransparency = 1,
@@ -119,7 +120,7 @@ local function ShopSeedCard(props)
             Name = "BuyButton",
             Size = UDim2.new(0, 45 * scale, 0, 20 * scale),
             Position = UDim2.new(1, -50 * scale, 0, 75 * scale),
-            Text = "💰 $" .. price,
+            Text = "💰 $" .. NumberFormatter.format(price),
             TextColor3 = canAfford and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(255, 150, 150),
             TextScaled = true,
             BackgroundColor3 = canAfford and Color3.fromRGB(40, 120, 40) or Color3.fromRGB(60, 30, 30),

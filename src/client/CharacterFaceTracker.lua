@@ -20,7 +20,6 @@ local player = Players.LocalPlayer
 
 -- Initialize the face tracking system
 function CharacterFaceTracker.initialize()
-    log.info("Character face tracking system initialized - client-side tracking for personalized experience")
     
     -- Set up server communication
     CharacterFaceTracker.setupServerCommunication()
@@ -38,7 +37,6 @@ function CharacterFaceTracker.setupServerCommunication()
     -- Listen for character creation events from server
     characterTrackingRemote.OnClientEvent:Connect(function(eventType, data)
         if eventType == "characterCreated" then
-            log.info("Server notified about new character:", data.playerName, "on farm", data.farmId)
             -- Client tracking will automatically pick up the new character
         end
     end)
@@ -195,7 +193,6 @@ end
 -- Cleanup when leaving
 function CharacterFaceTracker.cleanup()
     CharacterFaceTracker.stopTracking()
-    log.info("Character face tracker cleaned up")
 end
 
 return CharacterFaceTracker

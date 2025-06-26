@@ -4,6 +4,7 @@
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local e = React.createElement
 
 local function InventorySlot(props)
@@ -134,7 +135,7 @@ local function InventorySlot(props)
             Name = "QuantityBadge",
             Size = UDim2.new(0.5, 0, 0.3, 0),
             Position = UDim2.new(0.55, 0, 0.75, 0),
-            Text = tostring(item.quantity),
+            Text = NumberFormatter.format(item.quantity),
             TextColor3 = Color3.fromRGB(255, 255, 255),
             TextScaled = true,
             BackgroundColor3 = Color3.fromRGB(40, 40, 40),

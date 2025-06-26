@@ -139,6 +139,22 @@ function RemoteManager.initialize()
     debugRemote.Name = "DebugActions"
     debugRemote.Parent = remoteFolder
     
+    local gamepassPurchaseRemote = Instance.new("RemoteEvent")
+    gamepassPurchaseRemote.Name = "GamepassPurchase"
+    gamepassPurchaseRemote.Parent = remoteFolder
+    
+    local gamepassDataRemote = Instance.new("RemoteEvent")
+    gamepassDataRemote.Name = "GamepassData"
+    gamepassDataRemote.Parent = remoteFolder
+    
+    local farmActionRemote = Instance.new("RemoteEvent")
+    farmActionRemote.Name = "FarmAction"
+    farmActionRemote.Parent = remoteFolder
+    
+    local getFarmIdRemote = Instance.new("RemoteEvent")
+    getFarmIdRemote.Name = "GetFarmId"
+    getFarmIdRemote.Parent = remoteFolder
+    
     -- Store references
     remotes.plant = plantRemote
     remotes.water = waterRemote
@@ -165,6 +181,10 @@ function RemoteManager.initialize()
     remotes.cutPlant = cutPlantRemote
     remotes.weather = weatherRemote
     remotes.debug = debugRemote
+    remotes.gamepassPurchase = gamepassPurchaseRemote
+    remotes.gamepassData = gamepassDataRemote
+    remotes.farmAction = farmActionRemote
+    remotes.getFarmId = getFarmIdRemote
     
     -- Also create direct references for client access
     remotes.SyncPlayerData = syncRemote
@@ -192,6 +212,10 @@ function RemoteManager.initialize()
     cutPlantRemote.OnServerEvent:Connect(RemoteManager.onCutPlant)
     weatherRemote.OnServerEvent:Connect(RemoteManager.onWeatherRequest)
     debugRemote.OnServerEvent:Connect(RemoteManager.onDebugAction)
+    gamepassPurchaseRemote.OnServerEvent:Connect(RemoteManager.onGamepassPurchase)
+    gamepassDataRemote.OnServerEvent:Connect(RemoteManager.onGamepassDataRequest)
+    farmActionRemote.OnServerEvent:Connect(RemoteManager.onFarmAction)
+    getFarmIdRemote.OnServerEvent:Connect(RemoteManager.onGetFarmId)
     
     log.info("Remote events ready!")
 end
@@ -224,7 +248,8 @@ function RemoteManager.syncPlayerData(player)
     end
     
     -- Add gamepass statuses to synced data
-    playerData.gamepasses = GamepassManager.getGamepassStatuses(player)
+    local GamepassService = require(script.Parent.GamepassService)
+    playerData.gamepasses = GamepassService.getGamepassDataForClient(player)
     
     log.debug("Syncing player data to", player.Name, "- Money:", playerData.money)
     remotes.sync:FireClient(player, playerData)
@@ -281,14 +306,8 @@ function RemoteManager.onPlotAction(player, action, plotId, extraData, quantity)
             RemoteManager.syncPlayerData(player)
         end
     elseif action == "clear" then
-        -- Clear dead plants
-        local plotState = PlotManager.getPlotState(plotId)
-        if plotState and plotState.state == "dead" then
-            success, message = PlotManager.clearDeadPlant(player, plotId)
-        else
-            -- Cut living plants
-            success, message = PlotManager.cutPlant(player, plotId)
-        end
+        -- Cut plants (no more dead plants)
+        success, message = PlotManager.cutPlant(player, plotId)
         if success then
             RemoteManager.syncPlayerData(player)
         end
@@ -359,7 +378,12 @@ function RemoteManager.onSellCrop(player, cropType, amount)
         
         local basePrice = GameConfig.Plants[baseCropType] and GameConfig.Plants[baseCropType].basePrice or 10
         local rebirthMultiplier = GameConfig.Rebirth.getCropMultiplier(playerData.rebirths)
-        local totalPrice = math.floor(basePrice * variationMultiplier * amount * rebirthMultiplier)
+        
+        -- Apply gamepass money multiplier
+        local GamepassService = require(script.Parent.GamepassService)
+        local gamepassMultiplier = GamepassService.getMoneyMultiplier(player)
+        
+        local totalPrice = math.floor(basePrice * variationMultiplier * amount * rebirthMultiplier * gamepassMultiplier)
         
         PlayerDataManager.removeFromInventory(player, "crops", cropType, amount)
         PlayerDataManager.addMoney(player, totalPrice)
@@ -374,10 +398,15 @@ function RemoteManager.onSellCrop(player, cropType, amount)
         TutorialManager.checkGameAction(player, "sell_crops")
         
         local message = "💰 Sold " .. amount .. " " .. cropType .. " (+$" .. totalPrice .. ")"
-        if playerData.rebirths > 0 then
-            message = message .. " (" .. rebirthMultiplier .. "x)"
+        local multiplierText = ""
+        if playerData.rebirths > 0 and gamepassMultiplier > 1 then
+            multiplierText = " (" .. rebirthMultiplier .. "x rebirth + " .. gamepassMultiplier .. "x gamepass)"
+        elseif playerData.rebirths > 0 then
+            multiplierText = " (" .. rebirthMultiplier .. "x rebirth)"
+        elseif gamepassMultiplier > 1 then
+            multiplierText = " (" .. gamepassMultiplier .. "x gamepass)"
         end
-        NotificationManager.sendMoney(player, message)
+        NotificationManager.sendMoney(player, message .. multiplierText)
     else
         NotificationManager.sendError(player, "❌ Not enough " .. cropType .. " to sell!")
     end
@@ -387,9 +416,28 @@ function RemoteManager.onPerformRebirth(player)
     local success, result = PlayerDataManager.performRebirth(player)
     if success then
         RemoteManager.syncPlayerData(player)
+        
+        -- Update all plots to reflect ownership changes
+        local FarmManager = require(script.Parent.FarmManager)
+        local farmId = FarmManager.getPlayerFarm(player.UserId)
+        if farmId then
+            for plotIndex = 1, 30 do -- Update all possible plots
+                local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
+                local plotState = PlotManager.getPlotState(globalPlotId)
+                if plotState then
+                    -- Force update to show new ownership status
+                    RemoteManager.sendPlotUpdate(globalPlotId, plotState)
+                end
+            end
+        end
+        
         -- Play special rebirth sound
         SoundManager.playRebirthSound()
         NotificationManager.sendRebirthNotification(player, result)
+        
+        -- Check tutorial progress for first rebirth
+        local TutorialManager = require(script.Parent.TutorialManager)
+        TutorialManager.checkGameAction(player, "perform_rebirth")
     else
         local moneyRequired = GameConfig.Rebirth.getMoneyRequirement(PlayerDataManager.getPlayerData(player).rebirths)
         NotificationManager.sendError(player, "💰 Need $" .. moneyRequired .. " to rebirth!")
@@ -477,24 +525,55 @@ function RemoteManager.onBuySlot(player)
 end
 
 -- Buy plot handler
-function RemoteManager.onBuyPlot(player)
+function RemoteManager.onBuyPlot(player, plotId)
     local FarmManager = require(script.Parent.FarmManager)
-    local success, message = FarmManager.unlockPlot(player)
+    local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
+    
+    -- Check if player owns this farm
+    if not FarmManager.doesPlayerOwnFarm(player.UserId, farmId) then
+        NotificationManager.sendError(player, "❌ You can only buy plots on your own farm!")
+        return
+    end
+    
+    local success, message, purchasedPlotIndex = PlayerDataManager.purchasePlot(player, plotIndex)
     
     if success then
+        -- Initialize the newly purchased plot
+        PlotManager.initializePlot(plotId, player.UserId, player)
+        
         -- Send updated player data to client
         RemoteManager.syncPlayerData(player)
+        
+        -- Get the updated plot state and update visual
+        local plotState = PlotManager.getPlotState(plotId)
+        if plotState then
+            -- Update the visual state in the world
+            local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+            local plot = WorldBuilder.getPlotById(plotId)
+            if plot then
+                WorldBuilder.updatePlotState(plot, "empty", "", nil)
+            end
+            
+            -- Send plot update to all clients
+            RemoteManager.sendPlotUpdate(plotId, plotState)
+        end
+        
         NotificationManager.sendSuccess(player, "🔓 " .. message)
-        log.info("Player", player.Name, "purchased a new plot")
+        log.info("Player", player.Name, "purchased plot", plotIndex)
+        
+        -- Check tutorial progress
+        local TutorialManager = require(script.Parent.TutorialManager)
+        TutorialManager.checkGameAction(player, "buy_plot")
     else
         NotificationManager.sendError(player, "❌ " .. message)
-        log.debug("Player", player.Name, "failed to purchase plot:", message)
+        log.debug("Player", player.Name, "failed to purchase plot", plotIndex, ":", message)
     end
 end
 
--- Clear dead plant handler
+-- Clear dead plant handler (deprecated - no more dead plants)
 function RemoteManager.onClearDeadPlant(player, plotId)
-    local success, message = PlotManager.clearDeadPlant(player, plotId)
+    -- Redirect to cut plant instead
+    local success, message = PlotManager.cutPlant(player, plotId)
     if success then
         NotificationManager.sendSuccess(player, "🗑️ " .. message)
     else
@@ -537,14 +616,12 @@ function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
             -- Get timing data from GameConfig for the seed type
             local growthTime = 60 -- Default
             local waterTime = 30 -- Default
-            local deathTime = 120 -- Default
             
             if plotState.seedType and plotState.seedType ~= "" then
                 local plantConfig = GameConfig.Plants[plotState.seedType]
                 if plantConfig then
                     growthTime = plantConfig.growthTime or 60
                     waterTime = plantConfig.waterTime or 30
-                    deathTime = plantConfig.deathTime or 120
                 end
             end
             
@@ -553,17 +630,21 @@ function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
                 state = plotState.state,
                 seedType = plotState.seedType,
                 plantedAt = plotState.plantedAt,
-                lastWateredAt = plotState.lastWateredAt,
+                lastWateredAt = plotState.lastWateredTime or plotState.wateredTime or 0,
                 growthTime = growthTime,
                 waterTime = waterTime,
-                deathTime = deathTime,
                 variation = plotState.variation,
                 isOwner = true,
                 harvestCount = plotState.harvestCount or 0,
                 maxHarvests = plotState.maxHarvests or 0,
                 accumulatedCrops = plotState.accumulatedCrops or 0,
                 wateredCount = plotState.wateredCount or 0,
-                waterNeeded = plotState.waterNeeded or 0
+                waterNeeded = plotState.waterNeeded or 0,
+                
+                -- Maintenance watering data
+                needsMaintenanceWater = plotState.needsMaintenanceWater or false,
+                lastMaintenanceWater = plotState.lastMaintenanceWater or 0,
+                maintenanceWaterInterval = plotState.maintenanceWaterInterval or 43200
             }
             
             -- Add any additional timing data
@@ -593,7 +674,6 @@ function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
         end
     end
     
-    log.debug("Sent plot update for", plotId, "state:", plotState.state, "owner:", ownerName or "none")
 end
 
 -- Log command handler
@@ -617,7 +697,6 @@ function RemoteManager.onLogCommand(player, command, ...)
         log.warn("Test WARN message") 
         log.info("Test INFO message")
         log.debug("Test DEBUG message")
-        log.trace("Test TRACE message")
     end
 end
 
@@ -651,21 +730,15 @@ end
 
 -- Handle weather data requests
 function RemoteManager.onWeatherRequest(player, requestType, weatherName)
-    print("🌤️ [RemoteManager] Weather request received from", player.Name)
-    print("🌤️ [RemoteManager] Request type:", requestType)
-    print("🌤️ [RemoteManager] Weather name:", weatherName)
     
     if requestType == "current" then
         -- Send current weather data
-        print("🌤️ [RemoteManager] Sending current weather data")
         RemoteManager.sendWeatherData(player)
     elseif requestType == "force_change" and weatherName then
         -- Debug: Force weather change
-        print("🌤️ [RemoteManager] Attempting to force weather change to:", weatherName)
         local WeatherSystem = require(script.Parent.WeatherSystem)
         local success = WeatherSystem.forceWeatherChange(weatherName)
         
-        print("🌤️ [RemoteManager] Force weather change success:", success)
         
         if success then
             -- Broadcast updated weather to all players
@@ -675,7 +748,6 @@ function RemoteManager.onWeatherRequest(player, requestType, weatherName)
             NotificationManager.sendError(player, "❌ Failed to change weather to " .. weatherName)
         end
     else
-        print("🌤️ [RemoteManager] Unknown request type or missing weather name")
     end
 end
 
@@ -697,7 +769,96 @@ function RemoteManager.broadcastWeatherData()
     
     if remotes.weather then
         remotes.weather:FireAllClients(weatherData)
-        log.debug("Broadcasted weather data to all players")
+    end
+end
+
+-- Handle gamepass purchase requests
+function RemoteManager.onGamepassPurchase(player, gamepassKey)
+    log.info("Gamepass purchase requested:", gamepassKey, "by", player.Name)
+    
+    local GamepassService = require(script.Parent.GamepassService)
+    local success, message = GamepassService.promptGamepassPurchase(player, gamepassKey)
+    
+    if success then
+        NotificationManager.sendSuccess(player, "🚀 " .. message)
+        -- Sync player data to update gamepass status on client
+        RemoteManager.syncPlayerData(player)
+    else
+        NotificationManager.sendError(player, "❌ " .. message)
+    end
+end
+
+-- Handle gamepass data requests (for prices)
+function RemoteManager.onGamepassDataRequest(player)
+    log.debug("Gamepass data requested by", player.Name)
+    
+    local GamepassService = require(script.Parent.GamepassService)
+    local gamepassData = GamepassService.getAllGamepassData() -- Now includes icons
+    
+    -- Send gamepass data to client
+    if remotes.gamepassData then
+        remotes.gamepassData:FireClient(player, gamepassData)
+        log.debug("Sent gamepass data with icons to", player.Name)
+    end
+end
+
+-- Handle farm actions from PlotUI (plant, water, harvest, clear)
+function RemoteManager.onFarmAction(player, action, plotId, ...)
+    log.debug("Farm action from", player.Name, ":", action, "on plot", plotId)
+    
+    if action == "plant" then
+        local seedType, quantity = ...
+        quantity = quantity or 1
+        
+        -- Use PlotManager directly for planting
+        local success, message = PlotManager.plantCrop(player, plotId, seedType, quantity)
+        if success then
+            RemoteManager.syncPlayerData(player)
+            
+            -- Update plot visuals
+            local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+            local plot = WorldBuilder.getPlotById(plotId)
+            local plotState = PlotManager.getPlotState(plotId)
+            if plot and plotState then
+                WorldBuilder.updatePlotState(plot, "planted", seedType, plotState.variation)
+            end
+            
+            -- Check tutorial progress
+            local TutorialManager = require(script.Parent.TutorialManager)
+            TutorialManager.checkGameAction(player, "plant_seed", {seedType = seedType})
+        end
+        NotificationManager.sendNotification(player, message)
+        
+    elseif action == "water" then
+        local success, message = PlotManager.waterPlant(player, plotId)
+        if success then
+            -- Check tutorial progress
+            local TutorialManager = require(script.Parent.TutorialManager)
+            TutorialManager.checkGameAction(player, "water_plant")
+        end
+        NotificationManager.sendNotification(player, message)
+        
+    elseif action == "harvest" then
+        local success, message, totalYield = PlotManager.harvestCrop(player, plotId)
+        if success then
+            RemoteManager.syncPlayerData(player)
+            
+            -- Check tutorial progress
+            local TutorialManager = require(script.Parent.TutorialManager)
+            TutorialManager.checkGameAction(player, "harvest_crop")
+        end
+        NotificationManager.sendNotification(player, message)
+        
+    elseif action == "clear" then
+        local success, message = PlotManager.cutPlant(player, plotId)
+        if success then
+            RemoteManager.syncPlayerData(player)
+        end
+        NotificationManager.sendNotification(player, message)
+        
+    else
+        log.warn("Unknown farm action:", action, "from", player.Name)
+        NotificationManager.sendError(player, "Unknown action: " .. tostring(action))
     end
 end
 
@@ -728,6 +889,38 @@ function RemoteManager.onDebugAction(player, action, data)
         if success then
             NotificationManager.sendSuccess(player, "🐛 Debug: Datastore completely reset!")
             RemoteManager.syncPlayerData(player)
+            
+            -- Reinitialize tutorial to show first step
+            local TutorialManager = require(script.Parent.TutorialManager)
+            TutorialManager.initializePlayer(player)
+            
+            -- Update all plots to reflect new ownership
+            local FarmManager = require(script.Parent.FarmManager)
+            local farmId = FarmManager.getPlayerFarm(player.UserId)
+            if farmId then
+                -- Reset all plot states and visuals
+                for plotIndex = 1, 30 do
+                    local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
+                    
+                    -- Reinitialize the plot with new ownership
+                    if PlayerDataManager.isPlotOwned(player, plotIndex) then
+                        PlotManager.initializePlot(globalPlotId, player.UserId, player)
+                    else
+                        PlotManager.initializePlot(globalPlotId, nil, nil)
+                    end
+                    
+                    -- Update visual state
+                    local plotState = PlotManager.getPlotState(globalPlotId)
+                    if plotState then
+                        local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+                        local plot = WorldBuilder.getPlotById(globalPlotId)
+                        if plot then
+                            WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
+                        end
+                        RemoteManager.sendPlotUpdate(globalPlotId, plotState)
+                    end
+                end
+            end
         else
             NotificationManager.sendError(player, "❌ Debug: Failed to reset datastore")
         end
@@ -742,141 +935,61 @@ function RemoteManager.onDebugAction(player, action, data)
             NotificationManager.sendError(player, "❌ Debug: Failed to add money")
         end
         
+    elseif action == "checkGamepass" then
+        local GamepassService = require(script.Parent.GamepassService)
+        local owns2x = GamepassService.playerOwnsGamepassKey(player, "moneyMultiplier")
+        local playerData = PlayerDataManager.getPlayerData(player)
+        local savedGamepasses = playerData and playerData.gamepasses or {}
+        
+        log.info("Debug gamepass check for", player.Name)
+        log.info("- MarketplaceService says owns 2x Money:", owns2x)
+        log.info("- PlayerData.gamepasses:", savedGamepasses)
+        log.info("- Stored moneyMultiplier:", savedGamepasses.moneyMultiplier)
+        
+        NotificationManager.sendSuccess(player, "🐛 Debug: Check logs for gamepass info")
+        
+        -- Force refresh gamepass data
+        GamepassService.initializePlayerGamepassOwnership(player)
+        RemoteManager.syncPlayerData(player)
+        
+    elseif action == "forceGamepass" then
+        -- Manually give gamepass for testing (Studio only)
+        local RunService = game:GetService("RunService")
+        if RunService:IsStudio() then
+            -- Simulate gamepass purchase completion
+            GamepassService.onPurchaseFinished(player, 1277613878, true)
+            log.info("Debug: Simulated 2x Money gamepass purchase for", player.Name)
+            NotificationManager.sendSuccess(player, "🐛 Debug: Simulated gamepass purchase!")
+        else
+            NotificationManager.sendError(player, "❌ Debug commands only work in Studio")
+        end
+        
     else
         log.warn("Unknown debug action:", action)
         NotificationManager.sendError(player, "❌ Debug: Unknown action: " .. tostring(action))
     end
 end
 
--- Send plot update to clients and update plot attributes
-function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
-    if not plotState then return end
-    
-    -- Find the plot in the world and update its attributes
-    local Players = game:GetService("Players")
-    local plot = nil
-    
-    -- Search for the plot by plotId in all farms
-    for _, farm in pairs(game.Workspace.PlayerFarms:GetChildren()) do
-        for _, child in pairs(farm:GetChildren()) do
-            local plotIdValue = child:FindFirstChild("PlotId")
-            if plotIdValue and plotIdValue.Value == plotId then
-                plot = child
-                break
-            end
-        end
-        if plot then break end
-    end
-    
-    if plot then
-        -- Update plot data values
-        local plotData = plot:FindFirstChild("PlotData")
-        if plotData then
-            plotData.Value = plotState.state or "empty"
-        end
-        
-        local seedType = plot:FindFirstChild("SeedType")
-        if seedType then
-            seedType.Value = plotState.seedType or ""
-        end
-        
-        -- Set attributes for UI system
-        plot:SetAttribute("HarvestCount", plotState.harvestCount or 0)
-        plot:SetAttribute("MaxHarvests", plotState.maxHarvests or 0)
-        plot:SetAttribute("AccumulatedCrops", plotState.accumulatedCrops or 0)
-        plot:SetAttribute("WateredCount", plotState.wateredCount or 0)
-        plot:SetAttribute("WaterNeeded", plotState.waterNeeded or 1)
-        
-        -- Update visual state
-        local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
-        WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation or "normal", plotState.wateredCount or 0, nil, nil, nil)
-    end
-    
-    -- Send to client if owner exists
-    if plotState.ownerId then
-        local player = Players:GetPlayerByUserId(plotState.ownerId)
-        if player and remotes.plotUpdate then
-            -- Get timing data from GameConfig for the seed type
-            local growthTime = 60 -- Default
-            local waterTime = 30 -- Default
-            local deathTime = 120 -- Default
-            
-            if plotState.seedType and plotState.seedType ~= "" then
-                local plantConfig = GameConfig.Plants[plotState.seedType]
-                if plantConfig then
-                    growthTime = plantConfig.growthTime or 60
-                    waterTime = plantConfig.waterTime or 30
-                    deathTime = plantConfig.deathTime or 120
-                end
-            end
-            
-            -- Get current weather effects (same as openPlotUI)
-            local WeatherSystem = require(script.Parent.WeatherSystem)
-            local currentWeather = WeatherSystem.getCurrentWeather()
-            local weatherEffects = {}
-            
-            if currentWeather and currentWeather.effects then
-                weatherEffects = {
-                    name = currentWeather.name,
-                    emoji = currentWeather.emoji,
-                    growthMultiplier = currentWeather.effects.growthMultiplier or 1.0,
-                    autoWater = currentWeather.effects.autoWater or false,
-                    benefitsThisCrop = false
-                }
-                
-                -- Check if this crop benefits from current weather
-                if currentWeather.benefitSeeds then
-                    for _, benefitSeed in ipairs(currentWeather.benefitSeeds) do
-                        if benefitSeed == plotState.seedType then
-                            weatherEffects.benefitsThisCrop = true
-                            break
-                        end
-                    end
-                end
-            end
-            
-            local clientData = {
-                plotId = plotId,
-                state = plotState.state or "empty",
-                seedType = plotState.seedType or "",
-                harvestCount = plotState.harvestCount or 0,
-                maxHarvests = plotState.maxHarvests or 0,
-                accumulatedCrops = plotState.accumulatedCrops or 0,
-                wateredCount = plotState.wateredCount or 0,
-                waterNeeded = plotState.waterNeeded or 1,
-                -- Timing data
-                plantedAt = plotState.plantedTime or 0,
-                lastWateredAt = plotState.lastWateredTime or 0,
-                growthTime = growthTime,
-                waterTime = waterTime,
-                deathTime = deathTime,
-                -- Water cooldown data
-                lastWaterActionTime = plotState.lastWaterActionTime or 0,
-                waterCooldownSeconds = GameConfig.Settings.waterCooldown or 30,
-                -- Weather and boost data
-                weatherEffects = weatherEffects,
-                onlineBonus = true, -- Player is online if they're receiving updates
-                variation = plotState.variation or "normal",
-                isOwner = true,
-                ownerName = player.Name
-            }
-            
-            -- Add any additional data passed in
-            if additionalData then
-                for key, value in pairs(additionalData) do
-                    clientData[key] = value
-                end
-            end
-            
-            remotes.plotUpdate:FireClient(player, clientData)
-            log.trace("Sent plot update to", player.Name, "for plot", plotId, "state:", plotState.state)
-        end
-    end
-end
 
 -- Send plot UI open request to client
 function RemoteManager.openPlotUI(player, plotId)
     if not remotes.openPlotUI then return end
+    
+    -- Check if this plot is owned by the player
+    local FarmManager = require(script.Parent.FarmManager)
+    local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(plotId)
+    
+    -- Verify this is the player's farm
+    if not FarmManager.doesPlayerOwnFarm(player.UserId, farmId) then
+        return -- Can't interact with other players' plots
+    end
+    
+    -- Check if player owns this specific plot
+    if not PlayerDataManager.isPlotOwned(player, plotIndex) then
+        -- Plot is not owned - attempt to purchase it
+        RemoteManager.onBuyPlot(player, plotId)
+        return
+    end
     
     -- Get plot state for the UI
     local PlotManager = require(script.Parent.PlotManager)
@@ -936,21 +1049,34 @@ function RemoteManager.openPlotUI(player, plotId)
             lastWateredAt = plotState.lastWateredTime or 0,
             growthTime = growthTime,
             waterTime = waterTime,
-            deathTime = deathTime,
             -- Water cooldown data
             lastWaterActionTime = plotState.lastWaterActionTime or 0,
             waterCooldownSeconds = GameConfig.Settings.waterCooldown or 30,
             -- Weather and boost data
             weatherEffects = weatherEffects,
             onlineBonus = true, -- Player is online if they're opening the UI
-            variation = plotState.variation or "normal"
+            variation = plotState.variation or "normal",
+            
+            -- Maintenance watering data
+            needsMaintenanceWater = plotState.needsMaintenanceWater or false,
+            lastMaintenanceWater = plotState.lastMaintenanceWater or 0,
+            maintenanceWaterInterval = plotState.maintenanceWaterInterval or 43200
         }
         
         remotes.openPlotUI:FireClient(player, clientData)
-        log.info("📋 Sent plot UI open request to", player.Name, "for plot", plotId)
     else
         log.warn("❌ Could not find plot state for plot", plotId)
     end
+end
+
+-- Handle farm ID request from client
+function RemoteManager.onGetFarmId(player)
+    local FarmManager = require(script.Parent.FarmManager)
+    local farmId = FarmManager.getPlayerFarmId(player.UserId)
+    
+    log.warn("🎯 Client requested farm ID for", player.Name, "- returning:", farmId or "nil")
+    
+    remotes.getFarmId:FireClient(player, farmId)
 end
 
 return RemoteManager

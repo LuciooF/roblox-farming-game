@@ -138,11 +138,11 @@ end
 
 -- Auto sell all crops
 function AutomationSystem.sellAll(player)
-    -- Gamepass check temporarily disabled for testing
-    -- local hasAccess, message = GamepassManager.validateAutomation(player, "sell")
-    -- if not hasAccess then
-    --     return false, message
-    -- end
+    -- Check gamepass
+    local hasAccess, message = GamepassManager.validateAutomation(player, "sell")
+    if not hasAccess then
+        return false, message
+    end
     
     local totalProfit, itemsSold, rebirthMultiplier = PlayerDataManager.sellAllCrops(player)
     

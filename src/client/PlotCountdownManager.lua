@@ -19,7 +19,6 @@ local plotsNeedingUpdate = {} -- Set of plotIds that need display updates
 
 -- Initialize countdown manager
 function PlotCountdownManager.initialize()
-    log.info("Client-side plot countdown system initialized")
     
     -- Start master update loop (single connection for all plots)
     PlotCountdownManager.startMasterUpdateLoop()
@@ -32,22 +31,15 @@ end
 function PlotCountdownManager.scanExistingPlots()
     local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
     if not farmsContainer then 
-        log.warn("No PlayerFarms found in Workspace")
         return 
     end
     
-    -- Debug: List what's actually in the PlayerFarms
-    log.info("PlayerFarms contents:")
-    for _, child in pairs(farmsContainer:GetChildren()) do
-        log.info("- " .. child.Name .. " (" .. child.ClassName .. ")")
-    end
     
     -- Scan all individual farms for plots
     local totalPlotCount = 0
     for _, farmFolder in pairs(farmsContainer:GetChildren()) do
         if farmFolder.Name:match("^Farm_") then
             local farmId = farmFolder.Name:match("Farm_(%d+)")
-            log.info("Scanning", farmFolder.Name, "for plots")
             
             local farmPlotCount = 0
             for _, child in pairs(farmFolder:GetChildren()) do
@@ -115,7 +107,6 @@ end
 function PlotCountdownManager.updatePlotData(plotId, plotData)
     local currentTime = tick()
     
-    log.info("Received plot update for plot", plotId, "state:", plotData.state, "seedType:", plotData.seedType or "none", "isOwner:", plotData.isOwner)
     
     -- Check if this is a harvest (harvestCount increased)
     local previousData = plotTimers[plotId]
@@ -240,13 +231,11 @@ end
 function PlotCountdownManager.startCountdown(plotId)
     -- No longer need individual connections - master loop handles all plots
     plotsNeedingUpdate[plotId] = true
-    log.debug("Added plot", plotId, "to update queue")
 end
 
 -- Stop countdown for a specific plot
 function PlotCountdownManager.stopCountdown(plotId)
     plotsNeedingUpdate[plotId] = nil
-    log.debug("Removed plot", plotId, "from update queue")
 end
 
 -- Update countdown display for a plot (called every frame)
@@ -276,22 +265,53 @@ function PlotCountdownManager.updateCountdownDisplay(plotId, countdownLabel)
     local color = Color3.fromRGB(255, 255, 255)
     
     if state == "planted" or state == "growing" then
-        -- Simple display: just crop name and needs water
+        -- Get crop emoji from CropRegistry
+        local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+        local cropData = CropRegistry.getCrop(plotData.seedType)
+        local cropEmoji = cropData and cropData.emoji or "🌱"
         local plantName = plotData.seedType:gsub("^%l", string.upper)
-        displayText = "🌱 " .. plantName .. "\n💧 Needs Water"
+        
+        -- Check if water is actually needed and can be applied
+        local wateredCount = plotData.wateredCount or 0
+        local waterNeeded = plotData.waterNeeded or 1
+        local lastWaterActionTime = plotData.lastWaterActionTime or 0
+        local waterCooldownSeconds = plotData.waterCooldownSeconds or 30
+        local currentTime = tick()
+        local timeSinceLastWater = currentTime - lastWaterActionTime
+        local waterCooldownRemaining = waterCooldownSeconds - timeSinceLastWater
+        
+        -- Show water status based on current state
+        if wateredCount < waterNeeded then
+            if lastWaterActionTime == 0 or waterCooldownRemaining <= 0 then
+                -- Can water now
+                displayText = cropEmoji .. " " .. plantName .. "\n💧 Needs Water"
+            else
+                -- Recently watered but needs more, on cooldown
+                displayText = cropEmoji .. " " .. plantName .. "\n💧 Drinking Water"
+            end
+        else
+            -- Fully watered, just show crop name
+            displayText = cropEmoji .. " " .. plantName
+        end
         color = Color3.fromRGB(150, 200, 255) -- Light blue
         
     elseif state == "watered" then
-        -- Simple display: crop name and growing status
+        -- Get crop emoji from CropRegistry
+        local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+        local cropData = CropRegistry.getCrop(plotData.seedType)
+        local cropEmoji = cropData and cropData.emoji or "🌿"
         local plantName = plotData.seedType:gsub("^%l", string.upper)
-        displayText = "🌿 " .. plantName .. "\n⚡ Growing..."
+        displayText = cropEmoji .. " " .. plantName .. "\n⚡ Growing..."
         color = Color3.fromRGB(100, 255, 200) -- Bright green
         
     elseif state == "ready" then
-        -- Simple display: crop ready to harvest
+        -- Get crop emoji from CropRegistry
+        local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+        local cropData = CropRegistry.getCrop(plotData.seedType)
+        local cropEmoji = cropData and cropData.emoji or "🌟"
         local plantName = plotData.seedType:gsub("^%l", string.upper)
         local accumulatedCrops = plotData.accumulatedCrops or 1
-        displayText = "🌟 " .. plantName .. "\n✨ Ready (" .. accumulatedCrops .. ")"
+        displayText = cropEmoji .. " " .. plantName .. "\n✨ Ready (" .. accumulatedCrops .. ")"
         color = Color3.fromRGB(255, 255, 100) -- Gold
         
     elseif state == "dead" then
@@ -345,7 +365,6 @@ end
 function PlotCountdownManager.cleanupPlot(plotId)
     PlotCountdownManager.stopCountdown(plotId)
     plotTimers[plotId] = nil
-    log.debug("Cleaned up plot", plotId)
 end
 
 -- Clean up all countdowns (on player leave)
@@ -361,14 +380,12 @@ function PlotCountdownManager.cleanup()
     plotsNeedingUpdate = {}
     countdownConnections = {}
     
-    log.info("Cleaned up all plot countdowns and master update loop")
 end
 
 -- Handle plot state updates from server
 function PlotCountdownManager.onPlotStateUpdate(plotId, newState, additionalData)
     local plotData = plotTimers[plotId]
     if not plotData then
-        log.warn("Received state update for unknown plot", plotId)
         return
     end
     
@@ -377,7 +394,6 @@ function PlotCountdownManager.onPlotStateUpdate(plotId, newState, additionalData
     -- Reset firstReadyTime when plot transitions away from ready state
     if plotData.state == "ready" and newState ~= "ready" then
         plotTimers[plotId].firstReadyTime = nil
-        log.debug("Plot", plotId, "reset firstReadyTime due to state change from ready to", newState)
     end
     
     -- Update state and timing based on new state

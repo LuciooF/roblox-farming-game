@@ -18,7 +18,8 @@ local PROFILE_TEMPLATE = {
     money = 0, -- Will be set to GameConfig.Settings.startingMoney on first load
     rebirths = 0,
     extraSlots = 0,
-    unlockedPlots = 10, -- Start with 10 free plots, can purchase more through rebirths
+    unlockedPlots = 0, -- Start with 0 owned plots, must purchase them
+    ownedPlots = {}, -- Track which specific plots are owned
     assignedFarm = nil,
     isInitialized = false, -- Explicit flag to detect new players safely
     inventory = {
@@ -33,6 +34,7 @@ local PROFILE_TEMPLATE = {
         completedSteps = {}, -- [stepId] = true for completed steps
         totalRewardsEarned = 0
     }
+    -- Note: gamepasses are not stored in datastore - they're session-only from MarketplaceService
 }
 
 -- Initialize ProfileStore
@@ -77,24 +79,63 @@ end
 -- Handle player joining
 function PlayerDataManager.onPlayerJoined(player)
     if not ProfileStore then
-        log.warn("ProfileStore not initialized - using fallback data for", player.Name)
-        -- Still create leaderstats for fallback data
-        spawn(function()
-            wait(1) -- Wait for fallback data to be ready
-            local fallbackData = PlayerDataManager.getPlayerData(player)
-            if fallbackData then
-                PlayerDataManager.createLeaderstats(player, fallbackData)
-                
-                -- Initialize tutorial AFTER fallback data is ready
-                local TutorialManager = require(script.Parent.TutorialManager)
-                TutorialManager.initializePlayer(player)
-            end
-        end)
+        log.error("🚫 CRITICAL: ProfileStore not initialized - CANNOT PROCEED")
+        player:Kick("Game initialization error. Please try rejoining. If this persists, the game servers may be experiencing issues.")
         return
     end
     
     local userId = tostring(player.UserId)
-    local profile = ProfileStore:StartSessionAsync(userId)
+    
+    -- Add timeout handling for ProfileStore operations
+    local profile = nil
+    local profileSuccess = false
+    
+    log.info("🔄 Loading profile for", player.Name, "- this may take a moment...")
+    
+    -- Use pcall with timeout to prevent indefinite hanging
+    local startTime = tick()
+    spawn(function()
+        local success, result = pcall(function()
+            return ProfileStore:StartSessionAsync(userId)
+        end)
+        
+        if success then
+            profile = result
+            profileSuccess = true
+            log.info("✅ Profile loaded for", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms")
+        else
+            log.warn("❌ ProfileStore failed for", player.Name, "error:", result)
+        end
+    end)
+    
+    -- Wait up to 10 seconds for profile to load, then fallback (shorter in Studio)
+    local RunService = game:GetService("RunService")
+    local timeout = RunService:IsStudio() and 3 or 10 -- Only 3 seconds in Studio
+    local elapsed = 0
+    while not profileSuccess and elapsed < timeout and player.Parent do
+        wait(0.1)
+        elapsed = elapsed + 0.1
+    end
+    
+    if not profileSuccess or not profile then
+        local RunService = game:GetService("RunService")
+        if RunService:IsStudio() then
+            log.error("💥 STUDIO: ProfileStore failed - likely Studio DataStore limitations")
+            log.error("🔧 Solutions:")
+            log.error("   1. Enable Studio Access to API Services in Game Settings")
+            log.error("   2. Test in published game instead of Studio")
+            log.error("   3. Check internet connection")
+            player:Kick("Studio DataStore Error: Enable 'Studio Access to API Services' in Game Settings > Security, or test in a published game.")
+        else
+            log.error("💥 CRITICAL: ProfileStore failed for", player.Name, "- CANNOT PROCEED WITHOUT PLAYER DATA")
+            log.error("🔍 Root cause analysis needed:")
+            log.error("   - DataStore API health issues?")
+            log.error("   - Too many requests (throttling)?") 
+            log.error("   - Network connectivity problems?")
+            player:Kick("Sorry! Our data system is experiencing issues. Please try rejoining in a moment. If this persists, the game may be experiencing server issues.")
+        end
+        return
+    end
     
     if profile then
         profile:AddUserId(player.UserId) -- GDPR compliance
@@ -113,14 +154,12 @@ function PlayerDataManager.onPlayerJoined(player)
         if player.Parent then
             Profiles[player] = profile
             
-            -- Set up starting values for new players using safe initialization flag
-            log.debug("=== PROFILE DEBUG for", player.Name, "===")
-            log.debug("profile.Data.isInitialized:", profile.Data.isInitialized)
-            log.debug("profile.Data.money:", profile.Data.money)
-            log.debug("Current seeds:")
-            for seedType, count in pairs(profile.Data.inventory.seeds) do
-                log.debug("  ", seedType, ":", count)
+            -- Clear missing data tracking for this player
+            if PlayerDataManager._loggedMissingData then
+                PlayerDataManager._loggedMissingData[player.UserId] = nil
             end
+            
+            -- Set up starting values for new players using safe initialization flag
             
             if not profile.Data.isInitialized then
                 log.debug("NEW PLAYER: Giving starting resources")
@@ -129,11 +168,16 @@ function PlayerDataManager.onPlayerJoined(player)
                 -- Set starting crops
                 for cropType, count in pairs(GameConfig.Settings.startingCrops) do
                     profile.Data.inventory.crops[cropType] = count
-                    log.debug("  Gave", count, cropType, "crops")
                 end
                 
+                -- Initialize plot ownership (start with 0 owned plots)
+                if not profile.Data.ownedPlots then
+                    profile.Data.ownedPlots = {}
+                end
+                profile.Data.unlockedPlots = 0
+                
                 profile.Data.isInitialized = true
-                log.info("Initialized new player data for", player.Name, "- Money:", profile.Data.money, "Seeds given")
+                log.info("Initialized new player data for", player.Name, "- Money:", profile.Data.money, "Seeds given, 0 plots owned")
             else
                 -- Safety check: Only give starter crops if player has NEVER had them (check for both low money AND no crops AND no rebirths)
                 local totalCrops = 0
@@ -147,16 +191,13 @@ function PlayerDataManager.onPlayerJoined(player)
                     -- Give starter crops only for truly corrupted new players
                     for cropType, count in pairs(GameConfig.Settings.startingCrops) do
                         profile.Data.inventory.crops[cropType] = count
-                        log.debug("  Fixed: Gave", count, cropType, "crops")
                     end
                     
                     log.info("Fixed corrupted new player profile for", player.Name, "- Gave missing starter crops")
                 else
-                    log.debug("EXISTING PLAYER: Using saved data")
                     log.info("Loaded existing player data for", player.Name, "- Money:", profile.Data.money, "Rebirths:", profile.Data.rebirths)
                 end
             end
-            log.debug("=== END PROFILE DEBUG ===")
             
             -- Create leaderstats for Roblox leaderboard
             PlayerDataManager.createLeaderstats(player, profile.Data)
@@ -164,6 +205,10 @@ function PlayerDataManager.onPlayerJoined(player)
             -- Initialize tutorial AFTER player data is fully loaded
             local TutorialManager = require(script.Parent.TutorialManager)
             TutorialManager.initializePlayer(player)
+            
+            -- Initialize gamepasses AFTER player data is fully loaded
+            local GamepassService = require(script.Parent.GamepassService)
+            GamepassService.initializePlayerGamepasses(player)
         else
             profile:Release()
         end
@@ -194,66 +239,18 @@ function PlayerDataManager.getPlayerData(player)
         return profile.Data
     end
     
-    -- Fallback for Studio mode or when ProfileStore isn't available
-    log.info("Using fallback data for", player.Name, "- ProfileStore not available (Studio mode)")
-    local userId = tostring(player.UserId)
-    
-    if not _G.FallbackPlayerData then
-        _G.FallbackPlayerData = {}
+    -- NO FALLBACK FOR PLAYER DATA - This would be a security risk!
+    -- Note: This can happen during initial load - only log once per player
+    if not PlayerDataManager._loggedMissingData then
+        PlayerDataManager._loggedMissingData = {}
     end
     
-    if not _G.FallbackPlayerData[userId] then
-        _G.FallbackPlayerData[userId] = {
-            money = GameConfig.Settings.startingMoney,
-            rebirths = 0,
-            extraSlots = 0,
-            unlockedPlots = 10, -- Start with 10 free plots, can purchase more through rebirths
-            assignedFarm = nil,
-            isInitialized = true, -- Fallback data is always initialized with starter resources
-            inventory = {
-                seeds = {},
-                crops = {}
-            },
-            plots = {},
-            tutorial = {
-                completed = false,
-                skipped = false,
-                currentStep = 1,
-                completedSteps = {},
-                totalRewardsEarned = 0
-            },
-            -- Legacy fields for backward compatibility
-            tutorialCompleted = false,
-            tutorialSkipped = false
-        }
-        
-        -- Set starting crops
-        for cropType, count in pairs(GameConfig.Settings.startingCrops) do
-            _G.FallbackPlayerData[userId].inventory.crops[cropType] = count
-        end
-        
-        log.debug("Created new fallback data for", player.Name)
-    else
-        -- Ensure tutorial field exists in existing fallback data
-        if not _G.FallbackPlayerData[userId].tutorial then
-            _G.FallbackPlayerData[userId].tutorial = {
-                completed = _G.FallbackPlayerData[userId].tutorialCompleted or false,
-                skipped = _G.FallbackPlayerData[userId].tutorialSkipped or false,
-                currentStep = 1,
-                completedSteps = {},
-                totalRewardsEarned = 0
-            }
-        end
-        
-        -- Ensure plots field exists
-        if not _G.FallbackPlayerData[userId].plots then
-            _G.FallbackPlayerData[userId].plots = {}
-        end
-        
-        log.debug("Loaded existing fallback data for", player.Name)
+    if not PlayerDataManager._loggedMissingData[player.UserId] then
+        log.warn("⚠️ getPlayerData() called before profile loaded for", player.Name)
+        PlayerDataManager._loggedMissingData[player.UserId] = true
     end
     
-    return _G.FallbackPlayerData[userId]
+    return nil
 end
 
 -- Check if player can rebirth
@@ -277,8 +274,9 @@ function PlayerDataManager.performRebirth(player)
     playerData.money = 500 -- Reset to 500 money as requested
     -- Note: extraSlots is preserved through rebirth
     
-    -- Reset plot ownership - keep first 10, reset others
-    playerData.unlockedPlots = 10 -- Reset to base 10 plots
+    -- Reset plot ownership - clear all owned plots
+    playerData.ownedPlots = {}
+    playerData.unlockedPlots = 0
     
     -- Clear all plot states (crops will be removed)
     playerData.plots = {}
@@ -295,7 +293,7 @@ function PlayerDataManager.performRebirth(player)
     
     local newMultiplier = GameConfig.Rebirth.getCropMultiplier(playerData.rebirths)
     
-    log.info("Player", player.Name, "rebirthed from", oldRebirths, "to", playerData.rebirths, "- plots reset to 10")
+    log.info("Player", player.Name, "rebirthed from", oldRebirths, "to", playerData.rebirths, "- all plots reset")
     
     -- Clear all crops from plots in the world
     local FarmManager = require(script.Parent.FarmManager)
@@ -351,57 +349,91 @@ function PlayerDataManager.removeMoney(player, amount)
     return false
 end
 
--- Get plot purchase price for next plot
-function PlayerDataManager.getPlotPurchasePrice(player)
+-- Get plot purchase price for a specific plot
+function PlayerDataManager.getPlotPurchasePrice(player, plotIndex)
     local playerData = PlayerDataManager.getPlayerData(player)
     if not playerData then return nil end
     
-    local currentPlots = playerData.unlockedPlots
-    -- Price increases with each plot: $50, $100, $200, $400, etc.
-    local basePrice = 50
-    local priceMultiplier = math.pow(1.5, currentPlots - 10) -- Start multiplying after 10 plots
+    -- First plot is free
+    if plotIndex == 1 then
+        return 0
+    end
+    
+    -- Plots 2-10 have increasing prices
+    if plotIndex <= 10 then
+        local basePrice = 50
+        return math.floor(basePrice * math.pow(1.3, plotIndex - 2))
+    end
+    
+    -- Plots beyond 10 cost more
+    local basePrice = 500
+    local priceMultiplier = math.pow(1.5, plotIndex - 11)
     return math.floor(basePrice * priceMultiplier)
 end
 
 -- Purchase a new plot
-function PlayerDataManager.purchasePlot(player)
+function PlayerDataManager.purchasePlot(player, plotIndex)
     local playerData = PlayerDataManager.getPlayerData(player)
     if not playerData then 
         return false, "Player data not found"
     end
     
-    local baseUnlocked, maxAvailable = PlayerDataManager.getAvailablePlotRange(player)
-    
-    -- Check if player can buy more plots based on rebirth level
-    if playerData.unlockedPlots >= maxAvailable then
-        local rebirths = playerData.rebirths or 0
-        if rebirths == 0 then
-            return false, "Need rebirth to unlock more plots!"
-        else
-            return false, "Maximum plots reached for this rebirth level!"
-        end
+    -- Initialize ownedPlots if needed
+    if not playerData.ownedPlots then
+        playerData.ownedPlots = {}
     end
     
-    local price = PlayerDataManager.getPlotPurchasePrice(player)
+    -- Check if already owned
+    if PlayerDataManager.isPlotOwned(player, plotIndex) then
+        return false, "You already own this plot!"
+    end
+    
+    -- Check if available for purchase
+    if not PlayerDataManager.isPlotAvailableForPurchase(player, plotIndex) then
+        if plotIndex > 10 then
+            local requiredRebirth = PlayerDataManager.getRequiredRebirthForPlot(plotIndex)
+            return false, "Need rebirth level " .. requiredRebirth .. " to unlock this plot!"
+        end
+        return false, "This plot is not available for purchase!"
+    end
+    
+    -- Get price for this specific plot
+    local price = PlayerDataManager.getPlotPurchasePrice(player, plotIndex)
+    if plotIndex == 1 then
+        price = 0 -- First plot is free
+    end
+    
     if playerData.money < price then
         return false, "Need $" .. (price - playerData.money) .. " more coins!"
     end
     
     -- Purchase the plot
     playerData.money = playerData.money - price
-    playerData.unlockedPlots = playerData.unlockedPlots + 1
+    playerData.ownedPlots[tostring(plotIndex)] = true
+    playerData.unlockedPlots = (playerData.unlockedPlots or 0) + 1
     
-    log.info("Player", player.Name, "purchased plot", playerData.unlockedPlots, "for $" .. price)
+    log.info("Player", player.Name, "purchased plot", plotIndex, "for $" .. price)
     
-    return true, "Plot " .. playerData.unlockedPlots .. " unlocked for $" .. price .. "!"
+    local message = plotIndex == 1 and "First plot unlocked for FREE!" or "Plot " .. plotIndex .. " unlocked for $" .. price .. "!"
+    return true, message, plotIndex
 end
 
--- Get number of unlocked plots for player
+-- Get number of owned plots for player
 function PlayerDataManager.getUnlockedPlots(player)
     local playerData = PlayerDataManager.getPlayerData(player)
-    if not playerData then return 10 end -- Default to 10 if no data (first 10 are always unlocked)
+    if not playerData then return 0 end
     
-    return playerData.unlockedPlots or 10
+    -- Count owned plots
+    if playerData.ownedPlots then
+        local count = 0
+        for _, owned in pairs(playerData.ownedPlots) do
+            if owned then count = count + 1 end
+        end
+        return count
+    end
+    
+    -- Legacy support
+    return playerData.unlockedPlots or 0
 end
 
 -- Get which plots are available to purchase based on rebirth level
@@ -424,19 +456,37 @@ function PlayerDataManager.getAvailablePlotRange(player)
     end
 end
 
--- Check if a specific plot is unlocked for purchase (not necessarily owned)
+-- Check if a specific plot is owned by the player
+function PlayerDataManager.isPlotOwned(player, plotIndex)
+    local playerData = PlayerDataManager.getPlayerData(player)
+    if not playerData then return false end
+    
+    -- Check if plot is in the owned plots list
+    if playerData.ownedPlots then
+        return playerData.ownedPlots[tostring(plotIndex)] == true
+    end
+    
+    -- Legacy support: if using old unlockedPlots system
+    return plotIndex <= (playerData.unlockedPlots or 0)
+end
+
+-- Check if a specific plot is available for purchase
 function PlayerDataManager.isPlotAvailableForPurchase(player, plotIndex)
     local playerData = PlayerDataManager.getPlayerData(player)
     if not playerData then return false end
     
-    local baseUnlocked, maxAvailable = PlayerDataManager.getAvailablePlotRange(player)
-    
-    -- First 10 plots are always owned after rebirth
-    if plotIndex <= 10 then
-        return true -- Always owned
+    -- Already owned?
+    if PlayerDataManager.isPlotOwned(player, plotIndex) then
+        return false
     end
     
-    -- Check if plot is in the available range for this rebirth level
+    -- First 10 plots are always available to purchase
+    if plotIndex <= 10 then
+        return true
+    end
+    
+    -- Beyond plot 10 requires rebirths
+    local baseUnlocked, maxAvailable = PlayerDataManager.getAvailablePlotRange(player)
     return plotIndex <= maxAvailable
 end
 
@@ -445,12 +495,16 @@ function PlayerDataManager.getPlotVisibilityState(player, plotIndex)
     local playerData = PlayerDataManager.getPlayerData(player)
     if not playerData then return "invisible", 0 end
     
-    local unlockedPlots = playerData.unlockedPlots or 10
     local rebirths = playerData.rebirths or 0
     
     -- If plot is already owned, it should be empty/usable
-    if plotIndex <= unlockedPlots then
+    if PlayerDataManager.isPlotOwned(player, plotIndex) then
         return "unlocked", 0 -- Normal brown color, fully usable
+    end
+    
+    -- First 10 plots are always visible and purchasable
+    if plotIndex <= 10 then
+        return "locked", 0 -- Available for purchase (red)
     end
     
     -- Calculate rebirth tiers (each rebirth unlocks 5 plots)
@@ -584,11 +638,14 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
         harvestCooldown = plotState.harvestCooldown,
         growthTime = plotState.growthTime,
         waterTime = plotState.waterTime,
-        deathTime = plotState.deathTime,
         plantedAt = plotState.plantedAt,
         lastWateredAt = plotState.lastWateredAt,
-        deathReason = plotState.deathReason,
-        lastUpdateTime = plotState.lastUpdateTime or tick()
+        lastUpdateTime = plotState.lastUpdateTime or tick(),
+        
+        -- Maintenance watering system
+        lastMaintenanceWater = plotState.lastMaintenanceWater or 0,
+        needsMaintenanceWater = plotState.needsMaintenanceWater or false,
+        maintenanceWaterInterval = plotState.maintenanceWaterInterval or 43200
     }
     
     -- ProfileStore automatically handles saving - no manual save needed!
@@ -615,7 +672,6 @@ function PlayerDataManager.getPlotState(player, plotIndex)
     local plotState = playerData.plots[plotKey] or playerData.plots[plotIndex]
     
     if plotState then
-        log.info("Loading plot", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
     else
         log.info("No saved plot", plotIndex, "found for", player.Name)
     end
@@ -744,7 +800,8 @@ function PlayerDataManager.debugResetDatastore(player)
     playerData.money = GameConfig.Settings.startingMoney
     playerData.rebirths = 0
     playerData.extraSlots = 0
-    playerData.unlockedPlots = 10
+    playerData.unlockedPlots = 0 -- Start with 0 owned plots
+    playerData.ownedPlots = {} -- No plots owned initially
     playerData.assignedFarm = nil
     playerData.isInitialized = true
     playerData.inventory = {

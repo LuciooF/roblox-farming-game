@@ -75,6 +75,14 @@ src/
 - **Efficient updates**: UI only updates when data changes
 - **Memory management**: Clean up event connections when objects are destroyed
 
+### **❌ NO FALLBACKS FOR CRITICAL SYSTEMS** ⚠️ CRITICAL
+- **DO NOT create fallbacks for essential game systems** - they mask real problems
+- **Player data MUST work** - no "fallback data" for money/inventory/progress
+- **DataStore failures** - find and fix the root cause, don't work around it
+- **Examples of what NOT to fallback**: Player money, inventory, plot ownership, rebirths
+- **When fallbacks are OK**: UI elements, cosmetic features, non-essential sounds
+- **Rule**: If the fallback makes the game "technically work" but ruins the player experience, don't add it
+
 ### **Future Enhancements**
 - **React system ready**: Full component library exists, just needs React packages
 - **Sound system ready**: All hooks in place, just need audio assets

@@ -61,7 +61,6 @@ function PlotManager.initializePlot(plotId, ownerId, playerObject)
         savedPlotState = PlayerDataManager.getPlotState(playerObject, plotIndex)
         
         if savedPlotState then
-            log.info("Loading saved plot state for player", playerObject.Name, "plot", plotIndex, "state:", savedPlotState.state)
             
             -- Ensure all required fields exist (migration for old save data)
             if not savedPlotState.lastReadyTime then
@@ -72,6 +71,17 @@ function PlotManager.initializePlot(plotId, ownerId, playerObject)
             end
             if not savedPlotState.baseYieldRate then
                 savedPlotState.baseYieldRate = 1
+            end
+            
+            -- Ensure maintenance watering fields exist (migration for old save data)
+            if not savedPlotState.lastMaintenanceWater then
+                savedPlotState.lastMaintenanceWater = 0
+            end
+            if savedPlotState.needsMaintenanceWater == nil then
+                savedPlotState.needsMaintenanceWater = false
+            end
+            if not savedPlotState.maintenanceWaterInterval then
+                savedPlotState.maintenanceWaterInterval = 43200 -- 12 hours
             end
             
             -- Process offline growth
@@ -90,7 +100,6 @@ function PlotManager.initializePlot(plotId, ownerId, playerObject)
             savedPlotState = PlayerDataManager.getPlotState(player, plotIndex)
             
             if savedPlotState then
-                log.info("Loading saved plot state for player", player.Name, "plot", plotIndex, "state:", savedPlotState.state)
                 
                 -- Ensure all required fields exist (migration for old save data)
                 if not savedPlotState.lastReadyTime then
@@ -102,15 +111,26 @@ function PlotManager.initializePlot(plotId, ownerId, playerObject)
                 if not savedPlotState.baseYieldRate then
                     savedPlotState.baseYieldRate = 1
                 end
+                
+                -- Ensure maintenance watering fields exist (migration for old save data)
+                if not savedPlotState.lastMaintenanceWater then
+                    savedPlotState.lastMaintenanceWater = 0
+                end
+                if savedPlotState.needsMaintenanceWater == nil then
+                    savedPlotState.needsMaintenanceWater = false
+                end
+                if not savedPlotState.maintenanceWaterInterval then
+                    savedPlotState.maintenanceWaterInterval = 43200 -- 12 hours
+                end
             end
         else
             log.warn("Could not find player for userId", ownerId, "when loading plot", plotId)
         end
     end
     
-    -- Use saved state or create new empty plot
+    -- Use saved state or create new plot (locked if no owner)
     plotStates[plotId] = savedPlotState or {
-        state = "empty",
+        state = ownerId and "empty" or "locked",
         seedType = "",
         plantedTime = 0,
         wateredTime = 0,
@@ -123,7 +143,12 @@ function PlotManager.initializePlot(plotId, ownerId, playerObject)
         needsReplanting = false, -- Flag for when plant needs to be replanted
         accumulatedCrops = 0, -- Crops generated over time (max 100)
         lastReadyTime = 0, -- When the plant first became ready
-        baseYieldRate = 1 -- How many crops per harvest cycle
+        baseYieldRate = 1, -- How many crops per harvest cycle
+        
+        -- Maintenance watering system
+        lastMaintenanceWater = 0, -- When last maintenance watered
+        needsMaintenanceWater = false, -- Whether crop needs maintenance watering
+        maintenanceWaterInterval = 43200 -- 12 hours in seconds (12 * 60 * 60)
     }
     
     -- Ensure ownerId is set correctly (in case it changed)
@@ -143,7 +168,12 @@ function PlotManager.resetPlot(plotId)
             lastWateredTime = 0,
             wateredCount = 0,
             waterNeeded = 0,
-            ownerId = nil
+            ownerId = nil,
+            
+            -- Reset maintenance watering fields
+            lastMaintenanceWater = 0,
+            needsMaintenanceWater = false,
+            maintenanceWaterInterval = 43200
         }
         
         -- Update visual state in the world
@@ -214,10 +244,6 @@ function PlotManager.plantCrop(player, plotId, cropType, quantity)
         return false, "This plot is locked! Purchase more plots to unlock it."
     end
     
-    -- Check for dead crops first
-    if plotState.state == "dead" then
-        return false, "Clear the dead crop first before planting new ones!"
-    end
     
     -- Allow stacking: Either empty plot OR same crop type for stacking
     if plotState.state ~= "empty" then
@@ -317,12 +343,29 @@ function PlotManager.waterPlant(player, plotId)
         return false, "This plot is locked! Purchase more plots to unlock it."
     end
     
-    -- Validate plot has planted seed and needs water
-    if plotState.state ~= "planted" and plotState.state ~= "growing" then
+    -- Validate plot has planted seed and needs water OR needs maintenance watering
+    if plotState.state ~= "planted" and plotState.state ~= "growing" and not plotState.needsMaintenanceWater then
         return false, "Nothing to water here!"
     end
     
-    -- Check if already fully watered
+    -- Handle maintenance watering for ready/harvestable crops
+    if plotState.needsMaintenanceWater then
+        local currentTime = tick()
+        plotState.lastMaintenanceWater = currentTime
+        plotState.needsMaintenanceWater = false
+        
+        -- Resume crop production if plant was paused
+        if plotState.state == "ready" then
+            PlotManager.scheduleCropProduction(plotId, plotState)
+        end
+        
+        -- Send plot update to clients
+        sendPlotUpdate(plotId, {wateredAt = currentTime, triggerRainEffect = true})
+        
+        return true, "🚿 Maintenance watering complete! Crop production resumed."
+    end
+    
+    -- Check if already fully watered (for initial watering)
     if plotState.wateredCount >= plotState.waterNeeded then
         return false, "Plant doesn't need more water!"
     end
@@ -339,6 +382,7 @@ function PlotManager.waterPlant(player, plotId)
     plotState.wateredCount = plotState.wateredCount + 1
     plotState.lastWateredTime = currentTime
     plotState.lastWateredAt = currentTime -- For client prediction
+    plotState.lastWaterActionTime = currentTime -- For client UI cooldown display
     
     local waterProgress = plotState.wateredCount .. "/" .. plotState.waterNeeded
     
@@ -346,11 +390,19 @@ function PlotManager.waterPlant(player, plotId)
         -- Fully watered - start growing
         plotState.state = "watered"
         plotState.wateredTime = currentTime
+        plotState.lastReadyTime = currentTime -- Start accumulation timer
+        
+        -- Initialize maintenance watering system
+        plotState.lastMaintenanceWater = currentTime -- Set initial maintenance time
+        plotState.needsMaintenanceWater = false -- Not needed yet
+        
+        -- Schedule crop production (event-driven)
+        PlotManager.scheduleCropProduction(plotId, plotState)
         
         -- Send plot update to clients (also saves to player data)
         sendPlotUpdate(plotId, {wateredAt = currentTime, triggerRainEffect = true})
         
-        return true, "Plant fully watered (" .. waterProgress .. ")! Growing now..."
+        return true, "Plant fully watered (" .. waterProgress .. ")! Growing now... (Maintenance watering every 12h)"
     else
         -- Partially watered
         plotState.state = "growing"
@@ -397,8 +449,7 @@ function PlotManager.harvestCrop(player, plotId)
     local seedType = plotState.seedType
     local variation = plotState.variation or "normal"
     
-    -- Update accumulated crops before harvesting
-    PlotManager.updateCropAccumulation(plotId, plotState)
+    -- Accumulated crops are now updated via event-driven system
     
     -- Harvest ALL ready crops at once
     local totalYield = math.max(1, plotState.accumulatedCrops or 1)
@@ -417,49 +468,39 @@ function PlotManager.harvestCrop(player, plotId)
     plotState.accumulatedCrops = 0
     plotState.lastReadyTime = 0 -- Reset for next cycle
     
-    -- Harvest only the ready crop (1 at a time from the queue)
-    plotState.harvestCount = plotState.harvestCount + 1
+    -- Reset harvest cooldown
     plotState.harvestCooldown = tick()
     
-    -- Check if plant needs replanting
-    if plotState.harvestCount >= plotState.maxHarvests then
-        -- Plant has reached its harvest limit, needs replanting
-        plotState.state = "empty"
-        plotState.seedType = ""
-        plotState.plantedTime = 0
-        plotState.wateredTime = 0
-        plotState.lastWateredTime = 0
-        plotState.wateredCount = 0
-        plotState.waterNeeded = 0
-        plotState.harvestCount = 0
-        plotState.maxHarvests = 0
-        plotState.needsReplanting = false
-        
-        sendPlotUpdate(plotId)
-        
-        local message = "Harvested " .. totalYield .. " " .. cropName .. "! All plants harvested, plot cleared."
-        if variation ~= "normal" then
-            message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
-        end
-        
-        return true, message
-    else
-        -- For queue system, always go directly to watered state for next plant
-        plotState.state = "watered"
-        plotState.wateredTime = tick()
-        plotState.lastWateredTime = tick() -- Reset growth timer for next plant
-        plotState.wateredCount = plotState.waterNeeded -- Mark as fully watered
-        
-        sendPlotUpdate(plotId, {lastWateredAt = plotState.wateredTime})
-        
-        local harvestsLeft = plotState.maxHarvests - plotState.harvestCount
-        local message = "Harvested " .. totalYield .. " " .. cropName .. "! " .. harvestsLeft .. " plants in queue, next growing."
-        if variation ~= "normal" then
-            message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
-        end
-        
-        return true, message
+    -- Plants continue producing indefinitely - don't track harvest count anymore
+    -- Just reset the plot to keep growing more crops
+    local currentTime = tick()
+    plotState.state = "watered"  -- Back to growing state
+    plotState.wateredTime = currentTime
+    plotState.lastWateredTime = currentTime
+    plotState.wateredCount = plotState.waterNeeded -- Keep plants watered
+    plotState.lastReadyTime = currentTime -- Reset accumulation timer
+    
+    -- Schedule next crop production cycle (event-driven)
+    PlotManager.scheduleCropProduction(plotId, plotState)
+    
+    -- Keep the plant visual (all plants remain active)
+    local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+    local plot = WorldBuilder.getPlotById(plotId)
+    if plot then
+        local activePlants = plotState.maxHarvests - plotState.harvestCount
+        WorldBuilder.updatePlotState(plot, "watered", plotState.seedType, plotState.variation or "normal", plotState.harvestCount, plotState.wateredCount, plotState.waterNeeded, 0)
     end
+    
+    sendPlotUpdate(plotId, {lastWateredAt = plotState.wateredTime})
+    
+    local activePlants = plotState.maxHarvests - plotState.harvestCount
+    log.info("🔄 Harvest complete - plot reset to watered state, new cycle starts at", plotState.wateredTime)
+    local message = "Harvested " .. totalYield .. " " .. cropName .. "! " .. activePlants .. " plants continue producing."
+    if variation ~= "normal" then
+        message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
+    end
+    
+    return true, message
 end
 
 -- Harvest ALL crops from plot at once (for stacked plants)
@@ -491,8 +532,7 @@ function PlotManager.harvestAllCrops(player, plotId)
     local variation = plotState.variation or "normal"
     local harvestsLeft = plotState.maxHarvests - plotState.harvestCount
     
-    -- Update accumulated crops before harvesting
-    PlotManager.updateCropAccumulation(plotId, plotState)
+    -- Accumulated crops are now updated via event-driven system
     
     -- Harvest ALL accumulated crops
     local totalYield = math.max(harvestsLeft, plotState.accumulatedCrops or harvestsLeft)
@@ -636,68 +676,7 @@ function PlotManager.resetPlot(plotId)
     end
 end
 
--- Kill a plant (death mechanism)
-function PlotManager.killPlant(plotId, reason)
-    local plotState = plotStates[plotId]
-    if not plotState then return false end
-    
-    local seedType = plotState.seedType
-    local ownerId = plotState.ownerId
-    
-    -- Set plot to dead state instead of resetting immediately
-    plotState.state = "dead"
-    plotState.deathReason = reason
-    plotState.deathTime = tick()
-    
-    -- Send plot update to clients
-    sendPlotUpdate(plotId)
-    
-    return true, {
-        seedType = seedType,
-        ownerId = ownerId,
-        reason = reason
-    }
-end
 
--- Clear a dead plant (player acknowledgment)
-function PlotManager.clearDeadPlant(player, plotId)
-    local plotState = plotStates[plotId]
-    if not plotState then 
-        return false, "Plot not found"
-    end
-    
-    if plotState.state ~= "dead" then
-        return false, "Plant is not dead"
-    end
-    
-    -- Verify ownership
-    if plotState.ownerId and plotState.ownerId ~= player.UserId then
-        return false, "This is not your plot"
-    end
-    
-    local seedType = plotState.seedType
-    local deathReason = plotState.deathReason or "unknown"
-    
-    -- Reset plot to empty state
-    PlotManager.resetPlot(plotId)
-    
-    -- Manually update visual state in the world (since the resetPlot function might not do it)
-    local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
-    local plot = WorldBuilder.getPlotById(plotId)
-    if plot then
-        WorldBuilder.updatePlotState(plot, "empty", "", "normal", 0, nil, nil, nil)
-        log.debug("Updated plot visual state to empty for plot", plotId)
-    else
-        log.warn("Could not find plot in world for visual update:", plotId)
-    end
-    
-    -- Send plot update to clients
-    sendPlotUpdate(plotId)
-    
-    log.debug("Player", player.Name, "cleared dead", seedType, "from plot", plotId, "- reason:", deathReason)
-    
-    return true, "Cleared dead " .. seedType .. " plant"
-end
 
 -- Get all plots in specific state
 function PlotManager.getPlotsInState(state, ownerId)
@@ -718,22 +697,6 @@ end
 -- Update growth monitoring (called by main loop)
 function PlotManager.updateGrowthMonitoring()
     for plotId, plotState in pairs(plotStates) do
-        -- Check for plant death (not watered in time)
-        if plotState.state == "planted" or plotState.state == "growing" then
-            local deathTime = GameConfig.Plants[plotState.seedType].deathTime
-            local timeSincePlanted = tick() - plotState.plantedTime
-            
-            if timeSincePlanted >= deathTime then
-                local success, deathInfo = PlotManager.killPlant(plotId, "Not watered in time")
-                if success then
-                    -- Will be handled by notification system
-                    return "plant_died", {
-                        plotId = plotId,
-                        deathInfo = deathInfo
-                    }
-                end
-            end
-        end
         
         -- Check for plant ready to harvest
         if plotState.state == "watered" then
@@ -767,17 +730,7 @@ function PlotManager.updateGrowthMonitoring()
             end
         end
         
-        -- Update crop accumulation for ready plants
-        if plotState.state == "ready" and (plotState.lastReadyTime or 0) > 0 then
-            local oldAccumulated = plotState.accumulatedCrops or 0
-            PlotManager.updateCropAccumulation(plotId, plotState)
-            local newAccumulated = plotState.accumulatedCrops or 0
-            if newAccumulated > oldAccumulated then
-                log.debug("Plot", plotId, "accumulation increased from", oldAccumulated, "to", newAccumulated)
-                -- Send update to client when accumulation changes
-                sendPlotUpdate(plotId)
-            end
-        end
+        -- Crop accumulation is now handled via event-driven system
     end
 end
 
@@ -790,16 +743,20 @@ function PlotManager.updateCropAccumulation(plotId, plotState)
     local growthTime = GameConfig.Plants[plotState.seedType].growthTime
     local baseYieldRate = plotState.baseYieldRate or 1
     
-    -- Accumulate crops every 30 seconds (much faster than full growth cycle)
-    local accumulationInterval = 30 -- seconds
+    -- Calculate number of active plants (total planted minus harvested)
+    local activePlants = plotState.maxHarvests - plotState.harvestCount
+    
+    -- Use growth time as accumulation interval (e.g., 100 seconds for carrots)
+    local accumulationInterval = growthTime -- Each plant produces 1 crop per growth cycle
     local accumulationCycles = math.floor(timeSinceReady / accumulationInterval)
     
-    if accumulationCycles > 0 then
-        -- Add 1 crop every 30 seconds (steady accumulation)
-        local newCrops = accumulationCycles * 1
+    if accumulationCycles > 0 and activePlants > 0 then
+        -- Each plant produces 1 crop per growth cycle
+        -- So with 10 plants, you get 10 crops every growth cycle
+        local newCrops = accumulationCycles * activePlants
         
-        -- Update accumulated crops (capped at 100)
-        plotState.accumulatedCrops = math.min(100, (plotState.accumulatedCrops or 0) + newCrops)
+        -- Update accumulated crops (each plant produces exactly 1 crop per cycle)
+        plotState.accumulatedCrops = (plotState.accumulatedCrops or 0) + newCrops
         
         -- Update the last ready time to prevent double-counting
         plotState.lastReadyTime = currentTime
@@ -910,7 +867,7 @@ function PlotManager.getCountdownInfo(plotId)
         
     elseif plotState.state == "ready" then
         -- Show harvest message with accumulated crops info
-        PlotManager.updateCropAccumulation(plotId, plotState) -- Update before displaying
+        -- Crop accumulation handled by event-driven system
         
         local accumulatedCrops = plotState.accumulatedCrops or 1
         local harvestsLeft = plotState.maxHarvests - plotState.harvestCount
@@ -1002,6 +959,20 @@ function PlotManager.processOfflineGrowth(plotState, player)
             PlayerDataManager.addToInventory(player, "crops", cropName, offlineHarvests)
             log.info("Offline harvest:", offlineHarvests, cropName, "added for", player.Name)
             
+            -- Check if maintenance watering is needed after offline time
+            local timeSinceMaintenanceWater = currentTime - (plotState.lastMaintenanceWater or 0)
+            if timeSinceMaintenanceWater >= plotState.maintenanceWaterInterval then
+                plotState.needsMaintenanceWater = true
+                log.info("Plot", plotId, "needs maintenance watering after offline time")
+                
+                -- If there are no accumulated crops waiting to be harvested, 
+                -- change state to watered instead of ready to avoid confusion
+                if (plotState.accumulatedCrops or 0) == 0 then
+                    plotState.state = "watered"
+                    log.info("Plot", plotId, "changed to watered state - no crops ready due to maintenance needed")
+                end
+            end
+            
             -- Update harvest count (but don't exceed max harvests)
             plotState.harvestCount = math.min(plotState.harvestCount + offlineHarvests, plotState.maxHarvests)
             
@@ -1025,25 +996,21 @@ function PlotManager.processOfflineGrowth(plotState, player)
                 plotState.state = "watered"
                 plotState.wateredTime = currentTime
                 plotState.lastWateredTime = currentTime
+                plotState.accumulatedCrops = 0 -- Clear accumulated crops since they were auto-harvested
                 
                 local NotificationManager = require(script.Parent.NotificationManager)
                 NotificationManager.sendSuccess(player, "🌾 Offline harvest: " .. offlineHarvests .. " " .. cropName .. "! Growing again.")
             end
         end
     elseif plotState.state == "planted" or plotState.state == "growing" then
-        -- Check if plant died due to lack of watering
-        local deathTime = GameConfig.Plants[plotState.seedType].deathTime
-        local timeSincePlanted = currentTime - plotState.plantedTime
-        
-        if timeSincePlanted >= deathTime then
-            -- Plant died while offline
-            plotState.state = "dead"
-            plotState.deathReason = "Not watered while offline"
-            plotState.deathTime = currentTime
-            
-            local NotificationManager = require(script.Parent.NotificationManager)
-            NotificationManager.sendError(player, "💀 " .. plotState.seedType .. " died while you were away! Clear to replant.")
-        end
+        -- Plants no longer die - they just stop growing if not watered
+        -- No death checking needed anymore
+    end
+    
+    -- Final state validation: ensure "ready" state always has crops to harvest
+    if plotState.state == "ready" and (plotState.accumulatedCrops or 0) == 0 then
+        plotState.state = "watered"
+        log.info("Plot", plotId, "corrected state from ready to watered - no accumulated crops")
     end
     
     -- Update last update time
@@ -1114,6 +1081,114 @@ function PlotManager.getOnlineBoostMultiplier(player)
     else
         return 1.0 -- Normal speed when offline
     end
+end
+
+-- Get all plot states (for update loops)
+function PlotManager.getAllPlotStates()
+    return plotStates
+end
+
+-- Schedule crop production for a plot (event-driven)
+function PlotManager.scheduleCropProduction(plotId, plotState)
+    local baseGrowthTime = GameConfig.Plants[plotState.seedType].growthTime
+    local activePlants = plotState.maxHarvests - plotState.harvestCount
+    
+    if activePlants <= 0 then return end
+    
+    -- Apply same bonuses as client: online bonus, weather effects, etc.
+    local effectiveGrowthTime = baseGrowthTime
+    
+    -- Online bonus (2x speed when player is online)
+    local Players = game:GetService("Players")
+    local player = Players:GetPlayerByUserId(plotState.ownerId)
+    if player and player.Parent then
+        effectiveGrowthTime = effectiveGrowthTime * 0.5 -- 2x speed when online
+    end
+    
+    -- Weather effects (if any) - simplified for now
+    -- TODO: Apply weather multipliers here if needed
+    
+    
+    -- Schedule the next crop production
+    spawn(function()
+        wait(effectiveGrowthTime)
+        
+        -- Check if plot still exists and is in watered state
+        local currentState = plotStates[plotId]
+        if currentState and (currentState.state == "watered" or currentState.state == "ready") then
+            -- Check if maintenance watering is needed (12 hours since last maintenance)
+            local currentTime = tick()
+            local timeSinceMaintenanceWater = currentTime - (currentState.lastMaintenanceWater or 0)
+            
+            if timeSinceMaintenanceWater >= currentState.maintenanceWaterInterval then
+                -- Needs maintenance watering - pause production
+                currentState.needsMaintenanceWater = true
+                log.info("Plot", plotId, "needs maintenance watering after", math.floor(timeSinceMaintenanceWater/3600), "hours")
+                
+                -- Send update to client indicating maintenance is needed
+                sendPlotUpdate(plotId, {maintenanceWaterNeeded = true})
+                
+                -- Don't produce crops or schedule next cycle until watered
+                return
+            end
+            
+            -- Produce crops equal to number of active plants
+            local currentActivePlants = currentState.maxHarvests - currentState.harvestCount
+            currentState.accumulatedCrops = (currentState.accumulatedCrops or 0) + currentActivePlants
+            currentState.state = "ready"
+            currentState.lastReadyTime = currentTime
+            
+            -- Send update to client
+            sendPlotUpdate(plotId, {cropProduced = true})
+            
+            -- Schedule next production cycle if plants are still active
+            if currentActivePlants > 0 then
+                PlotManager.scheduleCropProduction(plotId, currentState)
+            end
+        end
+    end)
+end
+
+-- Check if a plot needs maintenance watering and update its status
+function PlotManager.checkMaintenanceWatering(plotId)
+    local plotState = plotStates[plotId]
+    if not plotState then return false end
+    
+    -- Only check maintenance for crops that are watered/ready and have a harvest count > 0
+    if plotState.state == "watered" or plotState.state == "ready" then
+        local currentTime = tick()
+        local timeSinceMaintenanceWater = currentTime - (plotState.lastMaintenanceWater or 0)
+        
+        -- If 12 hours have passed since last maintenance watering
+        if timeSinceMaintenanceWater >= plotState.maintenanceWaterInterval and not plotState.needsMaintenanceWater then
+            plotState.needsMaintenanceWater = true
+            log.info("Plot", plotId, "now needs maintenance watering after", math.floor(timeSinceMaintenanceWater/3600), "hours")
+            
+            -- Send update to client
+            sendPlotUpdate(plotId, {maintenanceWaterNeeded = true})
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Get maintenance watering info for a plot (for UI display)
+function PlotManager.getMaintenanceWateringInfo(plotId)
+    local plotState = plotStates[plotId]
+    if not plotState then return nil end
+    
+    local currentTime = tick()
+    local timeSinceMaintenanceWater = currentTime - (plotState.lastMaintenanceWater or 0)
+    local timeUntilMaintenanceNeeded = plotState.maintenanceWaterInterval - timeSinceMaintenanceWater
+    
+    return {
+        needsMaintenanceWater = plotState.needsMaintenanceWater or false,
+        lastMaintenanceWater = plotState.lastMaintenanceWater or 0,
+        timeSinceMaintenanceWater = timeSinceMaintenanceWater,
+        timeUntilMaintenanceNeeded = math.max(0, timeUntilMaintenanceNeeded),
+        maintenanceWaterInterval = plotState.maintenanceWaterInterval or 43200
+    }
 end
 
 return PlotManager

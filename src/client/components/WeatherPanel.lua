@@ -39,15 +39,10 @@ local function WeatherPanel(props)
     
     -- Handle debug weather change
     local function handleWeatherChange(weatherName)
-        print("🌤️ [WeatherPanel] Button clicked for weather:", weatherName)
-        print("🌤️ [WeatherPanel] isDebugMode:", isDebugMode)
-        print("🌤️ [WeatherPanel] weatherRemote exists:", remotes.weatherRemote ~= nil)
         
         if remotes.weatherRemote and isDebugMode then
-            print("🌤️ [WeatherPanel] Firing server with force_change for:", weatherName)
             remotes.weatherRemote:FireServer("force_change", weatherName)
         else
-            print("🌤️ [WeatherPanel] NOT firing server - weatherRemote:", remotes.weatherRemote ~= nil, "debugMode:", isDebugMode)
         end
     end
     

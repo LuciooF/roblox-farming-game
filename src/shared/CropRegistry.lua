@@ -30,7 +30,6 @@ local CROPS = {
         growthTime = 15, -- seconds
         waterNeeded = 1,
         harvestCooldown = 10,
-        deathTime = 120,
         maxHarvestCycles = 5,
         
         -- Visual Assets
@@ -66,7 +65,6 @@ local CROPS = {
         growthTime = 30, -- seconds
         waterNeeded = 2,
         harvestCooldown = 15,
-        deathTime = 180,
         maxHarvestCycles = 3,
         
         -- Visual Assets
@@ -102,7 +100,6 @@ local CROPS = {
         growthTime = 45, -- seconds
         waterNeeded = 2,
         harvestCooldown = 20,
-        deathTime = 240,
         maxHarvestCycles = 4,
         
         -- Visual Assets
@@ -138,7 +135,6 @@ local CROPS = {
         growthTime = 60, -- seconds
         waterNeeded = 2,
         harvestCooldown = 20,
-        deathTime = 240,
         maxHarvestCycles = 3,
         
         -- Visual Assets
@@ -174,7 +170,6 @@ local CROPS = {
         growthTime = 90, -- seconds
         waterNeeded = 3,
         harvestCooldown = 30,
-        deathTime = 360,
         maxHarvestCycles = 2,
         
         -- Visual Assets
@@ -355,7 +350,6 @@ local function validateCrops()
         assert(crop.growthTime, "Crop " .. id .. " missing growthTime")
         assert(RARITIES[crop.rarity], "Crop " .. id .. " has invalid rarity: " .. tostring(crop.rarity))
     end
-    log.info("✅ CropRegistry: All crop data validated successfully")
 end
 
 -- Initialize

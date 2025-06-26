@@ -194,9 +194,7 @@ GameplayConfig.Timing = {
     harvestCooldown = 5,                -- Seconds between harvests
     shopCooldown = 1,                   -- Seconds between purchases
     
-    -- Death and decay
-    plantDeathTime = 300,               -- 5 minutes without water = death
-    deadPlantCleanup = 1800             -- 30 minutes before auto-cleanup
+    -- Death and decay system removed - plants no longer die
 }
 
 -- Helper Functions

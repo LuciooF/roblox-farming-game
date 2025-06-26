@@ -26,7 +26,7 @@ function DebugPanel.create()
     -- Create main debug frame
     debugFrame = Instance.new("Frame")
     debugFrame.Name = "DebugPanel"
-    debugFrame.Size = UDim2.new(0, 250, 0, 300)
+    debugFrame.Size = UDim2.new(0, 250, 0, 400)
     debugFrame.Position = UDim2.new(1, -260, 0, 10) -- Top right corner
     debugFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     debugFrame.BorderSizePixel = 2
@@ -101,9 +101,17 @@ function DebugPanel.create()
         DebugPanel.performRebirth()
     end)
     
+    -- Check Gamepass button
+    local checkGamepassBtn = DebugPanel.createButton("Check Gamepass", Color3.fromRGB(255, 140, 0))
+    checkGamepassBtn.LayoutOrder = 5
+    checkGamepassBtn.Parent = buttonsFrame
+    checkGamepassBtn.MouseButton1Click:Connect(function()
+        DebugPanel.checkGamepass()
+    end)
+    
     -- Close button
     local closeBtn = DebugPanel.createButton("Close Panel", Color3.fromRGB(100, 100, 100))
-    closeBtn.LayoutOrder = 5
+    closeBtn.LayoutOrder = 6
     closeBtn.Parent = buttonsFrame
     closeBtn.MouseButton1Click:Connect(function()
         DebugPanel.hide()
@@ -206,6 +214,16 @@ function DebugPanel.performRebirth()
     rebirthRemote:FireServer()
     log.info("Requested normal rebirth")
 end
+
+-- Debug function: Check gamepass ownership
+function DebugPanel.checkGamepass()
+    local remotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
+    local debugRemote = remotes:WaitForChild("DebugActions")
+    
+    debugRemote:FireServer("checkGamepass")
+    log.info("Requested gamepass ownership check")
+end
+
 
 -- Handle keyboard shortcut (F9 to toggle debug panel)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)

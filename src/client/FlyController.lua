@@ -24,7 +24,6 @@ local player = Players.LocalPlayer
 
 -- Initialize the fly controller
 function FlyController.initialize()
-    log.info("Fly controller initialized - Press F to toggle fly mode")
     
     -- Connect to input
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -94,7 +93,6 @@ function FlyController.startFlying()
     -- Create fly indicator UI
     FlyController.createFlyIndicator()
     
-    log.info("Flying enabled! Use WASD to move, Space/Shift for up/down")
 end
 
 -- Stop flying
@@ -128,7 +126,6 @@ function FlyController.stopFlying()
     -- Remove fly indicator
     FlyController.removeFlyIndicator()
     
-    log.info("Flying disabled")
 end
 
 -- Update fly movement based on input
@@ -242,7 +239,6 @@ end
 -- Cleanup when leaving
 function FlyController.cleanup()
     FlyController.stopFlying()
-    log.info("Fly controller cleaned up")
 end
 
 return FlyController
