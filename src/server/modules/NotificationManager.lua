@@ -4,7 +4,11 @@
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Logger = require(script.Parent.Logger)
 local NotificationManager = {}
+
+-- Get module logger
+local log = Logger.getModuleLogger("NotificationManager")
 
 -- Storage for active notifications per player
 local activeNotifications = {}
@@ -414,6 +418,102 @@ end
 function NotificationManager.sendRebirthNotification(player, rebirthInfo)
     local message = "⭐ REBIRTH! Level " .. rebirthInfo.newRebirths .. " (" .. rebirthInfo.multiplier .. "x multiplier)"
     NotificationManager.sendSuccess(player, message)
+end
+
+-- Send special rank-up notification with confetti-style animation
+function NotificationManager.sendRankUpNotification(player, rankInfo)
+    log.error("🎉 SENDING RANK UP NOTIFICATION TO:", player.Name, "RANK:", rankInfo.name)
+    
+    local playerGui = player:WaitForChild("PlayerGui", 5)
+    if not playerGui then 
+        log.error("❌ Failed to get PlayerGui for rank notification:", player.Name)
+        return 
+    end
+    
+    -- Create special rank-up GUI
+    local rankUpGui = Instance.new("ScreenGui")
+    rankUpGui.Name = "RankUpNotification"
+    rankUpGui.ResetOnSpawn = false
+    rankUpGui.Parent = playerGui
+    
+    local frame = Instance.new("Frame")
+    frame.Name = "RankUpFrame"
+    frame.Size = UDim2.new(0, 500, 0, 120)
+    frame.Position = UDim2.new(0.5, -250, 0.3, -60) -- Upper center of screen
+    frame.BackgroundColor3 = rankInfo.color
+    frame.BackgroundTransparency = 0.1
+    frame.BorderSizePixel = 0
+    frame.Parent = rankUpGui
+    
+    -- Add rounded corners
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 15)
+    corner.Parent = frame
+    
+    -- Add golden stroke for prestige
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 215, 0)
+    stroke.Thickness = 4
+    stroke.Parent = frame
+    
+    -- Add subtle gradient
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(0.5, rankInfo.color),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+    }
+    gradient.Parent = frame
+    
+    -- Main title
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, -20, 0, 40)
+    titleLabel.Position = UDim2.new(0, 10, 0, 10)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "🎉 RANK UP! 🎉"
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.TextScaled = true
+    titleLabel.Font = Enum.Font.SourceSansBold
+    titleLabel.TextStrokeTransparency = 0
+    titleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    titleLabel.Parent = frame
+    
+    -- Rank name label
+    local rankLabel = Instance.new("TextLabel")
+    rankLabel.Size = UDim2.new(1, -20, 0, 50)
+    rankLabel.Position = UDim2.new(0, 10, 0, 50)
+    rankLabel.BackgroundTransparency = 1
+    rankLabel.Text = rankInfo.name
+    rankLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rankLabel.TextScaled = true
+    rankLabel.Font = Enum.Font.GothamBold
+    rankLabel.TextStrokeTransparency = 0
+    rankLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    rankLabel.Parent = frame
+    
+    -- Animate entrance
+    frame.Position = UDim2.new(0.5, -250, -0.5, -60) -- Start above screen
+    local slideIn = TweenService:Create(frame, 
+        TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        {Position = UDim2.new(0.5, -250, 0.3, -60)}
+    )
+    slideIn:Play()
+    
+    -- Auto-remove after 4 seconds
+    spawn(function()
+        wait(4)
+        
+        -- Animate exit
+        local slideOut = TweenService:Create(frame, 
+            TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+            {Position = UDim2.new(0.5, -250, -0.5, -60)}
+        )
+        slideOut:Play()
+        
+        slideOut.Completed:Connect(function()
+            rankUpGui:Destroy()
+        end)
+    end)
 end
 
 -- Send notification about automation results

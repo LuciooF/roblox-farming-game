@@ -78,6 +78,9 @@ end
 
 -- Handle player joining
 function PlayerDataManager.onPlayerJoined(player)
+    local totalStartTime = tick()
+    log.error("🔄 PlayerDataManager.onPlayerJoined STARTED for:", player.Name)
+    
     if not ProfileStore then
         log.error("🚫 CRITICAL: ProfileStore not initialized - CANNOT PROCEED")
         player:Kick("Game initialization error. Please try rejoining. If this persists, the game servers may be experiencing issues.")
@@ -90,7 +93,7 @@ function PlayerDataManager.onPlayerJoined(player)
     local profile = nil
     local profileSuccess = false
     
-    log.info("🔄 Loading profile for", player.Name, "- this may take a moment...")
+    log.error("🔄 Starting ProfileStore session for:", player.Name)
     
     -- Use pcall with timeout to prevent indefinite hanging
     local startTime = tick()
@@ -102,9 +105,9 @@ function PlayerDataManager.onPlayerJoined(player)
         if success then
             profile = result
             profileSuccess = true
-            log.info("✅ Profile loaded for", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms")
+            log.error("✅ ProfileStore session completed for:", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms")
         else
-            log.warn("❌ ProfileStore failed for", player.Name, "error:", result)
+            log.error("❌ ProfileStore failed for", player.Name, "error:", result)
         end
     end)
     
@@ -206,9 +209,10 @@ function PlayerDataManager.onPlayerJoined(player)
             local TutorialManager = require(script.Parent.TutorialManager)
             TutorialManager.initializePlayer(player)
             
-            -- Initialize gamepasses AFTER player data is fully loaded
-            local GamepassService = require(script.Parent.GamepassService)
-            GamepassService.initializePlayerGamepasses(player)
+            -- Note: Gamepass initialization is now handled asynchronously in FarmingSystemNew.lua
+            -- to prevent blocking the main PlayerDataManager.onPlayerJoined thread
+            
+            log.error("🔄 PlayerDataManager.onPlayerJoined COMPLETED for:", player.Name, "in", math.floor((tick() - totalStartTime) * 1000), "ms")
         else
             profile:Release()
         end

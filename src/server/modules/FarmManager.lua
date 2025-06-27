@@ -141,15 +141,28 @@ end
 
 -- Called when a farm is assigned to a player
 function FarmManager.onFarmAssigned(farmId, player)
-    -- Update farm sign with character display
+    local totalStart = tick()
+    log.error("🔄 onFarmAssigned STARTED for:", player.Name, "farm:", farmId)
+    
+    -- Update farm sign with character display (make async to avoid blocking)
+    local signStart = tick()
     local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
-    WorldBuilder.updateFarmSign(farmId, player.Name, player)
+    
+    -- Do farm sign update asynchronously so it doesn't block player loading
+    spawn(function()
+        log.error("🔄 Starting async farm sign update for:", player.Name)
+        WorldBuilder.updateFarmSign(farmId, player.Name, player)
+        log.error("🔄 Async farm sign update completed for:", player.Name, "in", (tick() - signStart), "seconds")
+    end)
+    log.error("🔄 Farm sign update started asynchronously")
     
     -- Initialize all plots in PlotManager
     local PlotManager = require(script.Parent.PlotManager)
     local PlayerDataManager = require(script.Parent.PlayerDataManager)
     
     -- Initialize owned plots with saved data
+    local plotInitStart = tick()
+    log.error("🔄 Starting plot initialization loop for", MAX_PLOTS_PER_FARM, "plots")
     for plotIndex = 1, MAX_PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
         
@@ -176,11 +189,13 @@ function FarmManager.onFarmAssigned(farmId, player)
             PlotManager.initializePlot(globalPlotId, nil, nil)
         end
     end
+    log.error("🔄 Plot initialization loop completed in:", (tick() - plotInitStart), "seconds")
     
     -- Update visual states for all plots based on ownership
+    local visualStart = tick()
     local playerData = PlayerDataManager.getPlayerData(player)
     local rebirths = playerData and playerData.rebirths or 0
-    log.info("Setting up", MAX_PLOTS_PER_FARM, "plots for", player.Name, "with", rebirths, "rebirths")
+    log.error("🔄 Starting visual state updates for", MAX_PLOTS_PER_FARM, "plots")
     
     for plotIndex = 1, MAX_PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
@@ -213,7 +228,8 @@ function FarmManager.onFarmAssigned(farmId, player)
     local PlayerDataManager = require(script.Parent.PlayerDataManager)
     PlayerDataManager.setAssignedFarm(player, farmId)
     
-    log.info("Farm", farmId, "assigned to", player.Name, "- restored plot states from player data")
+    log.error("🔄 Visual state updates completed in:", (tick() - visualStart), "seconds")
+    log.error("🔄 onFarmAssigned TOTAL TIME:", (tick() - totalStart), "seconds for", player.Name)
     
     -- Notify player about online boost
     local NotificationManager = require(script.Parent.NotificationManager)
