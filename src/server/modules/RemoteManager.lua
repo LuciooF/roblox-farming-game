@@ -155,6 +155,10 @@ function RemoteManager.initialize()
     getFarmIdRemote.Name = "GetFarmId"
     getFarmIdRemote.Parent = remoteFolder
     
+    local characterReadyRemote = Instance.new("RemoteEvent")
+    characterReadyRemote.Name = "CharacterReady"
+    characterReadyRemote.Parent = remoteFolder
+    
     -- Store references
     remotes.plant = plantRemote
     remotes.water = waterRemote
@@ -185,6 +189,7 @@ function RemoteManager.initialize()
     remotes.gamepassData = gamepassDataRemote
     remotes.farmAction = farmActionRemote
     remotes.getFarmId = getFarmIdRemote
+    remotes.characterReady = characterReadyRemote
     
     -- Also create direct references for client access
     remotes.SyncPlayerData = syncRemote
@@ -417,31 +422,44 @@ function RemoteManager.onPerformRebirth(player)
     if success then
         RemoteManager.syncPlayerData(player)
         
-        -- Update all plots to reflect ownership changes
+        -- Force a complete farm refresh to update all plot visuals after rebirth
         local FarmManager = require(script.Parent.FarmManager)
         local farmId = FarmManager.getPlayerFarm(player.UserId)
         if farmId then
-            for plotIndex = 1, 30 do -- Update all possible plots
-                local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
-                local plotState = PlotManager.getPlotState(globalPlotId)
-                if plotState then
-                    -- Force update to show new ownership status
-                    RemoteManager.sendPlotUpdate(globalPlotId, plotState)
-                end
-            end
+            log.info("🔄 Refreshing all plots after rebirth for", player.Name)
+            -- Call onFarmAssigned to refresh all plot visuals with new ownership
+            FarmManager.onFarmAssigned(farmId, player)
         end
         
-        -- Play special rebirth sound
+        -- Play special rebirth sound immediately
         SoundManager.playRebirthSound()
         NotificationManager.sendRebirthNotification(player, result)
         
-        -- Check tutorial progress for first rebirth
-        local TutorialManager = require(script.Parent.TutorialManager)
-        TutorialManager.checkGameAction(player, "perform_rebirth")
-        
-        -- Update player's rank display
-        local RankDisplayManager = require(script.Parent.RankDisplayManager)
-        RankDisplayManager.updatePlayerRank(player)
+        -- Make potentially slow operations async to prevent lag
+        spawn(function()
+            -- Check tutorial progress for first rebirth
+            local TutorialManager = require(script.Parent.TutorialManager)
+            TutorialManager.checkGameAction(player, "perform_rebirth")
+            
+            -- Update player's rank display (async)
+            local RankDisplayManager = require(script.Parent.RankDisplayManager)
+            RankDisplayManager.updatePlayerRank(player)
+            
+            -- Check for rank up and announce in chat (async)
+            local ChatManager = require(script.Parent.ChatManager)
+            ChatManager.checkRankUp(player)
+            
+            -- Update farm nameplate with new rank (async)
+            if farmId then
+                log.info("🏠 Updating farm nameplate for", player.Name, "on farm", farmId)
+                local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+                WorldBuilder.updateFarmSign(farmId, player.Name, player)
+            else
+                log.warn("🏠 No farm found for", player.Name, "- cannot update nameplate")
+            end
+            
+            log.debug("🔄 Async rebirth operations completed for", player.Name)
+        end)
     else
         local moneyRequired = GameConfig.Rebirth.getMoneyRequirement(PlayerDataManager.getPlayerData(player).rebirths)
         NotificationManager.sendError(player, "💰 Need $" .. moneyRequired .. " to rebirth!")
@@ -1081,6 +1099,14 @@ function RemoteManager.onGetFarmId(player)
     log.warn("🎯 Client requested farm ID for", player.Name, "- returning:", farmId or "nil")
     
     remotes.getFarmId:FireClient(player, farmId)
+end
+
+-- Send character ready signal to client
+function RemoteManager.sendCharacterReady(player)
+    if remotes.characterReady then
+        remotes.characterReady:FireClient(player)
+        log.info("✅ Sent character ready signal to:", player.Name)
+    end
 end
 
 return RemoteManager
