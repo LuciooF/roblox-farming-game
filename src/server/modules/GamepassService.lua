@@ -133,9 +133,8 @@ function GamepassService.onPurchaseFinished(player, gamepassId, wasPurchased)
         local RemoteManager = require(script.Parent.RemoteManager)
         RemoteManager.syncPlayerData(player)
         
-        -- Send notification
-        local NotificationManager = require(script.Parent.NotificationManager)
-        NotificationManager.sendSuccess(player, "🎉 " .. gamepass.name .. " activated!")
+        -- Apply gamepass effects with notification for new purchase
+        GamepassService.applyGamepassEffects(player, gamepassKey, true) -- true = new purchase
         
         log.info("Session cache updated for", player.Name, "- now owns:", gamepassKey)
     end
@@ -153,13 +152,25 @@ function GamepassService.getGamepassDataForClient(player)
 end
 
 -- Apply gamepass effects when player joins or purchases
-function GamepassService.applyGamepassEffects(player, gamepassKey)
+function GamepassService.applyGamepassEffects(player, gamepassKey, isNewPurchase)
     -- Effects are handled in the respective systems (e.g., money multiplier in selling)
     -- This function is for immediate effects like inventory expansion, etc.
     
     if gamepassKey == "moneyMultiplier" then
         -- Money multiplier is passive - no immediate effect needed
         log.debug("2x Money Boost is now active for", player.Name)
+    elseif gamepassKey == "flyMode" then
+        -- Fly mode is passive - handled by FlyController
+        log.debug("Fly Mode is now active for", player.Name)
+    end
+    
+    -- Only send notification for new purchases, not existing ownership
+    if isNewPurchase then
+        local gamepass = GamepassConfig.getGamepass(gamepassKey)
+        if gamepass then
+            local NotificationManager = require(script.Parent.NotificationManager)
+            NotificationManager.sendSuccess(player, "🎉 " .. gamepass.name .. " activated!")
+        end
     end
 end
 
@@ -277,10 +288,10 @@ function GamepassService.initializePlayerGamepasses(player)
     -- Initialize gamepass ownership from MarketplaceService
     GamepassService.initializePlayerGamepassOwnership(player)
     
-    -- Apply all owned gamepass effects
+    -- Apply all owned gamepass effects (silent for existing ownership)
     for gamepassKey, owned in pairs(GamepassService.getPlayerGamepasses(player)) do
         if owned then
-            GamepassService.applyGamepassEffects(player, gamepassKey)
+            GamepassService.applyGamepassEffects(player, gamepassKey, false) -- false = not a new purchase
         end
     end
 end
