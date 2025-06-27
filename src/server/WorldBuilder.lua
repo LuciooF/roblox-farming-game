@@ -430,8 +430,42 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         error("Invalid crop type: " .. tostring(seedType))
     end
     
-    -- Use 3D mesh if available, otherwise basic part
-    if cropData.meshId then
+    -- Use asset icon if available, then 3D mesh, then basic part
+    if visualData and visualData.assetId then
+        -- Create Part with BillboardGui for 2D asset icons
+        plant = Instance.new("Part")
+        plant.Name = "Plant"
+        plant.Size = Vector3.new(1, 1, 1) -- Minimal size for billboard
+        plant.Material = Enum.Material.ForceField
+        plant.Transparency = 1 -- Invisible part, only show the icon
+        
+        -- Create BillboardGui for the crop icon
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "CropIcon"
+        billboard.Size = UDim2.new(0, 100, 0, 100) -- Base size
+        billboard.StudsOffset = Vector3.new(0, 0.5, 0) -- Slightly above ground
+        billboard.LightInfluence = 0
+        billboard.Parent = plant
+        
+        -- Create ImageLabel for the crop icon
+        local iconLabel = Instance.new("ImageLabel")
+        iconLabel.Name = "Icon"
+        iconLabel.Size = UDim2.new(1, 0, 1, 0)
+        iconLabel.BackgroundTransparency = 1
+        iconLabel.Image = visualData.assetId
+        iconLabel.Parent = billboard
+        
+        -- Scale based on growth stage
+        local scaleMultipliers = {
+            [1] = 0.4, -- Just planted - small
+            [2] = 0.7, -- Growing - medium
+            [3] = 1.0  -- Full grown - full size
+        }
+        local scale = scaleMultipliers[growthStage] or 0.4
+        billboard.Size = UDim2.new(0, 100 * scale, 0, 100 * scale)
+        
+        log.debug("Created asset icon for", seedType, "with asset ID", visualData.assetId, "scale", scale)
+    elseif cropData.meshId then
         -- Create Part with SpecialMesh for 3D assets
         plant = Instance.new("Part")
         plant.Name = "Plant"
@@ -456,7 +490,7 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         
         log.debug("Created 3D mesh for", seedType, "with ID", cropData.meshId, "scale", scale)
     else
-        -- Use basic part for crops without 3D assets
+        -- Use basic part for crops without 3D assets or icons
         plant = Instance.new("Part")
         plant.Name = "Plant"
         plant.Size = sizes[growthStage] or sizes[1]
@@ -1434,18 +1468,49 @@ function WorldBuilder.updateFarmSign(farmId, playerName, player)
         if nameGui then
             local nameLabel = nameGui:FindFirstChild("FarmNameLabel")
             if nameLabel then
-                if playerName then
-                    nameLabel.Text = playerName .. "'s Farm"
+                if playerName and player then
+                    -- Get player's rank information
+                    local PlayerDataManager = require(script.Parent.modules.PlayerDataManager)
+                    local RankConfig = require(game:GetService("ReplicatedStorage").Shared.RankConfig)
+                    
+                    local playerData = PlayerDataManager.getPlayerData(player)
+                    
+                    if playerData then
+                        local rebirths = playerData.rebirths or 0
+                        local rankInfo = RankConfig.getRankForRebirths(rebirths)
+                        
+                        -- Set farm name on first line, rank on second line
+                        nameLabel.Text = playerName .. "'s Farm\n" .. rankInfo.name
+                        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+                    else
+                        nameLabel.Text = playerName .. "'s Farm"
+                        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+                    end
+                    
                     nameGui.MaxDistance = 250  -- Occupied farms visible from further away
                 else
                     nameLabel.Text = "Available Farm"
+                    nameLabel.TextColor3 = Color3.fromRGB(200, 200, 200) -- Gray for available
                     nameGui.MaxDistance = 100  -- Available farms only visible when closer
                 end
             end
         end
     end
     
-    log.debug("Updated farm", farmId, "display:", playerName or "Available")
+    if playerName and player then
+        local PlayerDataManager = require(script.Parent.modules.PlayerDataManager)
+        local playerData = PlayerDataManager.getPlayerData(player)
+        if playerData then
+            local RankConfig = require(game:GetService("ReplicatedStorage").Shared.RankConfig)
+            local rebirths = playerData.rebirths or 0
+            local rankInfo = RankConfig.getRankForRebirths(rebirths)
+            log.info("🏠 Updated farm", farmId, "nameplate for", playerName, "with rank:", rankInfo.name)
+        else
+            log.warn("🏠 No player data found when updating farm nameplate for", playerName)
+        end
+    else
+        log.debug("🏠 Updated farm", farmId, "display:", playerName or "Available")
+    end
 end
 
 -- Create a real 3D Roblox character display for the farm sign

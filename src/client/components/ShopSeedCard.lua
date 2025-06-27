@@ -3,6 +3,7 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
+local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 local e = React.createElement
 
 local function ShopSeedCard(props)
@@ -16,27 +17,26 @@ local function ShopSeedCard(props)
     local isMobile = screenSize.X < 768
     local scale = isMobile and 0.8 or 1
     
-    -- Seed emojis
-    local seedEmojis = {
-        wheat = "🌾",
-        tomato = "🍅", 
-        carrot = "🥕",
-        potato = "🥔",
-        corn = "🌽"
-    }
+    -- Get crop data from registry
+    local cropData = CropRegistry.getCrop(seedType)
+    local visualData = CropRegistry.getVisuals(seedType)
     
-    -- Seed colors
-    local seedColors = {
-        wheat = Color3.fromRGB(255, 215, 0),
-        tomato = Color3.fromRGB(255, 99, 71),
-        carrot = Color3.fromRGB(255, 140, 0),
-        potato = Color3.fromRGB(139, 69, 19),
-        corn = Color3.fromRGB(255, 255, 0)
-    }
-    
-    local emoji = seedEmojis[seedType] or "🌱"
-    local color = seedColors[seedType] or Color3.fromRGB(100, 200, 100)
+    local emoji = visualData and visualData.emoji or "🌱"
+    local color = visualData and visualData.color or Color3.fromRGB(100, 200, 100)
+    local assetId = visualData and visualData.assetId
+    local cropName = cropData and cropData.name or seedType
+    local rarity = cropData and cropData.rarity or "common"
     local canAfford = playerMoney >= price
+    
+    -- Rarity border colors
+    local rarityColors = {
+        common = Color3.fromRGB(150, 150, 150),
+        uncommon = Color3.fromRGB(100, 255, 100), 
+        rare = Color3.fromRGB(100, 100, 255),
+        epic = Color3.fromRGB(255, 100, 255),
+        legendary = Color3.fromRGB(255, 215, 0)
+    }
+    local borderColor = rarityColors[rarity] or rarityColors.common
     
     return e("Frame", {
         Name = seedType .. "ShopCard",
@@ -51,13 +51,21 @@ local function ShopSeedCard(props)
         }),
         
         Stroke = e("UIStroke", {
-            Color = canAfford and color or Color3.fromRGB(80, 80, 80),
-            Thickness = canAfford and 2 or 1,
-            Transparency = canAfford and 0.3 or 0.7
+            Color = canAfford and borderColor or Color3.fromRGB(80, 80, 80),
+            Thickness = canAfford and 3 or 1,
+            Transparency = canAfford and 0.2 or 0.7
         }),
         
-        -- Emoji
-        EmojiLabel = e("TextLabel", {
+        -- Icon (Asset icon if available, otherwise emoji)
+        IconContainer = assetId and e("ImageLabel", {
+            Name = "CropIcon",
+            Size = UDim2.new(0, 35 * scale, 0, 35 * scale),
+            Position = UDim2.new(0.5, -17.5 * scale, 0, 3),
+            Image = assetId,
+            BackgroundTransparency = 1,
+            ScaleType = Enum.ScaleType.Fit,
+            ZIndex = 11
+        }) or e("TextLabel", {
             Name = "Emoji",
             Size = UDim2.new(1, 0, 0, 30 * scale),
             Position = UDim2.new(0, 0, 0, 5),
@@ -73,7 +81,7 @@ local function ShopSeedCard(props)
             Name = "SeedName",
             Size = UDim2.new(1, -6, 0, 20 * scale),
             Position = UDim2.new(0, 3, 0, 35 * scale),
-            Text = seedType:upper(),
+            Text = cropName,
             TextColor3 = canAfford and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(120, 120, 120),
             TextScaled = true,
             BackgroundTransparency = 1,

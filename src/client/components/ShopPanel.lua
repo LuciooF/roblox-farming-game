@@ -10,6 +10,7 @@ local log = ClientLogger.getModuleLogger("ShopPanel")
 
 local ShopSeedCard = require(script.Parent.ShopSeedCard)
 local SeedDetailModal = require(script.Parent.SeedDetailModal)
+local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 
 local function ShopPanel(props)
     local playerData = props.playerData
@@ -35,14 +36,28 @@ local function ShopPanel(props)
     local selectedSeed, setSelectedSeed = React.useState(nil)
     local modalVisible, setModalVisible = React.useState(false)
     
-    -- Shop crops with pricing (matching server GameConfig.Plants basePrice)
-    local shopSeeds = {
-        {type = "wheat", price = 10},
-        {type = "carrot", price = 25}, 
-        {type = "tomato", price = 50},
-        {type = "potato", price = 35},
-        {type = "corn", price = 120}
-    }
+    -- Get shop crops from CropRegistry based on player's unlock level
+    local playerRebirths = playerData and playerData.rebirths or 0
+    local playerLevel = playerRebirths + 1 -- Simple level calculation
+    
+    local shopSeeds = {}
+    for cropId, crop in pairs(CropRegistry.getAllCrops()) do
+        if crop.unlockLevel <= playerLevel then
+            table.insert(shopSeeds, {
+                type = cropId,
+                price = crop.seedCost,
+                crop = crop
+            })
+        end
+    end
+    
+    -- Sort by unlock level, then by price
+    table.sort(shopSeeds, function(a, b)
+        if a.crop.unlockLevel == b.crop.unlockLevel then
+            return a.price < b.price
+        end
+        return a.crop.unlockLevel < b.crop.unlockLevel
+    end)
     
     -- Handle info button click
     local function handleSeedInfo(seedType)
@@ -156,7 +171,7 @@ local function ShopPanel(props)
                 BorderSizePixel = 0,
                 ScrollBarThickness = 8,
                 ScrollingDirection = Enum.ScrollingDirection.X, -- Horizontal scrolling only
-                CanvasSize = UDim2.new(0, 600, 0, 160), -- Scrollable width for multiple cards
+                CanvasSize = UDim2.new(0, math.max(600, (#shopSeeds * 120)), 0, 160), -- Dynamic width based on crop count
                 ZIndex = 13
             }, React.createElement("UICorner", {
                 CornerRadius = UDim.new(0, 8)
