@@ -848,12 +848,23 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             corner.CornerRadius = UDim.new(0, 8)
             corner.Parent = background
             
-            -- Price text label with cash icon
+            -- Cash icon (same as TopStats)
+            local cashIcon = Instance.new("ImageLabel")
+            cashIcon.Name = "CashIcon"
+            cashIcon.Size = UDim2.new(0, 24, 0, 24)
+            cashIcon.Position = UDim2.new(0, 5, 0.5, -12)
+            cashIcon.BackgroundTransparency = 1
+            cashIcon.Image = assets["Currency/Cash/Cash Outline 256.png"] or ""
+            cashIcon.ImageColor3 = Color3.fromRGB(255, 255, 255) -- White icon
+            cashIcon.ScaleType = Enum.ScaleType.Fit
+            cashIcon.Parent = background
+            
+            -- Price text label (positioned next to icon)
             local priceLabel = Instance.new("TextLabel")
-            priceLabel.Size = UDim2.new(1, -10, 1, -10)
-            priceLabel.Position = UDim2.new(0, 5, 0, 5)
+            priceLabel.Size = UDim2.new(1, -35, 1, -10) -- Make room for icon
+            priceLabel.Position = UDim2.new(0, 30, 0, 5) -- Start after icon
             priceLabel.BackgroundTransparency = 1
-            priceLabel.Text = plotPrice == 0 and "💰 FREE" or "💰 " .. NumberFormatter.format(plotPrice)
+            priceLabel.Text = plotPrice == 0 and "FREE" or NumberFormatter.format(plotPrice)
             priceLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- Green text
             priceLabel.TextScaled = true
             priceLabel.Font = Enum.Font.SourceSansBold
