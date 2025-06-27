@@ -387,8 +387,23 @@ function FarmingSystem.onPlayerJoined(player)
         end
         
         log.info("🔵 Loading player data in background for:", player.Name)
+        
+        -- Start gamepass initialization in parallel (non-blocking)
+        local GamepassService = require(script.Parent.modules.GamepassService)
+        spawn(function()
+            log.info("🎮 Initializing gamepasses in parallel for:", player.Name)
+            GamepassService.initializePlayerGamepasses(player)
+            log.info("🎮 Gamepasses initialized for:", player.Name)
+        end)
+        
+        -- Load ProfileStore data (this is the main bottleneck)
         PlayerDataManager.onPlayerJoined(player)
         log.info("🔵 Player data loaded for:", player.Name)
+        
+        -- Send UI data immediately after ProfileStore loads (don't wait for gamepasses)
+        log.info("🚀 Syncing UI data immediately for:", player.Name)
+        RemoteManager.syncPlayerData(player)
+        log.info("🚀 UI data synced - player should see main UI now")
         
         -- Assign farm AFTER data is loaded (so plot ownership checks work)
         log.info("🔵 Assigning farm for:", player.Name)
@@ -422,10 +437,11 @@ function FarmingSystem.onPlayerJoined(player)
             end
         end
         
-        -- Sync the real data once loaded
-        log.info("🔵 Syncing data for:", player.Name)
+        -- Send a final sync after everything is complete (includes updated gamepass data)
+        wait(1) -- Give gamepasses a moment to finish
+        log.info("🔵 Final data sync for:", player.Name)
         RemoteManager.syncPlayerData(player)
-        log.info("🔵 Data synced for:", player.Name)
+        log.info("🔵 All data synced for:", player.Name)
     end)
 end
 

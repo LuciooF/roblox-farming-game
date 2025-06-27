@@ -108,13 +108,13 @@ function PlayerDataManager.onPlayerJoined(player)
         end
     end)
     
-    -- Wait up to 10 seconds for profile to load, then fallback (shorter in Studio)
+    -- Optimized polling: check every 50ms instead of 100ms for faster response
     local RunService = game:GetService("RunService")
-    local timeout = RunService:IsStudio() and 3 or 10 -- Only 3 seconds in Studio
+    local timeout = RunService:IsStudio() and 3 or 8 -- Reduced timeout from 10 to 8 seconds
     local elapsed = 0
     while not profileSuccess and elapsed < timeout and player.Parent do
-        wait(0.1)
-        elapsed = elapsed + 0.1
+        wait(0.05) -- Check every 50ms instead of 100ms
+        elapsed = elapsed + 0.05
     end
     
     if not profileSuccess or not profile then
