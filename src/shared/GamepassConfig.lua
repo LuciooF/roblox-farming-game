@@ -18,6 +18,21 @@ GamepassConfig.GAMEPASSES = {
         },
         multiplier = 2.0,
         category = "economy"
+    },
+    
+    flyMode = {
+        id = 1276253029,
+        name = "Fly Mode",
+        description = "Soar above your farm with unlimited flight!",
+        icon = "rbxassetid://1276253029", -- Uses the gamepass ID as asset ID
+        price = "R$ 149", -- Display price (actual price set in Roblox)
+        benefits = {
+            "✈️ Unlimited flight ability",
+            "🚀 Fast farm navigation",
+            "🎮 Toggle with F key",
+            "🌟 Permanent access"
+        },
+        category = "movement"
     }
     
     -- Future gamepasses can be added here:

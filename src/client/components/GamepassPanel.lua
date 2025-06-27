@@ -102,6 +102,16 @@ local function GamepassPanel(props)
             category = "💰 Economy"
         },
         {
+            id = 1276253029,
+            key = "flyMode",
+            name = "🚁 Fly Mode",
+            description = "Soar above your farm with unlimited flight! Fast navigation and perfect farm overview.",
+            icon = gamepassData.flyMode and gamepassData.flyMode.iconUrl or "rbxassetid://6031068426",
+            price = gamepassData.flyMode and gamepassData.flyMode.robux or "R$ 149",
+            gradientColors = {Color3.fromRGB(100, 255, 255), Color3.fromRGB(50, 200, 255)},
+            category = "🚁 Movement"
+        },
+        {
             id = 123456790,
             key = "autoHarvest",
             name = "🤖 Auto Harvest",
@@ -191,16 +201,6 @@ local function GamepassPanel(props)
             price = "R$ 199",
             gradientColors = {Color3.fromRGB(255, 150, 200), Color3.fromRGB(255, 100, 150)},
             category = "🐱 Pets"
-        },
-        {
-            id = 123456799,
-            key = "flyMode",
-            name = "🚁 Fly Mode",
-            description = "Unlock the ability to fly around your farm and see everything from above!",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 229",
-            gradientColors = {Color3.fromRGB(100, 255, 255), Color3.fromRGB(50, 200, 255)},
-            category = "🚁 Movement"
         },
         {
             id = 123456800,
