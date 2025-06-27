@@ -14,6 +14,9 @@ local function TutorialPanel(props)
     -- Skip confirmation state
     local showSkipConfirm, setShowSkipConfirm = React.useState(false)
     
+    -- Calculate total tutorial rewards (client-side calculation)
+    local totalTutorialRewards = 25 + 25 + 30 + 30 + 40 + 50 + 100 + 50 + 500 -- = 850 coins
+    
     if not tutorialData or not tutorialData.step then
         return nil
     end
@@ -57,6 +60,8 @@ local function TutorialPanel(props)
     React.useEffect(function()
         if not visible or not shakeRef.current then return end
         
+        local shakeTweens = {} -- Store all shake tweens for cleanup
+        
         local function shakeAnimation()
             if not shakeRef.current then return end
             
@@ -85,6 +90,12 @@ local function TutorialPanel(props)
                 Position = originalPosition
             })
             
+            -- Store tweens for cleanup
+            table.insert(shakeTweens, shake1)
+            table.insert(shakeTweens, shake2)
+            table.insert(shakeTweens, shake3)
+            table.insert(shakeTweens, shake4)
+            
             -- Chain the shakes
             shake1:Play()
             shake1.Completed:Connect(function()
@@ -98,22 +109,31 @@ local function TutorialPanel(props)
             end)
         end
         
-        -- Start shaking every 8 seconds
-        local connection
-        local function startShaking()
-            shakeAnimation()
-            task.wait(8)
-            if connection then
-                startShaking()
+        -- Use RunService connection instead of recursive task.spawn
+        local lastShakeTime = 0
+        local connection = game:GetService("RunService").Heartbeat:Connect(function()
+            local currentTime = tick()
+            if currentTime - lastShakeTime >= 8 then -- Shake every 8 seconds
+                shakeAnimation()
+                lastShakeTime = currentTime
             end
-        end
-        
-        connection = task.spawn(startShaking)
+        end)
         
         return function()
+            -- Clean up connection
             if connection then
-                task.cancel(connection)
+                connection:Disconnect()
+                connection = nil
             end
+            
+            -- Clean up all shake tweens
+            for _, tween in pairs(shakeTweens) do
+                if tween then
+                    tween:Cancel()
+                    tween:Destroy()
+                end
+            end
+            shakeTweens = {}
         end
     end, {visible})
     
@@ -473,7 +493,7 @@ local function TutorialPanel(props)
                 WarningMessage = e("TextLabel", {
                     Size = UDim2.new(1, -20, 0, 40),
                     Position = UDim2.new(0, 10, 0, 35),
-                    Text = "You'll miss out on tutorial rewards and can't get them back. Are you sure?",
+                    Text = "You'll miss out on " .. totalTutorialRewards .. " coins in tutorial rewards and can't get them back. Are you sure?",
                     TextColor3 = Color3.fromRGB(80, 80, 80),
                     TextSize = 12,
                     BackgroundTransparency = 1,

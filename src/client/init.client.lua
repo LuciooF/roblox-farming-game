@@ -26,10 +26,61 @@ end
 
 local log = ClientLogger.getModuleLogger("ClientMain")
 
--- Ensure mobile controls are enabled
+-- Ensure mobile controls are enabled and protected
 if UserInputService.TouchEnabled then
     GuiService.TouchControlsEnabled = true
     log.info("Mobile device detected - ensuring touch controls are enabled")
+    
+    -- Force enable both movement and camera controls
+    local Players = game:GetService("Players")
+    local player = Players.LocalPlayer
+    
+    -- Enable mobile controls more aggressively with multiple approaches
+    spawn(function()
+        wait(0.5) -- Shorter initial wait
+        GuiService.TouchControlsEnabled = true
+        
+        -- Try multiple methods to enable mobile controls
+        pcall(function()
+            -- Method 1: Direct PlayerModule access
+            if player and player.PlayerScripts then
+                local playerModule = player.PlayerScripts:WaitForChild("PlayerModule", 3)
+                if playerModule then
+                    local controls = require(playerModule:WaitForChild("ControlModule"))
+                    if controls and controls.Enable then
+                        controls:Enable()
+                        log.info("Mobile movement controls enabled via ControlModule")
+                    end
+                end
+            end
+        end)
+        
+        -- Method 2: Force enable at game level
+        wait(1)
+        GuiService.TouchControlsEnabled = true
+        
+        -- Method 3: Enable via PlayerGui properties 
+        pcall(function()
+            local playerGui = player:WaitForChild("PlayerGui")
+            if playerGui then
+                -- Ensure no ScreenGuis are blocking input
+                for _, gui in pairs(playerGui:GetChildren()) do
+                    if gui:IsA("ScreenGui") and gui.Name ~= "LoadingScreen" then
+                        pcall(function()
+                            -- Make sure they don't have Modal properties that block input
+                            if gui:FindFirstChild("Modal") then
+                                gui.Modal.Modal = false
+                            end
+                        end)
+                    end
+                end
+            end
+        end)
+        
+        wait(2)
+        GuiService.TouchControlsEnabled = true
+        log.info("Mobile controls force re-enabled after full UI load")
+    end)
 end
 
 -- Wait for React packages and components to be available
@@ -52,6 +103,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 -- Import main UI component
 local MainUI = require(script.components.MainUI)
+local LoadingScreen = require(script.components.LoadingScreen)
 local PlotCountdownManager = require(script.PlotCountdownManager)
 local PlotInteractionManager = require(script.PlotInteractionManager)
 local PlotProximityHandler = require(script.PlotProximityHandler)
@@ -88,17 +140,8 @@ local openPlotUIRemote = farmingRemotes:WaitForChild("OpenPlotUI")
 local gamepassPurchaseRemote = farmingRemotes:WaitForChild("GamepassPurchase")
 local gamepassDataRemote = farmingRemotes:WaitForChild("GamepassData")
 
--- Player data state (starts as loading)
-local playerData = {
-    loading = true,  -- Indicates data is still loading
-    money = 0,
-    rebirths = 0,
-    inventory = {
-        seeds = {},
-        crops = {}
-    },
-    gamepasses = {}
-}
+-- Player data state (starts as nil - UI won't render until data loads)
+local playerData = nil
 
 -- Tutorial data state
 local tutorialData = nil
@@ -138,8 +181,32 @@ local remotes = {
 local plotUIHandler = nil
 local plotUIUpdater = nil -- Function to update the currently open Plot UI
 
--- Update UI function - always render main UI
+-- Screen size state for responsive design
+local screenSize = Vector2.new(1024, 768)
+
+-- Update screen size function
+local function updateScreenSize()
+    local camera = workspace.CurrentCamera
+    if camera then
+        screenSize = camera.ViewportSize
+    end
+end
+
+-- Update UI function - renders loading screen or main UI
 local function updateUI()
+    -- Update screen size
+    updateScreenSize()
+    
+    if not playerData then
+        -- Show loading screen while waiting for player data
+        log.debug("Player data not loaded yet, showing loading screen")
+        root:render(React.createElement(LoadingScreen, {
+            screenSize = screenSize
+        }))
+        return
+    end
+    
+    -- Render main UI when data is loaded
     root:render(React.createElement(MainUI, {
         playerData = playerData,
         remotes = remotes,
@@ -159,19 +226,24 @@ end
 
 -- Handle player data sync from server
 syncRemote.OnClientEvent:Connect(function(newPlayerData)
+    local isFirstLoad = playerData == nil
+    
     -- Use minimal logging for data sync (can be verbose)
     if newPlayerData.money then
         log.trace("Player data synced - Money:", newPlayerData.money)
     end
     
-    -- Mark loading as complete and update data
+    if isFirstLoad then
+        log.info("Player data loaded for first time - switching from loading screen to main UI")
+    end
+    
+    -- Update player data
     playerData = newPlayerData
-    playerData.loading = false
     
     -- Update PlotInteractionManager with current inventory data
     PlotInteractionManager.updatePlayerData(playerData)
     
-    -- Update UI with new data
+    -- Update UI with new data (will now render if this was first load)
     updateUI()
 end)
 
@@ -253,7 +325,16 @@ FlyController.initialize()
 CharacterFaceTracker.initialize()
 
 
--- Render initial UI
+-- Set up camera viewport size change detection
+local camera = workspace.CurrentCamera
+if camera then
+    camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+        updateScreenSize()
+        updateUI() -- Re-render on screen size change
+    end)
+end
+
+-- Render initial loading screen
 updateUI()
 
 -- Request gamepass data from server

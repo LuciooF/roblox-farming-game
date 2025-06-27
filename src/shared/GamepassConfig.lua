@@ -56,21 +56,5 @@ function GamepassConfig.getGamepass(key)
     return GamepassConfig.GAMEPASSES[key]
 end
 
--- Get all gamepasses in a category
-function GamepassConfig.getGamepassesByCategory(category)
-    local filtered = {}
-    for key, gamepass in pairs(GamepassConfig.GAMEPASSES) do
-        if gamepass.category == category then
-            filtered[key] = gamepass
-        end
-    end
-    return filtered
-end
-
--- Check if a gamepass ID is valid
-function GamepassConfig.isValidGamepassId(gamepassId)
-    local _, gamepass = GamepassConfig.getGamepassById(gamepassId)
-    return gamepass ~= nil
-end
 
 return GamepassConfig

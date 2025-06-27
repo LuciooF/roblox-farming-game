@@ -64,90 +64,6 @@ function SoundManager.initialize()
     log.info("Audio system ready! (sounds disabled)")
 end
 
--- Setup background music
-function SoundManager.setupBackgroundMusic()
-    -- Create background music sound
-    backgroundMusicSound = Instance.new("Sound")
-    backgroundMusicSound.Name = "BackgroundMusic"
-    backgroundMusicSound.SoundId = SoundConfig.backgroundMusic[1]
-    backgroundMusicSound.Volume = SoundSettings.backgroundMusicVolume
-    backgroundMusicSound.Looped = true
-    backgroundMusicSound.EmitterSize = 100 -- Large area
-    backgroundMusicSound.Parent = game.Workspace
-    
-    -- Start playing
-    backgroundMusicSound:Play()
-    
-    -- Change music every 5 minutes
-    spawn(function()
-        while true do
-            wait(300) -- 5 minutes
-            SoundManager.changeBackgroundMusic()
-        end
-    end)
-end
-
--- Change background music to a different track
-function SoundManager.changeBackgroundMusic()
-    if backgroundMusicSound then
-        local currentId = backgroundMusicSound.SoundId
-        local musicList = SoundConfig.backgroundMusic
-        
-        -- Pick a different track
-        local newId = currentId
-        while newId == currentId do
-            newId = musicList[math.random(1, #musicList)]
-        end
-        
-        -- Fade out current, fade in new
-        local tweenService = game:GetService("TweenService")
-        local fadeOut = tweenService:Create(backgroundMusicSound, TweenInfo.new(2), {Volume = 0})
-        
-        fadeOut:Play()
-        fadeOut.Completed:Connect(function()
-            backgroundMusicSound.SoundId = newId
-            backgroundMusicSound.Volume = SoundSettings.backgroundMusicVolume
-            backgroundMusicSound:Play()
-        end)
-    end
-end
-
--- Setup sound effects in ReplicatedStorage for client access
-function SoundManager.setupSoundEffects()
-    local soundFolder = Instance.new("Folder")
-    soundFolder.Name = "SoundEffects"
-    soundFolder.Parent = ReplicatedStorage
-    
-    -- Create action sounds
-    for actionName, soundId in pairs(SoundConfig.actions) do
-        local sound = Instance.new("Sound")
-        sound.Name = actionName
-        sound.SoundId = soundId
-        sound.Volume = SoundSettings.actionSoundVolume
-        sound.Parent = soundFolder
-        soundEffects[actionName] = sound
-    end
-    
-    -- Create UI sounds
-    for uiName, soundId in pairs(SoundConfig.ui) do
-        local sound = Instance.new("Sound")
-        sound.Name = uiName
-        sound.SoundId = soundId
-        sound.Volume = SoundSettings.uiSoundVolume
-        sound.Parent = soundFolder
-        soundEffects[uiName] = sound
-    end
-    
-    -- Create system sounds
-    for systemName, soundId in pairs(SoundConfig.system) do
-        local sound = Instance.new("Sound")
-        sound.Name = systemName
-        sound.SoundId = soundId
-        sound.Volume = SoundSettings.systemSoundVolume
-        sound.Parent = soundFolder
-        soundEffects[systemName] = sound
-    end
-end
 
 -- Play action sound (server-side, plays for all nearby players)
 function SoundManager.playActionSound(soundName, position)
@@ -189,10 +105,6 @@ function SoundManager.playActionSound(soundName, position)
     end
 end
 
--- Play system sound (server-side notification sounds)
-function SoundManager.playSystemSound(soundName)
-    SoundManager.playActionSound(soundName)
-end
 
 -- Farming action sounds
 function SoundManager.playPlantSound(position)
@@ -211,10 +123,6 @@ function SoundManager.playSellSound()
     SoundManager.playActionSound("sell")
 end
 
--- Special event sounds
-function SoundManager.playPlantDeathSound(position)
-    SoundManager.playActionSound("plantDeath", position)
-end
 
 function SoundManager.playPlantReadySound(position)
     SoundManager.playActionSound("plantReady", position)
@@ -224,45 +132,5 @@ function SoundManager.playRebirthSound()
     SoundManager.playActionSound("rebirth")
 end
 
--- Volume controls
-function SoundManager.setBackgroundMusicVolume(volume)
-    SoundSettings.backgroundMusicVolume = math.clamp(volume, 0, 1)
-    if backgroundMusicSound then
-        backgroundMusicSound.Volume = SoundSettings.backgroundMusicVolume
-    end
-end
-
-function SoundManager.setSoundEffectVolume(category, volume)
-    volume = math.clamp(volume, 0, 1)
-    
-    if category == "actions" then
-        SoundSettings.actionSoundVolume = volume
-    elseif category == "ui" then
-        SoundSettings.uiSoundVolume = volume
-    elseif category == "system" then
-        SoundSettings.systemSoundVolume = volume
-    end
-    
-    -- Update existing sounds
-    for soundName, sound in pairs(soundEffects) do
-        if SoundConfig[category] and SoundConfig[category][soundName] then
-            sound.Volume = volume
-        end
-    end
-end
-
--- Toggle background music on/off
-function SoundManager.toggleBackgroundMusic()
-    if backgroundMusicSound then
-        if backgroundMusicSound.Volume > 0 then
-            backgroundMusicSound.Volume = 0
-            return false -- Music off
-        else
-            backgroundMusicSound.Volume = SoundSettings.backgroundMusicVolume
-            return true -- Music on
-        end
-    end
-    return false
-end
 
 return SoundManager

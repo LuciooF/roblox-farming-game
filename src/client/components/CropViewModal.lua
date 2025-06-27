@@ -8,7 +8,7 @@ local Modal = require(script.Parent.Modal)
 local CropCard = require(script.Parent.CropCard)
 
 local function CropViewModal(props)
-    local playerData = props.playerData or {}
+    local playerData = props.playerData
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local onSellCrop = props.onSellCrop or function() end

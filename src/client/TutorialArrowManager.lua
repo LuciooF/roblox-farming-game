@@ -18,6 +18,7 @@ local currentConnection = nil
 local arrowTween = nil
 local currentTrail = nil
 local trailConnection = nil
+local trailConnections = {} -- Track connections for each trail
 
 -- Arrow configuration
 local ARROW_HEIGHT_OFFSET = 8 -- Height above target
@@ -27,7 +28,7 @@ local UI_ARROW_OFFSET = 50 -- Offset from UI elements
 
 -- Create a 2D billboard arrow pointing to a world position
 function TutorialArrowManager.createWorldArrow(targetPosition, color)
-    log.warn("🎯 Creating world arrow at position:", targetPosition, "color:", color or "Lime green")
+    log.debug("🎯 Creating world arrow at position:", targetPosition, "color:", color or "Lime green")
     
     -- Clean up existing arrow
     TutorialArrowManager.cleanup()
@@ -68,7 +69,7 @@ function TutorialArrowManager.createWorldArrow(targetPosition, color)
     -- Create trail from player to target
     TutorialArrowManager.createTrail(targetPosition, color)
     
-    log.warn("🎯 2D Billboard arrow created successfully!")
+    log.debug("🎯 2D Billboard arrow created successfully!")
     
     -- Animate arrow bounce
     local startY = targetPosition.Y + ARROW_HEIGHT_OFFSET
@@ -81,7 +82,7 @@ function TutorialArrowManager.createWorldArrow(targetPosition, color)
         anchorPart.Position = Vector3.new(targetPosition.X, startY + bounceOffset, targetPosition.Z)
     end)
     
-    log.warn("🎯 Arrow animation started successfully!")
+    log.debug("🎯 Arrow animation started successfully!")
 end
 
 -- Create a trail from player to target position
@@ -112,6 +113,9 @@ function TutorialArrowManager.createTrail(targetPosition, color)
     -- Create a fixed number of dots with FIXED path
     local numDots = 15 -- Fixed number of dots
     
+    -- Store dot update connections for proper cleanup
+    local dotConnections = {}
+    
     -- Create continuous flowing dots
     for i = 1, numDots do
         local dotModel = Instance.new("Model")
@@ -136,48 +140,62 @@ function TutorialArrowManager.createTrail(targetPosition, color)
         pointLight.Color = Color3.fromRGB(255, 255, 50)
         pointLight.Parent = dot
         
-        -- Create simple static dots that just hover up and down
-        spawn(function()
-            local dotIndex = i - 1 -- 0-based index
-            local hoverOffset = dotIndex * 0.3 -- Stagger the hover timing
-            
-            while dotModel.Parent and character and character:FindFirstChild("HumanoidRootPart") do
-                -- Get current player position each frame
-                local currentPlayerPos = character.HumanoidRootPart.Position - Vector3.new(0, character.HumanoidRootPart.Size.Y/2 + 1, 0)
-                local currentDirection = (targetPosition - currentPlayerPos).Unit
-                local currentDistance = (targetPosition - currentPlayerPos).Magnitude
-                
-                -- Skip if too close to target
-                if currentDistance < 10 then
-                    dot.Transparency = 1 -- Hide dot
-                    RunService.Heartbeat:Wait()
-                    continue
-                end
-                
-                -- Position dot at fixed location along the path (no movement)
-                local progress = dotIndex / (numDots - 1) -- Evenly space from 0 to 1
-                local basePosition = currentPlayerPos + (currentDirection * (progress * currentDistance))
-                
-                -- Add gentle up/down hover animation
-                local hoverHeight = math.sin(tick() * 3 + hoverOffset) * 0.3 -- Gentle hover
-                
-                -- Set final position
-                dot.Position = basePosition + Vector3.new(0, 1 + hoverHeight, 0)
-                
-                -- No transparency fading - just keep them visible
-                dot.Transparency = 0
-                
-                RunService.Heartbeat:Wait()
+        -- Use RunService connection instead of spawn thread
+        local dotIndex = i - 1 -- 0-based index
+        local hoverOffset = dotIndex * 0.3 -- Stagger the hover timing
+        
+        local connection = RunService.Heartbeat:Connect(function()
+            -- Check if dot still exists and character is valid
+            if not dotModel.Parent or not character or not character:FindFirstChild("HumanoidRootPart") then
+                return
             end
+            
+            -- Get current player position each frame
+            local currentPlayerPos = character.HumanoidRootPart.Position - Vector3.new(0, character.HumanoidRootPart.Size.Y/2 + 1, 0)
+            local currentDirection = (targetPosition - currentPlayerPos).Unit
+            local currentDistance = (targetPosition - currentPlayerPos).Magnitude
+            
+            -- Skip if too close to target
+            if currentDistance < 10 then
+                dot.Transparency = 1 -- Hide dot
+                return
+            end
+            
+            -- Position dot at fixed location along the path (no movement)
+            local progress = dotIndex / (numDots - 1) -- Evenly space from 0 to 1
+            local basePosition = currentPlayerPos + (currentDirection * (progress * currentDistance))
+            
+            -- Add gentle up/down hover animation
+            local hoverHeight = math.sin(tick() * 3 + hoverOffset) * 0.3 -- Gentle hover
+            
+            -- Set final position
+            dot.Position = basePosition + Vector3.new(0, 1 + hoverHeight, 0)
+            
+            -- No transparency fading - just keep them visible
+            dot.Transparency = 0
         end)
+        
+        -- Store connection for cleanup
+        table.insert(dotConnections, connection)
     end
     
-    log.warn("🎯 Trail created with dynamic player following")
+    -- Store connections in a way we can access them for cleanup
+    -- Since we can't store arrays as attributes, we'll store them in a global variable
+    if not currentTrail:FindFirstChild("ConnectionStorage") then
+        local storage = Instance.new("ObjectValue")
+        storage.Name = "ConnectionStorage"
+        storage.Parent = currentTrail
+    end
+    
+    -- Store the connections in our global cleanup system
+    trailConnections[currentTrail] = dotConnections
+    
+    log.debug("🎯 Trail created with dynamic player following")
 end
 
 -- Create a simple UI arrow next to a UI element (like another UI button)
 function TutorialArrowManager.createUIArrow(screenPosition, direction, color)
-    log.warn("🎯 Creating simple UI arrow next to inventory button at:", screenPosition, "direction:", direction)
+    log.debug("🎯 Creating simple UI arrow next to inventory button at:", screenPosition, "direction:", direction)
     
     -- Clean up existing arrow
     TutorialArrowManager.cleanup()
@@ -242,7 +260,7 @@ function TutorialArrowManager.createUIArrow(screenPosition, direction, color)
     arrowTween:Play()
     
     currentArrow = screenGui
-    log.warn("🎯 Simple UI arrow created successfully next to inventory button!")
+    log.debug("🎯 Simple UI arrow created successfully next to inventory button!")
 end
 
 -- Point to a specific plot
@@ -293,14 +311,47 @@ function TutorialArrowManager.pointToClosestUnownedPlot()
         return false
     end
     
-    -- Create a promise-like system to wait for the server response
+    -- Create a promise-like system to wait for the server response with timeout
     local farmIdReceived = false
     local playerFarmId = nil
+    local connection = nil
+    local startTime = tick() -- Record when we started waiting
     
-    local connection = getFarmIdRemote.OnClientEvent:Connect(function(farmId)
+    -- Set up timeout first
+    local timeoutConnection = nil
+    timeoutConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        -- Check if 5 seconds have passed
+        if tick() - startTime > 5 then
+            if timeoutConnection then
+                timeoutConnection:Disconnect()
+                timeoutConnection = nil
+            end
+            if connection then
+                connection:Disconnect()
+                connection = nil
+            end
+            if not farmIdReceived then
+                log.warn("🎯 Timeout waiting for farm ID from server")
+                farmIdReceived = true -- Stop waiting
+            end
+        end
+    end)
+    
+    local startTime = tick()
+    connection = getFarmIdRemote.OnClientEvent:Connect(function(farmId)
         log.warn("🎯 Received farm ID from server:", farmId)
         playerFarmId = farmId
         farmIdReceived = true
+        
+        -- Clean up connections
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+        if timeoutConnection then
+            timeoutConnection:Disconnect()
+            timeoutConnection = nil
+        end
     end)
     
     -- Request the farm ID
@@ -313,7 +364,15 @@ function TutorialArrowManager.pointToClosestUnownedPlot()
         waitTime = waitTime + 0.1
     end
     
-    connection:Disconnect()
+    -- Final cleanup in case we exited the loop early
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+    if timeoutConnection then
+        timeoutConnection:Disconnect()
+        timeoutConnection = nil
+    end
     
     if not farmIdReceived or not playerFarmId then
         log.warn("🎯 Failed to get farm ID from server")
@@ -464,10 +523,21 @@ function TutorialArrowManager.cleanup()
     end
     
     if currentTrail then
-        -- Properly cleanup all dots and their spawn threads
+        -- Disconnect all dot update connections
+        local dotConnections = trailConnections[currentTrail]
+        if dotConnections then
+            for _, connection in pairs(dotConnections) do
+                if connection then
+                    connection:Disconnect()
+                end
+            end
+            -- Clear the reference
+            trailConnections[currentTrail] = nil
+        end
+        
+        -- Properly cleanup all dot models
         for _, child in pairs(currentTrail:GetChildren()) do
             if child:IsA("Model") then
-                -- This will also clean up the spawn threads when the model is destroyed
                 child:Destroy()
             end
         end
@@ -537,12 +607,46 @@ function TutorialArrowManager.retryPointToUnownedPlot()
         local farmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
         local syncRemote = farmingRemotes:WaitForChild("SyncPlayerData")
         
-        -- Wait for first data sync after character spawn
+        -- Wait for first data sync after character spawn with proper timeout handling
         local dataSynced = false
-        local connection = syncRemote.OnClientEvent:Connect(function(playerData)
+        local connection = nil
+        local timeoutConnection = nil
+        
+        -- Set up timeout using RunService connection instead of spawn
+        local startTime = tick()
+        timeoutConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            if tick() - startTime > 30 then -- 30 second timeout
+                if not dataSynced then
+                    log.warn("🎯 Timeout waiting for player data sync, giving up on arrows")
+                    dataSynced = true -- Prevent further processing
+                end
+                
+                -- Clean up connections
+                if connection then
+                    connection:Disconnect()
+                    connection = nil
+                end
+                if timeoutConnection then
+                    timeoutConnection:Disconnect()
+                    timeoutConnection = nil
+                end
+            end
+        end)
+        
+        connection = syncRemote.OnClientEvent:Connect(function(playerData)
             if not dataSynced and playerData and not playerData.loading then
                 dataSynced = true
                 log.warn("🎯 Player data synced! Farm should now be assigned. Looking for arrows...")
+                
+                -- Clean up connections first
+                if connection then
+                    connection:Disconnect()
+                    connection = nil
+                end
+                if timeoutConnection then
+                    timeoutConnection:Disconnect()
+                    timeoutConnection = nil
+                end
                 
                 -- Small delay to ensure everything is fully loaded
                 wait(1)
@@ -580,15 +684,6 @@ function TutorialArrowManager.retryPointToUnownedPlot()
                 end
                 
                 tryPointing()
-            end
-        end)
-        
-        -- Timeout after 30 seconds in case data sync never comes
-        spawn(function()
-            wait(30)
-            if not dataSynced then
-                connection:Disconnect()
-                log.warn("🎯 Timeout waiting for player data sync, giving up on arrows")
             end
         end)
     end)

@@ -4,6 +4,7 @@
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 local Players = game:GetService("Players")
 
 local ScreenUtils = require(ReplicatedStorage.Shared.ScreenUtils)
@@ -134,15 +135,14 @@ local function SettingsPanel(props)
                     ZIndex = 103
                 }),
                 
-                CloseButton = e("TextButton", {
+                CloseButton = e("ImageButton", {
                     Name = "CloseButton",
                     Size = UDim2.new(0, 40, 0, 40),
                     Position = UDim2.new(1, -45, 0, 5),
                     BackgroundColor3 = Color3.fromRGB(200, 50, 50),
-                    Text = "✕",
-                    TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextScaled = true,
-                    Font = Enum.Font.SourceSansBold,
+                    Image = assets["X Button/X Button 64.png"],
+                    ImageColor3 = Color3.fromRGB(255, 255, 255),
+                    ScaleType = Enum.ScaleType.Fit,
                     BorderSizePixel = 0,
                     ZIndex = 103,
                     [React.Event.Activated] = onClose

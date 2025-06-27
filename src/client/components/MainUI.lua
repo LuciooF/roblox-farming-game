@@ -20,6 +20,7 @@ local BoostPanel = require(script.Parent.BoostPanel)
 local TutorialResetButton = require(script.Parent.TutorialResetButton)
 local SettingsPanel = require(script.Parent.SettingsPanel)
 local PlotUI = require(script.Parent.PlotUI)
+local DebugPanel = require(script.Parent.DebugPanel)
 local GamepassPanel = require(script.Parent.GamepassPanel)
 local ConfettiAnimation = require(script.Parent.ConfettiAnimation)
 
@@ -67,6 +68,11 @@ local function MainUI(props)
                 connection:Disconnect()
             end
         end
+    end, {})
+    
+    -- Initialize DebugPanel when component mounts
+    React.useEffect(function()
+        DebugPanel.create()
     end, {})
     
     -- Event handlers
@@ -220,7 +226,7 @@ local function MainUI(props)
         -- Mobile-friendly: smaller area that doesn't interfere with bottom controls
         ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible) and e("TextButton", {
             Name = "ClickDetector",
-            Size = UDim2.new(1, 0, 1, isMobile and -100 or 0), -- Leave space at bottom for mobile controls
+            Size = UDim2.new(1, 0, 1, isMobile and -200 or 0), -- Leave more space at bottom for mobile controls
             Position = UDim2.new(0, 0, 0, 0),
             BackgroundTransparency = 1,
             Text = "",
@@ -230,11 +236,10 @@ local function MainUI(props)
             end
         }) or nil,
         
-        -- Top Stats Component
+        -- Top Stats Component (rebirth moved to side buttons)
         TopStats = e(TopStats, {
             playerData = playerData,
-            screenSize = screenSize,
-            onRebirthClick = handleRebirthClick
+            screenSize = screenSize
         }),
         
         -- Side Buttons Component
@@ -247,8 +252,9 @@ local function MainUI(props)
             end,
             onWeatherClick = handleWeatherClick,
             onGamepassClick = handleGamepassClick,
-            onSettingsClick = function()
-                setSettingsVisible(true)
+            onRebirthClick = handleRebirthClick,
+            onPetsClick = function()
+                DebugPanel.toggle()
             end
         }),
         
@@ -327,15 +333,15 @@ local function MainUI(props)
             screenSize = screenSize
         }),
         
-        -- Gamepass Panel Component
-        GamepassPanel = e(GamepassPanel, {
+        -- Gamepass Panel Component (only render when needed)
+        GamepassPanel = gamepassVisible and e(GamepassPanel, {
             visible = gamepassVisible,
             onClose = function() setGamepassVisible(false) end,
             onPurchase = handleGamepassPurchase,
             playerData = playerData,
             gamepassData = gamepassData,
             screenSize = screenSize
-        }),
+        }) or nil,
         
         -- Plot UI Component
         PlotUI = plotUIVisible and selectedPlotData and e(PlotUI, {

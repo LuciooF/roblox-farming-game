@@ -105,15 +105,5 @@ function RainEffectManager.createRainEffect(plot)
     log.debug("Rain effect created successfully")
 end
 
--- Create a more intense rain effect for multiple waterings
-function RainEffectManager.createIntenseRainEffect(plot)
-    -- Create multiple rain effects with slight offsets
-    for i = 1, 3 do
-        task.spawn(function()
-            task.wait((i - 1) * 0.2) -- Stagger the effects
-            RainEffectManager.createRainEffect(plot)
-        end)
-    end
-end
 
 return RainEffectManager

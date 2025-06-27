@@ -36,26 +36,5 @@ function NumberFormatter.format(num)
     return negative and "-" .. formatted or formatted
 end
 
--- Format with commas for full display (e.g., in detailed views)
-function NumberFormatter.formatWithCommas(num)
-    if not num or type(num) ~= "number" then
-        return "0"
-    end
-    
-    local negative = num < 0
-    num = math.abs(num)
-    
-    local formatted = tostring(math.floor(num))
-    local k
-    
-    while true do
-        formatted, k = formatted:gsub("^(-?%d+)(%d%d%d)", "%1,%2")
-        if k == 0 then
-            break
-        end
-    end
-    
-    return negative and "-" .. formatted or formatted
-end
 
 return NumberFormatter

@@ -197,21 +197,11 @@ function ConfigManager.getOnlineBonus()
     return GameplayConfig.OnlineBonus
 end
 
-function ConfigManager.getStorageConfig()
-    return GameplayConfig.Storage
-end
 
 function ConfigManager.getFarmConfig()
     return GameplayConfig.Farm
 end
 
-function ConfigManager.getEconomyConfig()
-    return GameplayConfig.Economy
-end
-
-function ConfigManager.getTutorialConfig()
-    return GameplayConfig.Tutorial
-end
 
 function ConfigManager.getTimingConfig()
     return GameplayConfig.Timing
@@ -219,52 +209,6 @@ end
 
 -- === CONVENIENCE FUNCTIONS ===
 
--- Get complete crop data with calculated values
-function ConfigManager.getEnhancedCropData(cropName)
-    local crop = CropConfig.getCrop(cropName)
-    if not crop then return nil end
-    
-    -- Add calculated values
-    local enhanced = {}
-    for key, value in pairs(crop) do
-        enhanced[key] = value
-    end
-    
-    -- Add calculated growth time
-    enhanced.calculatedGrowthTime = CropConfig.getGrowthTimeFromRate(cropName)
-    
-    -- Add rarity data
-    if crop.rarity then
-        enhanced.rarityData = CropConfig.Rarities[crop.rarity]
-    end
-    
-    return enhanced
-end
-
--- Get crop data formatted for client
-function ConfigManager.getCropDataForClient()
-    local crops = {}
-    for cropName, cropData in pairs(CropConfig.getAllCrops()) do
-        crops[cropName] = {
-            name = cropData.name,
-            emoji = cropData.emoji,
-            description = cropData.description,
-            rarity = cropData.rarity,
-            seedCost = cropData.seedCost,
-            basePrice = cropData.basePrice,
-            storageCapacity = cropData.storageCapacity,
-            productionPerHour = cropData.baseProductionPerHour,
-            waterNeeded = cropData.waterNeeded,
-            maxHarvests = cropData.maxHarvests,
-            unlockLevel = cropData.unlockLevel,
-            unlocked = cropData.unlocked,
-            plantedEmoji = cropData.plantedEmoji,
-            growingEmoji = cropData.growingEmoji,
-            readyEmoji = cropData.readyEmoji
-        }
-    end
-    return crops
-end
 
 -- Get weather data formatted for client
 function ConfigManager.getWeatherDataForClient()
@@ -284,15 +228,5 @@ function ConfigManager.getWeatherDataForClient()
     return weather
 end
 
--- Hot reload configurations (for development)
-function ConfigManager.reloadConfigs()
-    log.info("Reloading configurations...")
-    
-    -- This would require clearing the require cache and re-requiring
-    -- For now, just log that reload was requested
-    log.warn("Hot reload not implemented - restart server to reload configs")
-    
-    return false
-end
 
 return ConfigManager

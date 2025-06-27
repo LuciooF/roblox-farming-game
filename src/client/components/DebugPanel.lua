@@ -23,16 +23,26 @@ function DebugPanel.create()
         debugFrame:Destroy()
     end
     
+    -- Create ScreenGui first
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "DebugPanelScreen"
+    screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = playerGui
+    
     -- Create main debug frame
     debugFrame = Instance.new("Frame")
     debugFrame.Name = "DebugPanel"
     debugFrame.Size = UDim2.new(0, 250, 0, 400)
-    debugFrame.Position = UDim2.new(1, -260, 0, 10) -- Top right corner
+    debugFrame.Position = UDim2.new(0.5, -125, 0.5, -200) -- Center of screen for visibility test
     debugFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     debugFrame.BorderSizePixel = 2
     debugFrame.BorderColor3 = Color3.fromRGB(255, 0, 0) -- Red border for debug
     debugFrame.Visible = false
-    debugFrame.Parent = playerGui
+    debugFrame.ZIndex = 1000 -- Very high ZIndex
+    debugFrame.Parent = screenGui
+    
+    log.info("Debug panel created with ScreenGui wrapper")
     
     -- Add corner
     local corner = Instance.new("UICorner")
@@ -156,9 +166,13 @@ function DebugPanel.show()
     if not debugFrame then
         DebugPanel.create()
     end
-    debugFrame.Visible = true
-    isVisible = true
-    log.info("Debug panel shown")
+    if debugFrame then
+        debugFrame.Visible = true
+        isVisible = true
+        log.info("Debug panel shown - frame exists and set to visible")
+    else
+        log.error("Debug panel frame not found!")
+    end
 end
 
 -- Hide the debug panel

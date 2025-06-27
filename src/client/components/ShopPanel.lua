@@ -3,6 +3,7 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
+local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 local ClientLogger = require(script.Parent.Parent.ClientLogger)
 
 local log = ClientLogger.getModuleLogger("ShopPanel")
@@ -11,7 +12,7 @@ local ShopSeedCard = require(script.Parent.ShopSeedCard)
 local SeedDetailModal = require(script.Parent.SeedDetailModal)
 
 local function ShopPanel(props)
-    local playerData = props.playerData or {}
+    local playerData = props.playerData
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local remotes = props.remotes or {}
@@ -100,16 +101,15 @@ local function ShopPanel(props)
             }),
             
             -- Close Button
-            CloseButton = e("TextButton", {
+            CloseButton = e("ImageButton", {
                 Name = "CloseButton",
                 Size = UDim2.new(0, 30, 0, 30),
                 Position = UDim2.new(1, -40, 0, 10),
-                Text = "✕",
-                TextColor3 = Color3.fromRGB(255, 100, 100),
-                TextScaled = true,
+                Image = assets["X Button/X Button 64.png"],
+                ImageColor3 = Color3.fromRGB(255, 100, 100),
+                ScaleType = Enum.ScaleType.Fit,
                 BackgroundColor3 = Color3.fromRGB(50, 25, 25),
                 BorderSizePixel = 0,
-                Font = Enum.Font.SourceSansBold,
                 ZIndex = 14,
                 [React.Event.Activated] = onClose
             }, {

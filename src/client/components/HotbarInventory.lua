@@ -4,6 +4,7 @@
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local TweenService = game:GetService("TweenService")
 local e = React.createElement
+local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 local ClientLogger = require(script.Parent.Parent.ClientLogger)
 
 local log = ClientLogger.getModuleLogger("HotbarInventory")
@@ -289,17 +290,16 @@ local function HotbarInventory(props)
         end
         
         -- Add the plus button for purchasing new slots (always last)
-        table.insert(slotElements, e("TextButton", {
+        table.insert(slotElements, e("ImageButton", {
             Name = "PlusButton",
             Size = UDim2.new(0, slotSize * scale, 0, slotSize * scale),
             BackgroundColor3 = Color3.fromRGB(40, 120, 40),
             BackgroundTransparency = 0.2,
             BorderSizePixel = 2,
             BorderColor3 = Color3.fromRGB(80, 200, 80),
-            Text = "+",
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextScaled = true,
-            Font = Enum.Font.SourceSansBold,
+            Image = assets["Plus/Plus 64.png"],
+            ImageColor3 = Color3.fromRGB(255, 255, 255),
+            ScaleType = Enum.ScaleType.Fit,
             ZIndex = 15,
             LayoutOrder = totalSlots + 1, -- Explicitly set layout order for plus button
             [React.Event.Activated] = handleSlotPurchase,

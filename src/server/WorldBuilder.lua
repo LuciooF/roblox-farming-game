@@ -6,6 +6,8 @@ local Players = game:GetService("Players")
 local Logger = require(script.Parent.modules.Logger)
 -- Import unified crop system - REQUIRED for the refactored system
 local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
+local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 
 local WorldBuilder = {}
 
@@ -214,7 +216,7 @@ local function createFarmFromTemplate(farmId, position)
     end
     
     if not farmSpawn then
-        log.warn("🏗️ FARM CREATION: No FarmSpawn found! Falling back to original method")
+        log.debug("🏗️ FARM CREATION: No FarmSpawn found! Falling back to original method")
         -- Fallback to old method if no spawn found
         local lowestY = math.huge
         for _, child in ipairs(newFarm:GetDescendants()) do
@@ -230,7 +232,7 @@ local function createFarmFromTemplate(farmId, position)
     
     -- Use the spawn's bottom as our reference point for ground level
     local spawnBottom = farmSpawn.Position.Y - (farmSpawn.Size.Y / 2)
-    log.warn("🏗️ FARM CREATION: Using FarmSpawn", farmSpawn.Name or "FALLBACK", "at position", farmSpawn.Position, "with bottom at Y:", spawnBottom)
+    log.debug("🏗️ FARM CREATION: Using FarmSpawn", farmSpawn.Name or "FALLBACK", "at position", farmSpawn.Position, "with bottom at Y:", spawnBottom)
     
     -- Find the actual ground level (top surface of baseplate)
     local groundLevel = 0.5 -- Standard Roblox baseplate level
@@ -238,9 +240,9 @@ local function createFarmFromTemplate(farmId, position)
     if baseplate then
         -- Use the top surface of the baseplate as ground level
         groundLevel = baseplate.Position.Y + (baseplate.Size.Y / 2)
-        log.warn("🏗️ FARM CREATION: Found baseplate - Position:", baseplate.Position, "Size:", baseplate.Size, "Top surface Y:", groundLevel)
+        log.debug("🏗️ FARM CREATION: Found baseplate - Position:", baseplate.Position, "Size:", baseplate.Size, "Top surface Y:", groundLevel)
     else
-        log.warn("🏗️ FARM CREATION: No baseplate found, using default ground level:", groundLevel)
+        log.debug("🏗️ FARM CREATION: No baseplate found, using default ground level:", groundLevel)
     end
     
     -- Calculate ABSOLUTE positioning - put the FarmSpawn bottom at ground level
@@ -253,7 +255,7 @@ local function createFarmFromTemplate(farmId, position)
     -- Combine horizontal movement with vertical positioning
     local absoluteOffset = Vector3.new(horizontalOffset.X, yOffsetNeeded, horizontalOffset.Z)
     
-    log.warn("🏗️ FARM CREATION: Farm", farmId, "SPAWN positioning - TemplateCenter:", templateCenter, "SpawnBottom:", spawnBottom, "GroundLevel:", groundLevel, "YOffsetNeeded:", yOffsetNeeded, "AbsoluteOffset:", absoluteOffset)
+    log.debug("🏗️ FARM CREATION: Farm", farmId, "SPAWN positioning - TemplateCenter:", templateCenter, "SpawnBottom:", spawnBottom, "GroundLevel:", groundLevel, "YOffsetNeeded:", yOffsetNeeded, "AbsoluteOffset:", absoluteOffset)
     
     -- Move all parts in the farm using absolute positioning
     local partsMoved = 0
@@ -263,18 +265,18 @@ local function createFarmFromTemplate(farmId, position)
             child.Position = child.Position + absoluteOffset
             partsMoved = partsMoved + 1
             if partsMoved <= 3 then -- Log first few parts
-                log.warn("🏗️ FARM CREATION: Moved part", child.Name, "from", oldPos, "to", child.Position)
+                log.debug("🏗️ FARM CREATION: Moved part", child.Name, "from", oldPos, "to", child.Position)
             end
         end
     end
     
-    log.warn("🏗️ FARM CREATION: Moved", partsMoved, "parts for farm", farmId, "with absolute offset:", absoluteOffset)
+    log.debug("🏗️ FARM CREATION: Moved", partsMoved, "parts for farm", farmId, "with absolute offset:", absoluteOffset)
     
     -- Verify the result by checking the spawn position
     if farmSpawn and farmSpawn.Parent then
         local newSpawnBottom = farmSpawn.Position.Y - (farmSpawn.Size.Y / 2)
-        log.warn("🏗️ FARM CREATION: VERIFICATION - FarmSpawn bottom now at Y:", newSpawnBottom, "(should be ~", groundLevel, ")")
-        log.warn("🏗️ FARM CREATION: ERROR ANALYSIS - Expected:", groundLevel, "Actual:", newSpawnBottom, "Difference:", newSpawnBottom - groundLevel, "studs")
+        log.debug("🏗️ FARM CREATION: VERIFICATION - FarmSpawn bottom now at Y:", newSpawnBottom, "(should be ~", groundLevel, ")")
+        log.debug("🏗️ FARM CREATION: ERROR ANALYSIS - Expected:", groundLevel, "Actual:", newSpawnBottom, "Difference:", newSpawnBottom - groundLevel, "studs")
     end
     
     -- Update plot references for PlotManager
@@ -838,8 +840,7 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             local background = Instance.new("Frame")
             background.Size = UDim2.new(1, 0, 1, 0)
             background.Position = UDim2.new(0, 0, 0, 0)
-            background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-            background.BackgroundTransparency = 0.3
+            background.BackgroundTransparency = 1 -- No background
             background.BorderSizePixel = 0
             background.Parent = priceGui
             
@@ -847,22 +848,22 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             corner.CornerRadius = UDim.new(0, 8)
             corner.Parent = background
             
-            -- Single combined text label
+            -- Price text label with cash icon
             local priceLabel = Instance.new("TextLabel")
             priceLabel.Size = UDim2.new(1, -10, 1, -10)
             priceLabel.Position = UDim2.new(0, 5, 0, 5)
             priceLabel.BackgroundTransparency = 1
-            priceLabel.Text = plotPrice == 0 and "💰 FREE" or "💰 $" .. plotPrice
-            priceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            priceLabel.Text = plotPrice == 0 and "💰 FREE" or "💰 " .. NumberFormatter.format(plotPrice)
+            priceLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- Green text
             priceLabel.TextScaled = true
             priceLabel.Font = Enum.Font.SourceSansBold
             priceLabel.TextStrokeTransparency = 0
-            priceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-            priceLabel.Parent = priceGui
+            priceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0) -- Black outline
+            priceLabel.Parent = background
         end
         
         -- Enable action prompt for locked plots to allow purchase
-        actionPrompt.ActionText = plotPrice == 0 and "Claim Free Plot" or "Purchase Plot ($" .. plotPrice .. ")"
+        actionPrompt.ActionText = plotPrice == 0 and "Claim Free Plot" or "Purchase Plot (" .. NumberFormatter.format(plotPrice) .. ")"
         actionPrompt.Enabled = true
         
     elseif state == "rebirth_locked" then
@@ -1025,7 +1026,7 @@ end
 
 -- Build the entire farm world with individual player farm areas
 function WorldBuilder.buildFarm()
-    log.warn("🏗️ FARM SYSTEM: Building individual player farm areas - START")
+    log.info("🏗️ FARM SYSTEM: Building individual player farm areas - START")
     
     -- Get farm configuration from FarmManager
     local FarmManager = require(script.Parent.modules.FarmManager)
@@ -1061,7 +1062,7 @@ function WorldBuilder.buildFarm()
             -- Use template system
             local FarmManager = require(script.Parent.modules.FarmManager)
             local farmPosition = FarmManager.getFarmPosition(farmId)
-            log.warn("🏗️ FARM SYSTEM: Creating template farm", farmId, "at position", farmPosition)
+            log.debug("🏗️ FARM SYSTEM: Creating template farm", farmId, "at position", farmPosition)
             farmFolder = createFarmFromTemplate(farmId, farmPosition)
             if farmFolder then
                 farmFolder.Parent = farmsContainer
@@ -1087,7 +1088,7 @@ function WorldBuilder.buildFarm()
         end
     end
     
-    log.warn("🏗️ FARM SYSTEM: Built", config.totalFarms, "individual farms with", totalPlotsCreated, "total plots! - COMPLETE")
+    log.info("🏗️ FARM SYSTEM: Built", config.totalFarms, "individual farms with", totalPlotsCreated, "total plots! - COMPLETE")
     return farmsContainer
 end
 

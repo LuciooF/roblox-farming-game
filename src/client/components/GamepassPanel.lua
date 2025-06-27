@@ -3,15 +3,78 @@
 -- Shows all available gamepasses with purchase options and owned status
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
+local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
 local e = React.createElement
+local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 
 local Modal = require(script.Parent.Modal)
+
+-- Sound IDs for button interactions (same as SideButtons)
+local HOVER_SOUND_ID = "rbxassetid://15675059323"
+local CLICK_SOUND_ID = "rbxassetid://6324790483"
+
+-- Pre-create sounds for better performance
+local hoverSound = Instance.new("Sound")
+hoverSound.SoundId = HOVER_SOUND_ID
+hoverSound.Volume = 0.3
+hoverSound.Parent = SoundService
+
+local clickSound = Instance.new("Sound")
+clickSound.SoundId = CLICK_SOUND_ID
+clickSound.Volume = 0.4
+clickSound.Parent = SoundService
+
+-- Function to play sound effects
+local function playSound(soundType)
+    if soundType == "hover" and hoverSound then
+        hoverSound:Play()
+    elseif soundType == "click" and clickSound then
+        clickSound:Play()
+    end
+end
+
+-- Function to create flip animation for icons
+local function createFlipAnimation(iconRef, animationTracker)
+    if not iconRef.current then return end
+    
+    -- Cancel any existing animation for this icon
+    if animationTracker.current then
+        animationTracker.current:Cancel()
+        animationTracker.current:Destroy()
+    end
+    
+    -- Reset rotation to 0 to prevent accumulation
+    iconRef.current.Rotation = 0
+    
+    -- Create flip animation (360 degree rotation for full flip)
+    local flipTween = TweenService:Create(iconRef.current,
+        TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        {Rotation = 360}
+    )
+    
+    -- Store reference to current animation
+    animationTracker.current = flipTween
+    
+    flipTween:Play()
+    flipTween.Completed:Connect(function()
+        -- Reset rotation after animation
+        if iconRef.current then
+            iconRef.current.Rotation = 0
+        end
+        -- Clear the tracker
+        if animationTracker.current == flipTween then
+            animationTracker.current = nil
+        end
+        flipTween:Destroy()
+    end)
+end
 
 local function GamepassPanel(props)
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local onPurchase = props.onPurchase or function() end
-    local playerData = props.playerData or {}
+    local playerData = props.playerData
     local gamepassData = props.gamepassData or {}
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
@@ -268,16 +331,15 @@ local function GamepassPanel(props)
             }),
             
             -- Close Button (partially outside main panel, square with 3D effect)
-            CloseButton = e("TextButton", {
+            CloseButton = e("ImageButton", {
                 Name = "CloseButton",
                 Size = UDim2.new(0, 32, 0, 32),
                 Position = UDim2.new(1, -16, 0, -16), -- Half outside the panel
-                Text = "✕",
-                TextColor3 = Color3.fromRGB(255, 255, 255), -- Pure white text
-                TextScaled = true,
+                Image = assets["X Button/X Button 64.png"],
+                ImageColor3 = Color3.fromRGB(255, 255, 255), -- Pure white text
+                ScaleType = Enum.ScaleType.Fit,
                 BackgroundColor3 = Color3.fromRGB(255, 100, 100),
                 BorderSizePixel = 0,
-                Font = Enum.Font.GothamBold,
                 ZIndex = 34, -- Higher ZIndex to be above everything
                 [React.Event.Activated] = onClose
             }, {
@@ -382,13 +444,36 @@ local function GamepassPanel(props)
                     for i, gamepass in ipairs(gamepasses) do
                         local isOwned = playerOwnsGamepass(gamepass.key)
                         
-                        cards[gamepass.key] = e("Frame", {
+                        -- Create refs for each gamepass card's icons
+                        local gamepassIconRef = React.useRef(nil)
+                        local robuxIconRef = React.useRef(nil)
+                        local gamepassAnimTracker = React.useRef(nil)
+                        local robuxAnimTracker = React.useRef(nil)
+                        
+                        cards[gamepass.key] = e("TextButton", {
                             Name = gamepass.key .. "Card",
+                            Text = "",
                             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                             BackgroundTransparency = 0.05,
                             BorderSizePixel = 0,
                             ZIndex = 32,
-                            LayoutOrder = i
+                            LayoutOrder = i,
+                            AutoButtonColor = false,
+                            [React.Event.MouseEnter] = function()
+                                if not isOwned then
+                                    playSound("hover")
+                                    createFlipAnimation(gamepassIconRef, gamepassAnimTracker)
+                                    createFlipAnimation(robuxIconRef, robuxAnimTracker)
+                                end
+                            end,
+                            [React.Event.Activated] = function()
+                                if not isOwned then
+                                    playSound("click")
+                                    createFlipAnimation(gamepassIconRef, gamepassAnimTracker)
+                                    createFlipAnimation(robuxIconRef, robuxAnimTracker)
+                                    handlePurchase(gamepass.key)
+                                end
+                            end
                         }, {
                             Corner = e("UICorner", {
                                 CornerRadius = UDim.new(0, 15)
@@ -487,7 +572,8 @@ local function GamepassPanel(props)
                                     Image = gamepass.icon,
                                     BackgroundTransparency = 1,
                                     ImageColor3 = Color3.fromRGB(255, 255, 255),
-                                    ZIndex = 34
+                                    ZIndex = 34,
+                                    ref = gamepassIconRef
                                 }, {
                                     -- Make the icon itself circular too for perfect fit
                                     IconCorner = e("UICorner", {
@@ -588,7 +674,8 @@ local function GamepassPanel(props)
                                         BackgroundTransparency = 1,
                                         ImageColor3 = Color3.fromRGB(255, 255, 255),
                                         ZIndex = 34,
-                                        LayoutOrder = 1
+                                        LayoutOrder = 1,
+                                        ref = robuxIconRef
                                     }),
                                     
                                     PriceText = e("TextLabel", {

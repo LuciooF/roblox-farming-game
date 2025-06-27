@@ -3,3 +3,10 @@ Packages/
 *.rbxl
 .DS_Store
 Thumbs.db
+
+# Asset files (don't commit the actual assets, just the lock file)
+assets/
+
+# Asphalt
+# Note: You SHOULD commit asphalt.lock.toml to version control
+# This ensures consistent asset IDs across team members.env

@@ -613,6 +613,9 @@ function PlotManager.cutPlant(player, plotId)
         playerData.money = playerData.money + sellPrice
         playerData.totalEarnings = (playerData.totalEarnings or 0) + sellPrice
         
+        -- Update leaderstats since money changed
+        PlayerDataManager.updateLeaderstats(player)
+        
         message = "Cut " .. cropName .. " and sold for $" .. sellPrice .. "!"
     else
         -- Plant wasn't ready - no reward
@@ -1173,22 +1176,5 @@ function PlotManager.checkMaintenanceWatering(plotId)
     return false
 end
 
--- Get maintenance watering info for a plot (for UI display)
-function PlotManager.getMaintenanceWateringInfo(plotId)
-    local plotState = plotStates[plotId]
-    if not plotState then return nil end
-    
-    local currentTime = tick()
-    local timeSinceMaintenanceWater = currentTime - (plotState.lastMaintenanceWater or 0)
-    local timeUntilMaintenanceNeeded = plotState.maintenanceWaterInterval - timeSinceMaintenanceWater
-    
-    return {
-        needsMaintenanceWater = plotState.needsMaintenanceWater or false,
-        lastMaintenanceWater = plotState.lastMaintenanceWater or 0,
-        timeSinceMaintenanceWater = timeSinceMaintenanceWater,
-        timeUntilMaintenanceNeeded = math.max(0, timeUntilMaintenanceNeeded),
-        maintenanceWaterInterval = plotState.maintenanceWaterInterval or 43200
-    }
-end
 
 return PlotManager

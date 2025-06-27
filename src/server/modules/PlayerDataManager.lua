@@ -295,6 +295,9 @@ function PlayerDataManager.performRebirth(player)
     
     log.info("Player", player.Name, "rebirthed from", oldRebirths, "to", playerData.rebirths, "- all plots reset")
     
+    -- Update leaderstats since money and rebirths changed
+    PlayerDataManager.updateLeaderstats(player)
+    
     -- Clear all crops from plots in the world
     local FarmManager = require(script.Parent.FarmManager)
     local farmId = FarmManager.getPlayerFarm(player.UserId)
@@ -411,6 +414,9 @@ function PlayerDataManager.purchasePlot(player, plotIndex)
     playerData.money = playerData.money - price
     playerData.ownedPlots[tostring(plotIndex)] = true
     playerData.unlockedPlots = (playerData.unlockedPlots or 0) + 1
+    
+    -- Update leaderstats since money changed
+    PlayerDataManager.updateLeaderstats(player)
     
     log.info("Player", player.Name, "purchased plot", plotIndex, "for $" .. price)
     
@@ -587,6 +593,8 @@ function PlayerDataManager.sellAllCrops(player)
     
     if totalProfit > 0 then
         playerData.money = playerData.money + totalProfit
+        -- Update leaderstats since money changed
+        PlayerDataManager.updateLeaderstats(player)
     end
     
     return totalProfit, itemsSold, rebirthMultiplier
@@ -777,6 +785,8 @@ function PlayerDataManager.debugAddRebirth(player)
     if not playerData then return false end
     
     playerData.rebirths = (playerData.rebirths or 0) + 1
+    -- Update leaderstats since rebirths changed
+    PlayerDataManager.updateLeaderstats(player)
     log.info("Debug: Added rebirth to", player.Name, "- now has", playerData.rebirths, "rebirths")
     return true
 end
@@ -787,6 +797,8 @@ function PlayerDataManager.debugResetRebirths(player)
     if not playerData then return false end
     
     playerData.rebirths = 0
+    -- Update leaderstats since rebirths changed
+    PlayerDataManager.updateLeaderstats(player)
     log.info("Debug: Reset rebirths for", player.Name)
     return true
 end
@@ -833,6 +845,8 @@ function PlayerDataManager.debugAddMoney(player, amount)
     
     amount = amount or 1000
     playerData.money = (playerData.money or 0) + amount
+    -- Update leaderstats since money changed
+    PlayerDataManager.updateLeaderstats(player)
     log.info("Debug: Added $" .. amount .. " to", player.Name, "- now has $" .. playerData.money)
     return true
 end

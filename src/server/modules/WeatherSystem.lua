@@ -13,15 +13,17 @@ local log = Logger.getModuleLogger("WeatherSystem")
 local WeatherSystem = {}
 
 -- Configuration
-local WEATHER_CYCLE_TIME = 300 -- 5 minutes per weather cycle
-local FORECAST_HOURS = 3 -- Show forecast for next 3 weather periods
+local WEATHER_UPDATE_INTERVAL = 60 -- Check every minute for day changes
+local FORECAST_DAYS = 3 -- Show forecast for next 3 days
 
 -- Weather Types and Effects
 local WeatherTypes = {
     Sunny = {
         name = "Sunny",
         emoji = "☀️",
-        description = "Bright sunshine boosts certain crops",
+        icon = "rbxassetid://136624504416104", -- Lightning bolt as temp sunny icon
+        description = "Perfect growing conditions with enhanced crop growth",
+        gameplayDescription = "• 20% faster growth for sun-loving crops\n• Plants need watering more often",
         effects = {
             growthMultiplier = 1.2, -- 20% faster growth for sunny-loving crops
             waterEvaporation = 1.3, -- Plants dry out 30% faster
@@ -34,9 +36,11 @@ local WeatherTypes = {
     Rainy = {
         name = "Rainy",
         emoji = "🌧️", 
-        description = "No watering needed, but slower growth",
+        icon = "rbxassetid://81214849669091", -- Water Outline 256 icon
+        description = "Gentle rainfall keeps crops hydrated automatically",
+        gameplayDescription = "• No watering needed - auto-waters all crops\n• Slightly slower overall growth",
         effects = {
-            growthMultiplier = 0.8, -- 20% slower growth
+            growthMultiplier = 0.9, -- 10% slower growth
             waterEvaporation = 0, -- No water loss during rain
             autoWater = true, -- Automatically waters all crops
             damageChance = 0
@@ -48,7 +52,9 @@ local WeatherTypes = {
     Cloudy = {
         name = "Cloudy",
         emoji = "☁️",
-        description = "Neutral weather with no special effects",
+        icon = "rbxassetid://81214849669091", -- Use water icon as temporary test
+        description = "Mild conditions with no special effects",
+        gameplayDescription = "• Normal growth rates\n• Standard watering requirements",
         effects = {
             growthMultiplier = 1.0, -- Normal growth rate
             waterEvaporation = 1.0, -- Normal water loss
@@ -61,9 +67,11 @@ local WeatherTypes = {
     Thunderstorm = {
         name = "Thunderstorm",
         emoji = "⛈️",
-        description = "Dangerous storms can damage unprotected crops",
+        icon = "rbxassetid://133347090079877", -- Lightning Bolt Yellow Outline 256 icon
+        description = "Dangerous weather that can damage unprotected crops",
+        gameplayDescription = "• Auto-waters crops but slows growth\n• 15% chance to damage crops",
         effects = {
-            growthMultiplier = 0.6, -- 40% slower growth due to stress
+            growthMultiplier = 0.7, -- 30% slower growth due to stress
             waterEvaporation = 0, -- No water loss
             autoWater = true, -- Heavy rain waters crops
             damageChance = 0.15 -- 15% chance to damage unprotected crops
@@ -73,17 +81,37 @@ local WeatherTypes = {
     }
 }
 
--- Weather progression pattern (loops)
-local WeatherPattern = {"Sunny", "Cloudy", "Rainy", "Sunny", "Cloudy", "Thunderstorm", "Cloudy", "Sunny"}
+-- Day-based weather pattern (7 days)
+-- Sunny on weekends, predictable pattern during week
+local DayWeatherPattern = {
+    [1] = "Sunny",        -- Sunday (weekend)
+    [2] = "Cloudy",       -- Monday
+    [3] = "Rainy",        -- Tuesday
+    [4] = "Sunny",        -- Wednesday
+    [5] = "Thunderstorm", -- Thursday
+    [6] = "Cloudy",       -- Friday
+    [7] = "Sunny"         -- Saturday (weekend)
+}
 
 -- Current state
-local currentWeatherIndex = 1
-local currentWeatherName = "Sunny" -- Track the actual current weather
-local weatherStartTime = 0
+local currentWeatherName = "Sunny"
+local currentDayOfWeek = 1
 local isInitialized = false
 
 -- Events for other systems
 local weatherChangeCallbacks = {}
+
+-- Get current day of week (1 = Sunday, 7 = Saturday)
+local function getCurrentDayOfWeek()
+    local currentTime = os.time()
+    local dateInfo = os.date("*t", currentTime)
+    return dateInfo.wday -- 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+end
+
+-- Get weather for specific day
+local function getWeatherForDay(dayOfWeek)
+    return DayWeatherPattern[dayOfWeek] or "Sunny"
+end
 
 -- Clear any existing sky objects and lighting effects
 function WeatherSystem.clearSky()
@@ -108,75 +136,70 @@ function WeatherSystem.initialize()
         return 
     end
     
-    log.info("Initializing weather system...")
+    log.info("Initializing day-based weather system...")
     
     -- Clear any existing sky objects first
     WeatherSystem.clearSky()
     
-    -- Start with sunny weather
-    currentWeatherName = "Sunny"
-    currentWeatherIndex = 1
-    weatherStartTime = tick()
+    -- Get current day and set weather accordingly
+    currentDayOfWeek = getCurrentDayOfWeek()
+    currentWeatherName = getWeatherForDay(currentDayOfWeek)
     
     -- Force apply initial weather effects
-    WeatherSystem.applyWeatherEffects("Sunny")
+    WeatherSystem.applyWeatherEffects(currentWeatherName)
     
-    -- Start weather update loop
+    -- Start weather update loop (checks for day changes)
     WeatherSystem.startWeatherLoop()
     
     isInitialized = true
-    log.info("Weather system initialized - Starting weather: Sunny")
+    log.info("Weather system initialized - Day", currentDayOfWeek, "Weather:", currentWeatherName)
 end
 
 -- Start the weather update loop
 function WeatherSystem.startWeatherLoop()
     spawn(function()
         while true do
-            wait(10) -- Check every 10 seconds
+            wait(WEATHER_UPDATE_INTERVAL) -- Check every minute for day changes
             WeatherSystem.updateWeather()
         end
     end)
 end
 
--- Update weather system (checks for weather changes)
+-- Update weather system (checks for day changes)
 function WeatherSystem.updateWeather()
-    local currentTime = tick()
-    local timeInCurrentWeather = currentTime - weatherStartTime
+    local newDayOfWeek = getCurrentDayOfWeek()
     
-    -- Check if it's time to change weather
-    if timeInCurrentWeather >= WEATHER_CYCLE_TIME then
+    -- Check if the day has changed
+    if newDayOfWeek ~= currentDayOfWeek then
+        currentDayOfWeek = newDayOfWeek
         WeatherSystem.changeWeather()
     end
 end
 
--- Change to next weather in pattern
+-- Change weather based on current day
 function WeatherSystem.changeWeather()
-    local oldWeather = WeatherPattern[currentWeatherIndex]
+    local oldWeather = currentWeatherName
+    local newWeather = getWeatherForDay(currentDayOfWeek)
     
-    -- Move to next weather in pattern
-    currentWeatherIndex = currentWeatherIndex + 1
-    if currentWeatherIndex > #WeatherPattern then
-        currentWeatherIndex = 1
-    end
-    
-    local newWeather = WeatherPattern[currentWeatherIndex]
-    weatherStartTime = tick()
-    
-    log.info("Weather changed from", oldWeather, "to", newWeather)
-    
-    -- Apply weather effects
-    WeatherSystem.applyWeatherEffects(newWeather)
-    
-    -- Notify all players
-    WeatherSystem.notifyWeatherChange(newWeather)
-    
-    -- Broadcast weather data to all players
-    local RemoteManager = require(script.Parent.RemoteManager)
-    RemoteManager.broadcastWeatherData()
-    
-    -- Call registered callbacks
-    for _, callback in ipairs(weatherChangeCallbacks) do
-        pcall(callback, newWeather, oldWeather)
+    if newWeather ~= oldWeather then
+        currentWeatherName = newWeather
+        
+        log.info("Day changed! Weather changed from", oldWeather, "to", newWeather, "(Day", currentDayOfWeek .. ")")
+        
+        -- Apply weather effects
+        WeatherSystem.applyWeatherEffects(newWeather)
+        
+        -- Notify all players
+        WeatherSystem.notifyWeatherChange(newWeather)
+        
+        -- Broadcast weather data to all players
+        local RemoteManager = require(script.Parent.RemoteManager)
+        RemoteManager.broadcastWeatherData()
+        
+        -- Call registered callbacks
+        for _, callback in ipairs(weatherChangeCallbacks) do
+            pcall(callback, newWeather, oldWeather)
+        end
     end
 end
 
@@ -247,40 +270,57 @@ end
 -- Get current weather information
 function WeatherSystem.getCurrentWeather()
     local weatherData = WeatherTypes[currentWeatherName]
-    local timeRemaining = WEATHER_CYCLE_TIME - (tick() - weatherStartTime)
     
     if not weatherData then
         log.warn("Weather type not found:", currentWeatherName)
         return nil
     end
     
+    -- Get day name for display
+    local dayNames = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+    local dayName = dayNames[currentDayOfWeek] or "Unknown"
+    
+    -- Generate a random temperature based on weather (just for display)
+    local baseTemp = 72 -- Base temperature
+    local tempVariation = {
+        Sunny = math.random(75, 85),
+        Cloudy = math.random(65, 75),
+        Rainy = math.random(60, 70),
+        Thunderstorm = math.random(58, 68)
+    }
+    
     return {
         name = currentWeatherName,
-        emoji = weatherData.emoji,
-        description = weatherData.description,
-        effects = weatherData.effects,
-        benefitSeeds = weatherData.benefitSeeds,
-        timeRemaining = math.max(0, timeRemaining),
-        progress = math.min(1, (tick() - weatherStartTime) / WEATHER_CYCLE_TIME)
+        data = weatherData,
+        dayOfWeek = currentDayOfWeek,
+        dayName = dayName,
+        temperature = tempVariation[currentWeatherName] or baseTemp
     }
 end
 
 -- Get weather forecast
 function WeatherSystem.getForecast()
     local forecast = {}
+    local dayNames = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
     
-    for i = 1, FORECAST_HOURS do
-        local forecastIndex = currentWeatherIndex + i
-        if forecastIndex > #WeatherPattern then
-            forecastIndex = forecastIndex - #WeatherPattern
+    for i = 1, FORECAST_DAYS do
+        local forecastDay = currentDayOfWeek + i
+        if forecastDay > 7 then
+            forecastDay = forecastDay - 7
         end
         
-        local weatherName = WeatherPattern[forecastIndex]
-        table.insert(forecast, {
-            name = weatherName,
-            data = WeatherTypes[weatherName],
-            hoursFromNow = i
-        })
+        local weatherName = getWeatherForDay(forecastDay)
+        local weatherData = WeatherTypes[weatherName]
+        
+        if weatherData then
+            table.insert(forecast, {
+                name = weatherName,
+                data = weatherData,
+                dayOfWeek = forecastDay,
+                dayName = dayNames[forecastDay],
+                daysFromNow = i
+            })
+        end
     end
     
     return forecast

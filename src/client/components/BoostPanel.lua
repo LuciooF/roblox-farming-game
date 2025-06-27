@@ -12,7 +12,7 @@ local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUt
 local player = Players.LocalPlayer
 
 local function BoostPanel(props)
-    local playerData = props.playerData or {}
+    local playerData = props.playerData
     local weatherData = props.weatherData or {}
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
@@ -23,14 +23,7 @@ local function BoostPanel(props)
     local boosts = {}
     
     -- Gamepass 2x Money Boost
-    -- Debug logging
-    print("BoostPanel - PlayerData gamepasses:", playerData.gamepasses)
-    if playerData.gamepasses then
-        print("BoostPanel - moneyMultiplier gamepass:", playerData.gamepasses.moneyMultiplier)
-    end
-    
     if playerData.gamepasses and playerData.gamepasses.moneyMultiplier then
-        print("BoostPanel - Adding 2x Money Boost to boosts list")
         table.insert(boosts, {
             icon = "💰",
             name = "2x Money Boost",

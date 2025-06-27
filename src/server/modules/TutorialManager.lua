@@ -9,6 +9,17 @@ local RemoteManager = require(script.Parent.RemoteManager)
 
 local TutorialManager = {}
 
+-- Calculate total tutorial rewards
+local function getTotalTutorialRewards()
+    local total = 0
+    for _, step in ipairs(TUTORIAL_STEPS) do
+        if step.reward and step.reward.money then
+            total = total + step.reward.money
+        end
+    end
+    return total
+end
+
 -- Get module logger
 local log = Logger.getModuleLogger("TutorialManager")
 
@@ -277,7 +288,8 @@ function TutorialManager.skipTutorial(player)
         })
     end
     
-    NotificationManager.sendWarning(player, "⚠️ Tutorial skipped. You missed out on 950 coins in rewards!")
+    local totalRewards = getTotalTutorialRewards()
+    NotificationManager.sendWarning(player, "⚠️ Tutorial skipped. You missed out on " .. totalRewards .. " coins in rewards!")
     log.info("Player skipped tutorial:", player.Name)
 end
 

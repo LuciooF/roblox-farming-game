@@ -15,7 +15,7 @@ local function PlotUI(props)
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local remotes = props.remotes or {}
-    local playerData = props.playerData or {}
+    local playerData = props.playerData
     local onOpenShop = props.onOpenShop or function() end
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     

@@ -3,13 +3,14 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
+local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 
 local SeedCard = require(script.Parent.SeedCard)
 local SeedDetailModal = require(script.Parent.SeedDetailModal)
 local CropCard = require(script.Parent.CropCard)
 
 local function InventoryPanel(props)
-    local playerData = props.playerData or {}
+    local playerData = props.playerData
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local remotes = props.remotes or {}
@@ -110,16 +111,15 @@ local function InventoryPanel(props)
             }),
             
             -- Close Button
-            CloseButton = e("TextButton", {
+            CloseButton = e("ImageButton", {
                 Name = "CloseButton",
                 Size = UDim2.new(0, 30, 0, 30),
                 Position = UDim2.new(1, -40, 0, 10),
-                Text = "✕",
-                TextColor3 = Color3.fromRGB(255, 100, 100),
-                TextScaled = true,
+                Image = assets["X Button/X Button 64.png"],
+                ImageColor3 = Color3.fromRGB(255, 100, 100),
+                ScaleType = Enum.ScaleType.Fit,
                 BackgroundColor3 = Color3.fromRGB(50, 25, 25),
                 BorderSizePixel = 0,
-                Font = Enum.Font.SourceSansBold,
                 ZIndex = 14,
                 [React.Event.Activated] = onClose
             }, {
@@ -128,18 +128,36 @@ local function InventoryPanel(props)
                 })
             }),
             
-            -- Title
-            Title = e("TextLabel", {
-                Name = "Title",
+            -- Title with icon
+            TitleContainer = e("Frame", {
+                Name = "TitleContainer",
                 Size = UDim2.new(1, -60, 0, 30),
                 Position = UDim2.new(0, 20, 0, 15),
-                Text = "🎒 My Seeds",
-                TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextScaled = true,
                 BackgroundTransparency = 1,
-                Font = Enum.Font.SourceSansBold,
-                TextXAlignment = Enum.TextXAlignment.Left,
                 ZIndex = 13
+            }, {
+                Icon = e("ImageLabel", {
+                    Name = "Icon",
+                    Size = UDim2.new(0, 25, 0, 25),
+                    Position = UDim2.new(0, 0, 0, 2.5),
+                    Image = assets["Hamburger Menu/Hamburger Menu 64.png"],
+                    ImageColor3 = Color3.fromRGB(255, 255, 255),
+                    ScaleType = Enum.ScaleType.Fit,
+                    BackgroundTransparency = 1,
+                    ZIndex = 14
+                }),
+                Text = e("TextLabel", {
+                    Name = "Text",
+                    Size = UDim2.new(1, -35, 1, 0),
+                    Position = UDim2.new(0, 35, 0, 0),
+                    Text = "My Seeds",
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.SourceSansBold,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 14
+                })
             }),
             
             -- Seeds Section Title
@@ -286,7 +304,7 @@ local function InventoryPanel(props)
             isVisible = modalVisible,
             onClose = handleModalClose,
             onPurchase = handleSeedPurchase,
-            playerMoney = playerData.money or 0,
+            playerMoney = playerData.money,
             screenSize = screenSize
         }) or nil
     })
