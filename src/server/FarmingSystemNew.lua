@@ -344,10 +344,48 @@ function FarmingSystem.onPlayerJoined(player)
     
     -- SPAWN CHARACTER IMMEDIATELY - let them move around while data loads
     log.info("🚀 Spawning character immediately for:", player.Name)
-    player:LoadCharacter()
+    
+    -- Spawn character with validation and retry
+    local function spawnCharacterSafely()
+        local maxRetries = 3
+        local retries = 0
+        
+        while retries < maxRetries do
+            local success = pcall(function()
+                player:LoadCharacter()
+            end)
+            
+            -- Wait a moment for character to actually spawn
+            wait(0.5)
+            
+            if success and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                log.info("✅ Character spawned successfully for:", player.Name)
+                return true
+            else
+                retries = retries + 1
+                log.warn("⚠️ Character spawn attempt", retries, "failed for:", player.Name)
+                if retries < maxRetries then
+                    wait(1) -- Wait before retry
+                end
+            end
+        end
+        
+        log.error("❌ Failed to spawn character after", maxRetries, "attempts for:", player.Name)
+        return false
+    end
+    
+    -- Try to spawn the character
+    local spawnSuccess = spawnCharacterSafely()
     
     -- Load data in background while player can move around
     spawn(function()
+        -- If character spawn failed, retry after a short delay
+        if not spawnSuccess then
+            log.warn("⚠️ Retrying character spawn after delay for:", player.Name)
+            wait(2)
+            spawnCharacterSafely()
+        end
+        
         log.info("🔵 Loading player data in background for:", player.Name)
         PlayerDataManager.onPlayerJoined(player)
         log.info("🔵 Player data loaded for:", player.Name)
@@ -363,13 +401,24 @@ function FarmingSystem.onPlayerJoined(player)
             FarmManager.onFarmAssigned(farmId, player)
             
             -- Teleport to assigned farm since they spawned at default location
-            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local character = player.Character
+            if not character or not character:FindFirstChild("HumanoidRootPart") then
+                -- Try to wait for character if it's not ready yet
+                log.warn("⚠️ Character not ready for teleport, waiting...")
+                character = player.CharacterAdded:Wait()
+            end
+            
+            if character and character:FindFirstChild("HumanoidRootPart") then
                 local farmModel = workspace.PlayerFarms:FindFirstChild("Farm_" .. farmId)
                 local spawnPoint = farmModel and farmModel:FindFirstChild("FarmSpawn_" .. farmId)
                 if spawnPoint then
-                    player.Character.HumanoidRootPart.CFrame = spawnPoint.CFrame + Vector3.new(0, 3, 0)
+                    character.HumanoidRootPart.CFrame = spawnPoint.CFrame + Vector3.new(0, 3, 0)
                     log.info("📍 Teleported", player.Name, "to their assigned farm", farmId)
+                else
+                    log.error("❌ No spawn point found for farm", farmId)
                 end
+            else
+                log.error("❌ Character still not available for teleport for", player.Name)
             end
         end
         
