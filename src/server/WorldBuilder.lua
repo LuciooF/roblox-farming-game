@@ -963,37 +963,47 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             -- Add rebirth requirement GUI
             local rebirthGui = Instance.new("BillboardGui")
             rebirthGui.Name = "RebirthGui"
-            rebirthGui.Size = UDim2.new(0, 120, 0, 80)
+            rebirthGui.Size = UDim2.new(0, 140, 0, 100)
             rebirthGui.StudsOffset = Vector3.new(0, 0, 0)
             rebirthGui.MaxDistance = 50
             rebirthGui.LightInfluence = 0
             rebirthGui.Parent = rebirthIndicator
             
-            -- Background frame
-            local background = Instance.new("Frame")
-            background.Size = UDim2.new(1, 0, 1, 0)
-            background.Position = UDim2.new(0, 0, 0, 0)
-            background.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
-            background.BackgroundTransparency = 0.2
-            background.BorderSizePixel = 0
-            background.Parent = rebirthGui
+            -- No background frame - just like price displays
             
-            local corner = Instance.new("UICorner")
-            corner.CornerRadius = UDim.new(0, 8)
-            corner.Parent = background
+            -- Rebirth icon using asset
+            local rebirthIcon = Instance.new("ImageLabel")
+            rebirthIcon.Name = "RebirthIcon"
+            rebirthIcon.Size = UDim2.new(0, 30, 0, 30)
+            rebirthIcon.Position = UDim2.new(0.5, -15, 0, 5)
+            rebirthIcon.BackgroundTransparency = 1
+            rebirthIcon.Image = assets["General/Rebirth/Rebirth Outline 256.png"] or ""
+            rebirthIcon.ImageColor3 = Color3.fromRGB(255, 215, 0) -- Golden color
+            rebirthIcon.ScaleType = Enum.ScaleType.Fit
+            rebirthIcon.Parent = rebirthGui
             
-            -- Rebirth requirement text
+            -- Rebirth requirement text - same style as price displays
             local rebirthLabel = Instance.new("TextLabel")
-            rebirthLabel.Size = UDim2.new(1, -10, 1, -10)
-            rebirthLabel.Position = UDim2.new(0, 5, 0, 5)
+            rebirthLabel.Name = "RebirthLabel"
+            rebirthLabel.Size = UDim2.new(1, 0, 0, 60)
+            rebirthLabel.Position = UDim2.new(0, 0, 0, 40)
             rebirthLabel.BackgroundTransparency = 1
-            rebirthLabel.Text = "🔄 REBIRTH " .. requiredRebirth .. "\nREQUIRED"
-            rebirthLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+            rebirthLabel.Text = "REBIRTH " .. requiredRebirth .. "\nREQUIRED"
+            rebirthLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Golden text
             rebirthLabel.TextScaled = true
             rebirthLabel.Font = Enum.Font.SourceSansBold
             rebirthLabel.TextStrokeTransparency = 0
-            rebirthLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            rebirthLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0) -- Black outline
             rebirthLabel.Parent = rebirthGui
+        else
+            -- Update existing rebirth indicator with new required rebirth
+            local rebirthGui = rebirthIndicator:FindFirstChild("RebirthGui")
+            if rebirthGui then
+                local rebirthLabel = rebirthGui:FindFirstChild("RebirthLabel")
+                if rebirthLabel then
+                    rebirthLabel.Text = "REBIRTH " .. requiredRebirth .. "\nREQUIRED"
+                end
+            end
         end
         
         -- Add mystical glow effect
