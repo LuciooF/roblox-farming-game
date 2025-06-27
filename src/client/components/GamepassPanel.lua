@@ -42,6 +42,7 @@ local function createFlipAnimation(iconRef, animationTracker)
     if animationTracker.current then
         animationTracker.current:Cancel()
         animationTracker.current:Destroy()
+        animationTracker.current = nil
     end
     
     -- Reset rotation to 0 to prevent accumulation
@@ -84,12 +85,12 @@ local function GamepassPanel(props)
     local panelWidth = isMobile and screenSize.X * 0.95 or math.min(screenSize.X * 0.8, 1000)
     local panelHeight = isMobile and screenSize.Y * 0.85 or math.min(screenSize.Y * 0.8, 700)
     
-    -- Card grid settings
-    local cardsPerRow = isMobile and 1 or 3
-    local cardWidth = isMobile and panelWidth - 80 or (panelWidth - 120) / cardsPerRow - 20
+    -- Card grid settings - always use 3 columns for consistent layout
+    local cardsPerRow = 3
+    local cardWidth = (panelWidth - 120) / cardsPerRow - 20
     local cardHeight = 180
     
-    -- Enhanced gamepass data with more variety (12 total for scrolling)
+    -- Enhanced gamepass data - real gamepasses first, then placeholders
     local gamepasses = {
         {
             id = 1277613878,
