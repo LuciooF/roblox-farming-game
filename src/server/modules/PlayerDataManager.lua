@@ -246,7 +246,7 @@ function PlayerDataManager.getPlayerData(player)
     end
     
     if not PlayerDataManager._loggedMissingData[player.UserId] then
-        log.warn("⚠️ getPlayerData() called before profile loaded for", player.Name)
+        log.debug("📊 getPlayerData() called before profile loaded for", player.Name, "- this is normal during optimized loading")
         PlayerDataManager._loggedMissingData[player.UserId] = true
     end
     
