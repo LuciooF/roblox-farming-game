@@ -75,6 +75,7 @@ local function SideButtons(props)
     local onInventoryClick = props.onInventoryClick or function() end
     local onWeatherClick = props.onWeatherClick or function() end
     local onGamepassClick = props.onGamepassClick or function() end
+    local onRankClick = props.onRankClick or function() end
     local onPetsClick = props.onPetsClick or function() end
     local onRebirthClick = props.onRebirthClick or function() end
     local tutorialData = props.tutorialData
@@ -482,6 +483,44 @@ local function SideButtons(props)
             })
         }),
         
+        -- Rank Button
+        RankButton = e("TextButton", {
+            Name = "RankButton",
+            Size = UDim2.new(0, buttonSize, 0, buttonSize),
+            Text = "",
+            BackgroundColor3 = Color3.fromRGB(255, 215, 0), -- Gold color for rank
+            BorderSizePixel = 0,
+            ZIndex = 11,
+            LayoutOrder = 6,
+            [React.Event.Activated] = function()
+                playSound("click")
+                onRankClick()
+            end,
+            [React.Event.MouseEnter] = function()
+                playSound("hover")
+            end
+        }, {
+            Corner = e("UICorner", {
+                CornerRadius = UDim.new(0, 12)
+            }),
+            Shadow = e("UIStroke", {
+                Color = Color3.fromRGB(0, 0, 0),
+                Thickness = 3,
+                Transparency = 0,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            }),
+            Icon = e("TextLabel", {
+                Name = "RankIcon",
+                Size = UDim2.new(0, iconSize, 0, iconSize),
+                Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2),
+                Text = "🏆", -- Crown/trophy emoji for ranks
+                TextScaled = true,
+                Font = Enum.Font.SourceSansBold,
+                BackgroundTransparency = 1,
+                ZIndex = 12
+            })
+        }),
+        
         -- Pets Button (Secret Debug Access!)
         PetsButton = e("TextButton", {
             Name = "PetsButton",
@@ -490,7 +529,7 @@ local function SideButtons(props)
             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
             BorderSizePixel = 0,
             ZIndex = 11,
-            LayoutOrder = 6,
+            LayoutOrder = 7,
             [React.Event.Activated] = function()
                 playSound("click")
                 createIconSpin(petsIconRef, petsAnimTracker)

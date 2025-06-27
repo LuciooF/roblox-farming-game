@@ -438,6 +438,10 @@ function RemoteManager.onPerformRebirth(player)
         -- Check tutorial progress for first rebirth
         local TutorialManager = require(script.Parent.TutorialManager)
         TutorialManager.checkGameAction(player, "perform_rebirth")
+        
+        -- Update player's rank display
+        local RankDisplayManager = require(script.Parent.RankDisplayManager)
+        RankDisplayManager.updatePlayerRank(player)
     else
         local moneyRequired = GameConfig.Rebirth.getMoneyRequirement(PlayerDataManager.getPlayerData(player).rebirths)
         NotificationManager.sendError(player, "💰 Need $" .. moneyRequired .. " to rebirth!")

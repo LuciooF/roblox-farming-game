@@ -23,6 +23,7 @@ local PlotUI = require(script.Parent.PlotUI)
 local DebugPanel = require(script.Parent.DebugPanel)
 local GamepassPanel = require(script.Parent.GamepassPanel)
 local ConfettiAnimation = require(script.Parent.ConfettiAnimation)
+local RankPanel = require(script.Parent.RankPanel)
 
 local function MainUI(props)
     local playerData = props.playerData or {}
@@ -41,6 +42,7 @@ local function MainUI(props)
     local plotUIVisible, setPlotUIVisible = React.useState(false)
     local selectedPlotData, setSelectedPlotData = React.useState(nil)
     local confettiVisible, setConfettiVisible = React.useState(false)
+    local rankVisible, setRankVisible = React.useState(false)
     
     -- Track previous gamepass ownership to detect new purchases
     local previousGamepasses, setPreviousGamepasses = React.useState({})
@@ -98,6 +100,16 @@ local function MainUI(props)
         setShopVisible(false)
         setWeatherVisible(false)
         setCropViewVisible(false)
+        setRankVisible(false)
+    end
+    
+    local function handleRankClick()
+        setRankVisible(not rankVisible)
+        setInventoryVisible(false)
+        setShopVisible(false)
+        setWeatherVisible(false)
+        setGamepassVisible(false)
+        setCropViewVisible(false)
     end
     
     local function handleCloseAll()
@@ -107,6 +119,7 @@ local function MainUI(props)
         setGamepassVisible(false)
         setPlotUIVisible(false)
         setCropViewVisible(false)
+        setRankVisible(false)
     end
     
     -- Plot UI handlers
@@ -224,7 +237,7 @@ local function MainUI(props)
     }, {
         -- Background click detector to close panels (only when panels are visible)
         -- Mobile-friendly: smaller area that doesn't interfere with bottom controls
-        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible) and e("TextButton", {
+        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible or rankVisible) and e("TextButton", {
             Name = "ClickDetector",
             Size = UDim2.new(1, 0, 1, isMobile and -200 or 0), -- Leave more space at bottom for mobile controls
             Position = UDim2.new(0, 0, 0, 0),
@@ -253,6 +266,7 @@ local function MainUI(props)
             onWeatherClick = handleWeatherClick,
             onGamepassClick = handleGamepassClick,
             onRebirthClick = handleRebirthClick,
+            onRankClick = handleRankClick,
             onPetsClick = function()
                 DebugPanel.toggle()
             end
@@ -340,6 +354,13 @@ local function MainUI(props)
             onPurchase = handleGamepassPurchase,
             playerData = playerData,
             gamepassData = gamepassData,
+            screenSize = screenSize
+        }) or nil,
+        
+        -- Rank Panel Component (only render when needed)
+        RankPanel = rankVisible and e(RankPanel, {
+            playerData = playerData,
+            onClose = function() setRankVisible(false) end,
             screenSize = screenSize
         }) or nil,
         

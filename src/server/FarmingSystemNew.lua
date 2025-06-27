@@ -20,6 +20,7 @@ local FarmManager = require(script.Parent.modules.FarmManager)
 local WeatherSystem = require(script.Parent.modules.WeatherSystem)
 local FarmEnvironment = require(script.Parent.modules.FarmEnvironment)
 local SoundManager = require(script.Parent.modules.SoundManager)
+local RankDisplayManager = require(script.Parent.modules.RankDisplayManager)
 
 -- Disable auto-spawning so we can control when players spawn
 Players.CharacterAutoLoads = false
@@ -59,6 +60,9 @@ function FarmingSystem.initialize()
     
     -- Initialize weather system
     WeatherSystem.initialize()
+    
+    -- Initialize rank display system
+    RankDisplayManager.initialize()
     
     -- Build the farm world
     local success, farm = pcall(function()
@@ -474,6 +478,9 @@ function FarmingSystem.onCharacterAdded(character)
             log.error("No spawn point found for farm", farmId)
         end
     end
+    
+    -- Update rank display (handled by RankDisplayManager.onCharacterAdded)
+    RankDisplayManager.onCharacterAdded(character)
 end
 
 -- Start event-driven plot update system
