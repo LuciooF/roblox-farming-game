@@ -3,6 +3,7 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
+local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 local e = React.createElement
 
 local function CropCard(props)
@@ -11,8 +12,7 @@ local function CropCard(props)
     local onSell = props.onSell or function() end
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
-    local isMobile = screenSize.X < 768
-    local scale = isMobile and 0.8 or 1
+    local scale = ScreenUtils.getProportionalScale(screenSize)
     
     -- Crop display data (NOTE: Sell prices are calculated server-side based on rebirths, variations, etc.)
     local cropData = {
@@ -42,7 +42,7 @@ local function CropCard(props)
     
     return e("Frame", {
         Name = cropType:gsub("%s", "") .. "CropCard",
-        Size = UDim2.new(0, 100 * scale, 0, 140 * scale),
+        Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 100), 0, ScreenUtils.getProportionalSize(screenSize, 125)),
         BackgroundColor3 = hasQuantity and Color3.fromRGB(40, 45, 50) or Color3.fromRGB(25, 25, 25),
         BackgroundTransparency = 0.1,
         BorderSizePixel = 0,
@@ -61,7 +61,7 @@ local function CropCard(props)
         -- Emoji
         EmojiLabel = e("TextLabel", {
             Name = "Emoji",
-            Size = UDim2.new(1, 0, 0, 30 * scale),
+            Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 30)),
             Position = UDim2.new(0, 0, 0, 5),
             Text = crop.emoji,
             TextScaled = true,
@@ -73,8 +73,8 @@ local function CropCard(props)
         -- Crop Name
         NameLabel = e("TextLabel", {
             Name = "CropName",
-            Size = UDim2.new(1, -6, 0, 18 * scale),
-            Position = UDim2.new(0, 3, 0, 35 * scale),
+            Size = UDim2.new(1, -6, 0, ScreenUtils.getProportionalSize(screenSize, 18)),
+            Position = UDim2.new(0, 3, 0, ScreenUtils.getProportionalSize(screenSize, 35)),
             Text = cropType:upper(),
             TextColor3 = hasQuantity and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(120, 120, 120),
             TextScaled = true,
@@ -132,20 +132,17 @@ local function CropCard(props)
             ZIndex = 11
         }) or nil,
         
-        -- Sell Button
-        SellButton = quantity > 0 and e("TextButton", {
-            Name = "SellButton",
-            Size = UDim2.new(1, -10, 0, 30 * scale),
-            Position = UDim2.new(0, 5, 0, 90 * scale),
-            Text = "💰 Sell All ($" .. NumberFormatter.format(totalValue) .. ")",
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextScaled = true,
+        -- Sell One Button
+        SellOneButton = quantity > 0 and e("TextButton", {
+            Name = "SellOneButton",
+            Size = UDim2.new(1, -10, 0, 15 * scale),
+            Position = UDim2.new(0, 5, 0, 88 * scale),
+            Text = "",
             BackgroundColor3 = Color3.fromRGB(40, 120, 40),
             BorderSizePixel = 0,
-            Font = Enum.Font.SourceSansBold,
             ZIndex = 12,
             [React.Event.Activated] = function()
-                onSell(cropType, quantity, totalValue)
+                onSell(cropType, 1, crop.basePrice)
             end,
             [React.Event.MouseEnter] = function(gui)
                 gui.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
@@ -161,6 +158,139 @@ local function CropCard(props)
                 Color = Color3.fromRGB(100, 255, 100),
                 Thickness = 1,
                 Transparency = 0.5
+            }),
+            Content = e("Frame", {
+                Size = UDim2.new(1, 0, 1, 0),
+                BackgroundTransparency = 1,
+                ZIndex = 13
+            }, {
+                Layout = e("UIListLayout", {
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                    Padding = UDim.new(0, 3)
+                }),
+                SellText = e("TextLabel", {
+                    Size = UDim2.new(0, 0, 1, 0),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    Text = "SELL",
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.SourceSansBold,
+                    ZIndex = 14
+                }, {
+                    TextStroke = e("UIStroke", {
+                        Color = Color3.fromRGB(0, 0, 0),
+                        Thickness = 2,
+                        Transparency = 0.5
+                    })
+                }),
+                CashIcon = e("ImageLabel", {
+                    Size = UDim2.new(0, 12 * scale, 0, 12 * scale),
+                    Image = assets["Currency/Cash/Cash Outline 256.png"] or "",
+                    BackgroundTransparency = 1,
+                    ScaleType = Enum.ScaleType.Fit,
+                    ImageColor3 = Color3.fromRGB(255, 215, 0),
+                    ZIndex = 14
+                }),
+                PriceText = e("TextLabel", {
+                    Size = UDim2.new(0, 0, 1, 0),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    Text = NumberFormatter.format(crop.basePrice),
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.SourceSansBold,
+                    ZIndex = 14
+                }, {
+                    TextStroke = e("UIStroke", {
+                        Color = Color3.fromRGB(0, 0, 0),
+                        Thickness = 2,
+                        Transparency = 0.5
+                    })
+                })
+            })
+        }) or nil,
+        
+        -- Sell All Button
+        SellAllButton = quantity > 0 and e("TextButton", {
+            Name = "SellAllButton",
+            Size = UDim2.new(1, -10, 0, 15 * scale),
+            Position = UDim2.new(0, 5, 0, 105 * scale),
+            Text = "",
+            BackgroundColor3 = Color3.fromRGB(255, 140, 0),
+            BorderSizePixel = 0,
+            ZIndex = 12,
+            [React.Event.Activated] = function()
+                onSell(cropType, quantity, totalValue)
+            end,
+            [React.Event.MouseEnter] = function(gui)
+                gui.BackgroundColor3 = Color3.fromRGB(255, 160, 20)
+            end,
+            [React.Event.MouseLeave] = function(gui)
+                gui.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+            end
+        }, {
+            Corner = e("UICorner", {
+                CornerRadius = UDim.new(0, 6)
+            }),
+            Stroke = e("UIStroke", {
+                Color = Color3.fromRGB(255, 200, 100),
+                Thickness = 1,
+                Transparency = 0.5
+            }),
+            Content = e("Frame", {
+                Size = UDim2.new(1, 0, 1, 0),
+                BackgroundTransparency = 1,
+                ZIndex = 13
+            }, {
+                Layout = e("UIListLayout", {
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                    Padding = UDim.new(0, 2)
+                }),
+                SellAllText = e("TextLabel", {
+                    Size = UDim2.new(0, 0, 1, 0),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    Text = "SELL ALL",
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.SourceSansBold,
+                    ZIndex = 14
+                }, {
+                    TextStroke = e("UIStroke", {
+                        Color = Color3.fromRGB(0, 0, 0),
+                        Thickness = 2,
+                        Transparency = 0.5
+                    })
+                }),
+                CashIcon = e("ImageLabel", {
+                    Size = UDim2.new(0, 12 * scale, 0, 12 * scale),
+                    Image = assets["Currency/Cash/Cash Outline 256.png"] or "",
+                    BackgroundTransparency = 1,
+                    ScaleType = Enum.ScaleType.Fit,
+                    ImageColor3 = Color3.fromRGB(255, 215, 0),
+                    ZIndex = 14
+                }),
+                PriceText = e("TextLabel", {
+                    Size = UDim2.new(0, 0, 1, 0),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    Text = NumberFormatter.format(totalValue),
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.SourceSansBold,
+                    ZIndex = 14
+                }, {
+                    TextStroke = e("UIStroke", {
+                        Color = Color3.fromRGB(0, 0, 0),
+                        Thickness = 2,
+                        Transparency = 0.5
+                    })
+                })
             })
         }) or nil,
         

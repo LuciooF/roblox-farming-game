@@ -139,6 +139,10 @@ function RemoteManager.initialize()
     debugRemote.Name = "DebugActions"
     debugRemote.Parent = remoteFolder
     
+    local musicRemote = Instance.new("RemoteEvent")
+    musicRemote.Name = "MusicPreference"
+    musicRemote.Parent = remoteFolder
+    
     local gamepassPurchaseRemote = Instance.new("RemoteEvent")
     gamepassPurchaseRemote.Name = "GamepassPurchase"
     gamepassPurchaseRemote.Parent = remoteFolder
@@ -190,6 +194,7 @@ function RemoteManager.initialize()
     remotes.farmAction = farmActionRemote
     remotes.getFarmId = getFarmIdRemote
     remotes.characterReady = characterReadyRemote
+    remotes.MusicPreference = musicRemote
     
     -- Also create direct references for client access
     remotes.SyncPlayerData = syncRemote
@@ -221,6 +226,7 @@ function RemoteManager.initialize()
     gamepassDataRemote.OnServerEvent:Connect(RemoteManager.onGamepassDataRequest)
     farmActionRemote.OnServerEvent:Connect(RemoteManager.onFarmAction)
     getFarmIdRemote.OnServerEvent:Connect(RemoteManager.onGetFarmId)
+    musicRemote.OnServerEvent:Connect(RemoteManager.onMusicPreference)
     
     log.info("Remote events ready!")
 end
@@ -256,6 +262,11 @@ function RemoteManager.syncPlayerData(player)
     local GamepassService = require(script.Parent.GamepassService)
     playerData.gamepasses = GamepassService.getGamepassDataForClient(player)
     
+    -- Ensure settings are included (for music preferences)
+    if not playerData.settings then
+        playerData.settings = { musicEnabled = true }
+    end
+    
     log.debug("Syncing player data to", player.Name, "- Money:", playerData.money)
     remotes.sync:FireClient(player, playerData)
     log.debug("Player data sync sent successfully")
@@ -271,7 +282,9 @@ function RemoteManager.onPlantCrop(player, plotId, cropType)
 end
 
 function RemoteManager.onWaterPlant(player, plotId)
+    log.info("Water request received from", player.Name, "for plot", plotId)
     local success, message = PlotManager.waterPlant(player, plotId)
+    log.info("Water result:", success, message)
     NotificationManager.sendNotification(player, message)
 end
 
@@ -449,11 +462,11 @@ function RemoteManager.onPerformRebirth(player)
             local ChatManager = require(script.Parent.ChatManager)
             ChatManager.checkRankUp(player)
             
-            -- Update farm nameplate with new rank (async)
+            -- Update farm nameplate with new rank (async) - nameplate only, don't recreate character
             if farmId then
                 log.info("🏠 Updating farm nameplate for", player.Name, "on farm", farmId)
                 local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
-                WorldBuilder.updateFarmSign(farmId, player.Name, player)
+                WorldBuilder.updateFarmNameOnly(farmId, player.Name, player)
             else
                 log.warn("🏠 No farm found for", player.Name, "- cannot update nameplate")
             end
@@ -651,8 +664,10 @@ function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
                 plotId = plotId,
                 state = plotState.state,
                 seedType = plotState.seedType,
-                plantedAt = plotState.plantedAt,
-                lastWateredAt = plotState.lastWateredTime or plotState.wateredTime or 0,
+                plantedTime = plotState.plantedTime,
+                plantedAt = plotState.plantedTime, -- Backward compatibility
+                lastWateredTime = plotState.lastWateredTime or plotState.wateredTime or 0,
+                lastWateredAt = plotState.lastWateredTime or plotState.wateredTime or 0, -- Backward compatibility
                 growthTime = growthTime,
                 waterTime = waterTime,
                 variation = plotState.variation,
@@ -662,6 +677,12 @@ function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
                 accumulatedCrops = plotState.accumulatedCrops or 0,
                 wateredCount = plotState.wateredCount or 0,
                 waterNeeded = plotState.waterNeeded or 0,
+                
+                -- Growth calculator fields
+                lastUpdateTime = plotState.lastUpdateTime or tick(),
+                lastReadyTime = plotState.lastReadyTime or 0,
+                baseYieldRate = plotState.baseYieldRate or 1,
+                wateredTime = plotState.wateredTime or 0,
                 
                 -- Maintenance watering data
                 needsMaintenanceWater = plotState.needsMaintenanceWater or false,
@@ -1106,6 +1127,16 @@ function RemoteManager.sendCharacterReady(player)
     if remotes.characterReady then
         remotes.characterReady:FireClient(player)
         log.info("✅ Sent character ready signal to:", player.Name)
+    end
+end
+
+-- Handle music preference changes
+function RemoteManager.onMusicPreference(player, enabled)
+    local success = PlayerDataManager.setMusicEnabled(player, enabled)
+    if success then
+        log.debug("Set music preference for", player.Name, "to", enabled)
+    else
+        log.warn("Failed to set music preference for", player.Name)
     end
 end
 

@@ -35,101 +35,76 @@ local function createRankDisplay(player, character)
     -- Create BillboardGui
     local billboardGui = Instance.new("BillboardGui")
     billboardGui.Name = "RankDisplay"
-    billboardGui.Size = UDim2.new(0, 200, 0, 40)
+    billboardGui.Size = UDim2.new(0, 150, 0, 25) -- Smaller size
     billboardGui.StudsOffset = Vector3.new(0, 3, 0) -- Position above head
     billboardGui.LightInfluence = 0
     billboardGui.Parent = character.Head
     
-    -- Background frame
-    local background = Instance.new("Frame")
-    background.Name = "Background"
-    background.Size = UDim2.new(1, 0, 1, 0)
-    background.Position = UDim2.new(0, 0, 0, 0)
-    background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    background.BackgroundTransparency = 0.3
-    background.BorderSizePixel = 0
-    background.Parent = billboardGui
-    
-    -- Rounded corners
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = background
-    
-    -- Gradient for higher tiers
-    if rankTier ~= "Beginner" and rankTier ~= "Intermediate" then
-        local gradient = Instance.new("UIGradient")
-        if rankTier == "Ultimate" then
-            gradient.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 215, 0)),
-                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 215, 0))
-            }
-        elseif rankTier == "Elite" then
-            gradient.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(138, 43, 226)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 20, 147))
-            }
-        elseif rankTier == "Expert" then
-            gradient.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 165, 0)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 215, 0))
-            }
-        else
-            gradient.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, rankInfo.color),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(math.min(255, rankInfo.color.R * 255 + 50), 
-                                                            math.min(255, rankInfo.color.G * 255 + 50),
-                                                            math.min(255, rankInfo.color.B * 255 + 50)))
-            }
-        end
-        gradient.Parent = background
-    else
-        background.BackgroundColor3 = rankInfo.color
-    end
-    
-    -- Stroke for better visibility
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(255, 255, 255)
-    stroke.Thickness = 2
-    stroke.Transparency = 0.2
-    stroke.Parent = background
-    
-    -- Rank text
+    -- Rank text (no background frame)
     local rankLabel = Instance.new("TextLabel")
     rankLabel.Name = "RankLabel"
-    rankLabel.Size = UDim2.new(1, -10, 1, -6)
-    rankLabel.Position = UDim2.new(0, 5, 0, 3)
-    rankLabel.BackgroundTransparency = 1
+    rankLabel.Size = UDim2.new(1, 0, 1, 0)
+    rankLabel.Position = UDim2.new(0, 0, 0, 0)
+    rankLabel.BackgroundTransparency = 1 -- No background
     rankLabel.Text = rankInfo.name
-    rankLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rankLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
     rankLabel.TextScaled = true
     rankLabel.Font = Enum.Font.SourceSansBold
-    rankLabel.TextStrokeTransparency = 0
+    rankLabel.TextStrokeTransparency = 0 -- Black outline
     rankLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    rankLabel.Parent = background
+    rankLabel.Parent = billboardGui
     
     -- Text size constraint
     local textSizeConstraint = Instance.new("UITextSizeConstraint")
-    textSizeConstraint.MaxTextSize = 16
+    textSizeConstraint.MaxTextSize = 14 -- Smaller text
     textSizeConstraint.MinTextSize = 8
     textSizeConstraint.Parent = rankLabel
     
     log.debug("Created rank display for", player.Name, "- Rank:", rankInfo.name, "Rebirths:", rebirths)
     
-    -- Add special effects for higher tiers
+    -- Add special effects for higher tiers (text effects only)
     local effectTween = nil
     if rankTier == "Ultimate" then
-        -- Rainbow effect for ultimate ranks
-        effectTween = TweenService:Create(gradient, 
-            TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            {Rotation = 360}
-        )
-        effectTween:Play()
+        -- Rainbow text effect for ultimate ranks
+        local rainbowColors = {
+            Color3.fromRGB(255, 100, 100), -- Red
+            Color3.fromRGB(255, 200, 100), -- Orange  
+            Color3.fromRGB(255, 255, 100), -- Yellow
+            Color3.fromRGB(100, 255, 100), -- Green
+            Color3.fromRGB(100, 200, 255), -- Blue
+            Color3.fromRGB(200, 100, 255), -- Purple
+        }
+        
+        local colorIndex = 1
+        local function cycleColors()
+            if rankLabel and rankLabel.Parent then
+                rankLabel.TextColor3 = rainbowColors[colorIndex]
+                colorIndex = (colorIndex % #rainbowColors) + 1
+            end
+        end
+        
+        -- Create a controllable rainbow effect with cleanup flag
+        local rainbowActive = true
+        local function startRainbowEffect()
+            spawn(function()
+                while rainbowActive and rankLabel and rankLabel.Parent do
+                    cycleColors()
+                    wait(0.5)
+                end
+            end)
+        end
+        
+        startRainbowEffect()
+        effectTween = {
+            cleanup = function()
+                rainbowActive = false
+            end
+        }
     elseif rankTier == "Elite" then
-        -- Pulsing effect for elite ranks
-        effectTween = TweenService:Create(stroke,
-            TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            {Transparency = 0.8}
+        -- Pulsing text effect for elite ranks
+        effectTween = TweenService:Create(rankLabel,
+            TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            {TextTransparency = 0.3}
         )
         effectTween:Play()
     end
@@ -163,8 +138,30 @@ function RankDisplayManager.removePlayerRank(player)
     local display = rankDisplays[player]
     if display then
         if display.tween then
-            display.tween:Cancel()
-            display.tween:Destroy()
+            log.debug("Cleaning up tween for", player.Name, "- tween type:", typeof(display.tween))
+            
+            -- Safely check if it has a cleanup function
+            local hasCleanup, cleanupFunc = pcall(function() return display.tween.cleanup end)
+            
+            if hasCleanup and type(cleanupFunc) == "function" then
+                -- It's a custom effect with cleanup function
+                cleanupFunc()
+                log.debug("Stopped custom effect for", player.Name)
+            elseif typeof(display.tween) == "Tween" then
+                -- It's a real Tween - cancel it properly
+                display.tween:Cancel()
+                display.tween:Destroy()
+                log.debug("Stopped real tween for", player.Name)
+            elseif typeof(display.tween) == "Instance" then
+                -- It's an Instance (probably a Tween) - try to cancel
+                if display.tween.Cancel then
+                    display.tween:Cancel()
+                    display.tween:Destroy()
+                    log.debug("Stopped Instance tween for", player.Name)
+                end
+            else
+                log.debug("Unknown tween type for", player.Name, ":", typeof(display.tween))
+            end
         end
         if display.gui then
             display.gui:Destroy()
@@ -179,11 +176,27 @@ function RankDisplayManager.onCharacterAdded(character)
     local player = Players:GetPlayerFromCharacter(character)
     if not player then return end
     
-    -- Wait a moment for character to fully load
-    wait(1)
-    
-    -- Create rank display
-    RankDisplayManager.updatePlayerRank(player)
+    -- Wait for character to fully load and for player data to be available
+    spawn(function()
+        wait(2) -- Give more time for character and data to load
+        
+        -- Ensure player data is available before creating rank display
+        local maxWait = 10 -- Maximum 10 seconds to wait for data
+        local waitTime = 0
+        
+        while waitTime < maxWait do
+            local playerData = PlayerDataManager.getPlayerData(player)
+            if playerData then
+                log.debug("Player data found for rank display:", player.Name)
+                break
+            end
+            wait(0.5)
+            waitTime = waitTime + 0.5
+        end
+        
+        -- Create rank display
+        RankDisplayManager.updatePlayerRank(player)
+    end)
 end
 
 -- Handle player leaving

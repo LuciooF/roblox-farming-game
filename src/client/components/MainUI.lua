@@ -4,6 +4,7 @@
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
 local ClientLogger = require(script.Parent.Parent.ClientLogger)
+local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 local log = ClientLogger.getModuleLogger("MainUI")
 
@@ -17,13 +18,15 @@ local CropViewModal = require(script.Parent.CropViewModal)
 local SeedDetailModal = require(script.Parent.SeedDetailModal)
 local WeatherPanel = require(script.Parent.WeatherPanel)
 local BoostPanel = require(script.Parent.BoostPanel)
-local TutorialResetButton = require(script.Parent.TutorialResetButton)
 local SettingsPanel = require(script.Parent.SettingsPanel)
-local PlotUI = require(script.Parent.PlotUI)
+local PlotUI = require(script.Parent.PlotUI_Simple)
 local DebugPanel = require(script.Parent.DebugPanel)
 local GamepassPanel = require(script.Parent.GamepassPanel)
 local ConfettiAnimation = require(script.Parent.ConfettiAnimation)
-local RankPanel = require(script.Parent.RankPanel)
+local RebirthPanel = require(script.Parent.RebirthPanel)
+local PlantingPanel = require(script.Parent.PlantingPanel)
+local MusicButton = require(script.Parent.MusicButton)
+local RewardsPanel = require(script.Parent.RewardsPanel)
 
 local function MainUI(props)
     local playerData = props.playerData or {}
@@ -39,10 +42,12 @@ local function MainUI(props)
     local weatherVisible, setWeatherVisible = React.useState(false)
     local settingsVisible, setSettingsVisible = React.useState(false)
     local gamepassVisible, setGamepassVisible = React.useState(false)
+    local rebirthVisible, setRebirthVisible = React.useState(false)
     local plotUIVisible, setPlotUIVisible = React.useState(false)
     local selectedPlotData, setSelectedPlotData = React.useState(nil)
     local confettiVisible, setConfettiVisible = React.useState(false)
-    local rankVisible, setRankVisible = React.useState(false)
+    local plantingVisible, setPlantingVisible = React.useState(false)
+    local selectedPlotForPlanting, setSelectedPlotForPlanting = React.useState(nil)
     
     -- Track previous gamepass ownership to detect new purchases
     local previousGamepasses, setPreviousGamepasses = React.useState({})
@@ -53,7 +58,7 @@ local function MainUI(props)
     
     -- Screen size detection for responsive design
     local screenSize, setScreenSize = React.useState(Vector2.new(1024, 768))
-    local isMobile = screenSize.X < 768
+    local scale = ScreenUtils.getProportionalScale(screenSize)
     
     -- Update screen size
     React.useEffect(function()
@@ -84,6 +89,7 @@ local function MainUI(props)
         setInventoryVisible(false)
         setWeatherVisible(false)
         setCropViewVisible(false)
+        setGamepassVisible(false)
     end
     
     local function handleWeatherClick()
@@ -100,38 +106,146 @@ local function MainUI(props)
         setShopVisible(false)
         setWeatherVisible(false)
         setCropViewVisible(false)
-        setRankVisible(false)
+        setRebirthVisible(false)
     end
     
-    local function handleRankClick()
-        setRankVisible(not rankVisible)
-        setInventoryVisible(false)
-        setShopVisible(false)
-        setWeatherVisible(false)
-        setGamepassVisible(false)
-        setCropViewVisible(false)
-    end
     
     local function handleCloseAll()
         setInventoryVisible(false)
         setShopVisible(false)
         setWeatherVisible(false)
         setGamepassVisible(false)
+        setRebirthVisible(false)
         setPlotUIVisible(false)
         setCropViewVisible(false)
-        setRankVisible(false)
+        setPlantingVisible(false)
     end
     
     -- Plot UI handlers
     local function handlePlotInteraction(plotData)
-        setSelectedPlotData(plotData)
-        setPlotUIVisible(true)
+        -- If plot is empty, directly open planting panel instead of plot UI
+        if plotData.state == "empty" then
+            setSelectedPlotForPlanting({
+                plotData = plotData,
+                mode = "single"
+            })
+            setPlantingVisible(true)
+            -- Close other panels
+            setInventoryVisible(false)
+            setShopVisible(false)
+            setWeatherVisible(false)
+            setGamepassVisible(false)
+            setRebirthVisible(false)
+            setCropViewVisible(false)
+            setPlotUIVisible(false)
+        else
+            -- For planted plots, show the plot UI
+            setSelectedPlotData(plotData)
+            setPlotUIVisible(true)
+            -- Close other panels
+            setInventoryVisible(false)
+            setShopVisible(false)
+            setWeatherVisible(false)
+            setGamepassVisible(false)
+            setRebirthVisible(false)
+            setCropViewVisible(false)
+            setPlantingVisible(false)
+        end
+    end
+    
+    -- Planting panel handlers
+    local function handlePlantAllSameCrop(plotData)
+        if not plotData or not plotData.seedType then
+            log.warn("Cannot plant all - no seed type in plot data")
+            return
+        end
+        
+        local seedType = plotData.seedType
+        local availableSeeds = (playerData.inventory and playerData.inventory.crops and playerData.inventory.crops[seedType]) or 0
+        
+        if availableSeeds <= 0 then
+            log.info("No", seedType, "seeds available to plant")
+            return
+        end
+        
+        -- Calculate how many we can plant (current + available, up to any plot limit)
+        local currentPlanted = plotData.harvestCount or 1
+        local maxPerPlot = 1000 -- Default max if no limit specified
+        
+        -- Check if there's a crop limit from GameConfig
+        if playerData.gameConfig and playerData.gameConfig.crops and playerData.gameConfig.crops[seedType] then
+            local cropConfig = playerData.gameConfig.crops[seedType]
+            maxPerPlot = cropConfig.maxPerPlot or maxPerPlot
+        end
+        
+        local canPlantMore = maxPerPlot - currentPlanted
+        local quantityToPlant = math.min(availableSeeds, canPlantMore)
+        
+        if quantityToPlant <= 0 then
+            log.info("Plot already at maximum capacity for", seedType)
+            return
+        end
+        
+        log.info("Planting all available", seedType, "- quantity:", quantityToPlant, "on plot:", plotData.plotId)
+        
+        -- Plant the seeds directly without opening UI
+        if remotes.farmAction then
+            -- Limit to 50 per the server's validation (most common case)
+            local batchSize = math.min(quantityToPlant, 50)
+            remotes.farmAction:FireServer("plant", plotData.plotId, seedType, batchSize)
+            
+            -- If there are more than 50, the user can click Plant All again
+            if quantityToPlant > 50 then
+                log.info("Planted 50", seedType, "- click Plant All again to plant remaining", quantityToPlant - 50)
+            end
+        end
+        
+        -- Don't close the plot UI - let user continue managing the plot
+    end
+    
+    local function handlePlantingRequest(plotData, mode)
+        setSelectedPlotForPlanting({
+            plotData = plotData,
+            mode = mode or "single" -- "single" or "all"
+        })
+        setPlantingVisible(true)
         -- Close other panels
         setInventoryVisible(false)
         setShopVisible(false)
         setWeatherVisible(false)
         setGamepassVisible(false)
+        setRebirthVisible(false)
         setCropViewVisible(false)
+        setPlotUIVisible(false)
+    end
+    
+    local function handlePlantSeed(seedType, quantity)
+        quantity = quantity or 1 -- Default to 1 if no quantity specified
+        local plotData = selectedPlotForPlanting and selectedPlotForPlanting.plotData
+        log.info("Planting seed:", seedType, "quantity:", quantity, "on plot:", plotData and plotData.plotId)
+        
+        if remotes.farmAction and plotData then
+            remotes.farmAction:FireServer("plant", plotData.plotId, seedType, quantity)
+        end
+        
+        -- Close planting panel and open plot UI automatically
+        setPlantingVisible(false)
+        setSelectedPlotForPlanting(nil)
+        
+        -- Wait a brief moment for the plant action to process, then open plot UI
+        if plotData then
+            -- Create updated plot data (it will be "planted" now instead of "empty")
+            local updatedPlotData = {}
+            for k, v in pairs(plotData) do
+                updatedPlotData[k] = v
+            end
+            updatedPlotData.state = "planted"
+            updatedPlotData.seedType = seedType
+            
+            -- Open plot UI with the updated plot data
+            setSelectedPlotData(updatedPlotData)
+            setPlotUIVisible(true)
+        end
     end
     
     -- Expose plot UI handler and updater to parent
@@ -155,9 +269,14 @@ local function MainUI(props)
     end, {plotUIVisible, selectedPlotData})
     
     local function handleRebirthClick()
-        if remotes.rebirthRemote then
-            remotes.rebirthRemote:FireServer()
-        end
+        setRebirthVisible(not rebirthVisible)
+        -- Close other panels
+        setInventoryVisible(false)
+        setShopVisible(false)
+        setWeatherVisible(false)
+        setGamepassVisible(false)
+        setCropViewVisible(false)
+        setPlotUIVisible(false)
     end
     
     local function handlePurchase(itemType, item, price)
@@ -232,14 +351,14 @@ local function MainUI(props)
     return e("ScreenGui", {
         Name = "FarmingUIReact",
         ResetOnSpawn = false,
-        IgnoreGuiInset = true,
+        IgnoreGuiInset = true, -- Ignore TopBar inset to allow positioning at very top
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     }, {
         -- Background click detector to close panels (only when panels are visible)
-        -- Mobile-friendly: smaller area that doesn't interfere with bottom controls
-        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible or rankVisible) and e("TextButton", {
+        -- Proportional space at bottom for controls
+        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible or plantingVisible) and e("TextButton", {
             Name = "ClickDetector",
-            Size = UDim2.new(1, 0, 1, isMobile and -200 or 0), -- Leave more space at bottom for mobile controls
+            Size = UDim2.new(1, 0, 1, -ScreenUtils.getProportionalSize(screenSize, 200)), -- Proportional space at bottom
             Position = UDim2.new(0, 0, 0, 0),
             BackgroundTransparency = 1,
             Text = "",
@@ -261,12 +380,15 @@ local function MainUI(props)
             tutorialData = tutorialData,
             onShopClick = handleShopClick,
             onInventoryClick = function()
-                setCropViewVisible(true)
+                setInventoryVisible(not inventoryVisible)
+                setShopVisible(false)
+                setWeatherVisible(false)
+                setCropViewVisible(false)
+                setGamepassVisible(false)
             end,
             onWeatherClick = handleWeatherClick,
             onGamepassClick = handleGamepassClick,
             onRebirthClick = handleRebirthClick,
-            onRankClick = handleRankClick,
             onPetsClick = function()
                 DebugPanel.toggle()
             end
@@ -318,6 +440,13 @@ local function MainUI(props)
             screenSize = screenSize
         }),
         
+        -- Music Button Component (bottom right corner)
+        MusicButton = e(MusicButton, {
+            screenSize = screenSize,
+            playerData = playerData,
+            remotes = remotes
+        }),
+        
         -- Crop View Modal (rendered at top level for proper positioning)
         CropViewModal = e(CropViewModal, {
             playerData = playerData,
@@ -333,12 +462,6 @@ local function MainUI(props)
             screenSize = screenSize
         }),
         
-        -- Tutorial Reset Button (only show when tutorial is completed, for debugging)
-        TutorialResetButton = isTutorialCompleted and e(TutorialResetButton, {
-            visible = true,
-            screenSize = screenSize,
-            remotes = remotes
-        }) or nil,
         
         -- Settings Panel Component
         SettingsPanel = e(SettingsPanel, {
@@ -357,12 +480,15 @@ local function MainUI(props)
             screenSize = screenSize
         }) or nil,
         
-        -- Rank Panel Component (only render when needed)
-        RankPanel = rankVisible and e(RankPanel, {
+        -- Rebirth Panel Component
+        RebirthPanel = rebirthVisible and e(RebirthPanel, {
+            visible = rebirthVisible,
+            onClose = function() setRebirthVisible(false) end,
             playerData = playerData,
-            onClose = function() setRankVisible(false) end,
+            remotes = remotes,
             screenSize = screenSize
         }) or nil,
+        
         
         -- Plot UI Component
         PlotUI = plotUIVisible and selectedPlotData and e(PlotUI, {
@@ -382,7 +508,30 @@ local function MainUI(props)
                 setGamepassVisible(false)
                 setCropViewVisible(false)
             end,
+            onOpenPlanting = function(mode)
+                if mode == "all" and selectedPlotData and selectedPlotData.seedType then
+                    -- Plot already has crops - automatically plant more of the same type
+                    handlePlantAllSameCrop(selectedPlotData)
+                else
+                    -- Empty plot or single plant mode - open planting panel
+                    handlePlantingRequest(selectedPlotData, mode)
+                end
+            end,
             remotes = remotes,
+            screenSize = screenSize
+        }) or nil,
+        
+        -- Planting Panel Component
+        PlantingPanel = plantingVisible and selectedPlotForPlanting and e(PlantingPanel, {
+            plotData = selectedPlotForPlanting.plotData,
+            plantingMode = selectedPlotForPlanting.mode,
+            playerData = playerData,
+            visible = plantingVisible,
+            onClose = function()
+                setPlantingVisible(false)
+                setSelectedPlotForPlanting(nil)
+            end,
+            onPlant = handlePlantSeed,
             screenSize = screenSize
         }) or nil,
         
@@ -392,6 +541,11 @@ local function MainUI(props)
             onComplete = function()
                 setConfettiVisible(false)
             end,
+            screenSize = screenSize
+        }),
+        
+        -- Rewards Panel (shows on top of everything)
+        RewardsPanel = e(RewardsPanel, {
             screenSize = screenSize
         })
     })

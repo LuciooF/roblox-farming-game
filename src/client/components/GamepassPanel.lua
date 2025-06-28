@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local e = React.createElement
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
+local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 local Modal = require(script.Parent.Modal)
 
@@ -40,8 +41,12 @@ local function createFlipAnimation(iconRef, animationTracker)
     
     -- Cancel any existing animation for this icon
     if animationTracker.current then
-        animationTracker.current:Cancel()
-        animationTracker.current:Destroy()
+        pcall(function()
+            animationTracker.current:Cancel()
+        end)
+        pcall(function()
+            animationTracker.current:Destroy()
+        end)
         animationTracker.current = nil
     end
     
@@ -80,15 +85,24 @@ local function GamepassPanel(props)
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
     -- Responsive sizing
-    local isMobile = screenSize.X < 768
-    local scale = isMobile and 0.9 or 1
-    local panelWidth = isMobile and screenSize.X * 0.95 or math.min(screenSize.X * 0.8, 1000)
-    local panelHeight = isMobile and screenSize.Y * 0.85 or math.min(screenSize.Y * 0.8, 700)
+    local scale = ScreenUtils.getProportionalScale(screenSize)
+    local panelWidth = math.min(screenSize.X * 0.9, ScreenUtils.getProportionalSize(screenSize, 1000))
+    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 700))
     
-    -- Card grid settings - always use 3 columns for consistent layout
-    local cardsPerRow = 3
-    local cardWidth = (panelWidth - 120) / cardsPerRow - 20
-    local cardHeight = 180
+    -- Proportional text sizes
+    local titleTextSize = ScreenUtils.getProportionalTextSize(screenSize, 32)
+    local normalTextSize = ScreenUtils.getProportionalTextSize(screenSize, 18)
+    local smallTextSize = ScreenUtils.getProportionalTextSize(screenSize, 14)
+    local buttonTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
+    local cardTitleSize = ScreenUtils.getProportionalTextSize(screenSize, 20)
+    local cardValueSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
+    
+    -- Card grid settings - dynamically adjust columns based on available width
+    local minCardWidth = ScreenUtils.getProportionalSize(screenSize, 220)
+    local cardsPerRow = math.max(2, math.floor((panelWidth - 100) / (minCardWidth + 15)))
+    local availableWidth = panelWidth - 100
+    local cardWidth = math.floor((availableWidth / cardsPerRow) - 15)
+    local cardHeight = ScreenUtils.getProportionalSize(screenSize, 200) -- Fixed proportional height
     
     -- Enhanced gamepass data - real gamepasses first, then placeholders
     local gamepasses = {
@@ -236,7 +250,9 @@ local function GamepassPanel(props)
     
     -- Calculate grid dimensions
     local totalRows = math.ceil(#gamepasses / cardsPerRow)
-    local totalHeight = totalRows * (cardHeight + 20) + 40
+    -- Account for: card heights + spacing between rows + top/bottom padding
+    -- Multiply by 1.3 for safety buffer without excessive empty space
+    local totalHeight = ((totalRows * cardHeight) + ((totalRows - 1) * 20) + 40) * 1.3
     
     -- Handle gamepass purchase
     local function handlePurchase(gamepassKey)
@@ -277,7 +293,7 @@ local function GamepassPanel(props)
                     Name = "FloatingTitle",
                     Size = UDim2.new(0, 160, 0, 40),
                     Position = UDim2.new(0, -10, 0, -25), -- Much closer to main panel
-                    BackgroundColor3 = Color3.fromRGB(100, 150, 255),
+                    BackgroundColor3 = Color3.fromRGB(255, 140, 0),
                     BorderSizePixel = 0,
                     ZIndex = 32
                 }, {
@@ -286,8 +302,8 @@ local function GamepassPanel(props)
                 }),
                 Gradient = e("UIGradient", {
                     Color = ColorSequence.new{
-                        ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 180, 255)),
-                        ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 140, 255))
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 160, 50)),
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 120, 0))
                     },
                     Rotation = 45
                 }),
@@ -301,7 +317,8 @@ local function GamepassPanel(props)
                     Position = UDim2.new(0, 5, 0, 0),
                     Text = "🚀 GAMEPASSES",
                     TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextScaled = true,
+                    TextSize = titleTextSize,
+            TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
                     ZIndex = 33
@@ -317,7 +334,7 @@ local function GamepassPanel(props)
                 CornerRadius = UDim.new(0, 20)
             }),
             Stroke = e("UIStroke", {
-                Color = Color3.fromRGB(100, 150, 255),
+                Color = Color3.fromRGB(255, 140, 0),
                 Thickness = 3,
                 Transparency = 0.1
             }),
@@ -389,7 +406,8 @@ local function GamepassPanel(props)
                 Position = UDim2.new(0, 40, 0, 15),
                 Text = "Unlock powerful features and boost your farming experience!",
                 TextColor3 = Color3.fromRGB(60, 80, 140),
-                TextScaled = true,
+                TextSize = smallTextSize,
+            TextWrapped = true,
                 BackgroundTransparency = 1,
                 Font = Enum.Font.Gotham,
                 TextXAlignment = Enum.TextXAlignment.Center,
@@ -511,7 +529,8 @@ local function GamepassPanel(props)
                                     Size = UDim2.new(1, 0, 1, 0),
                                     Text = "OWNED",
                                     TextColor3 = Color3.fromRGB(255, 255, 255),
-                                    TextScaled = true,
+                                    TextSize = normalTextSize,
+            TextWrapped = true,
                                     BackgroundTransparency = 1,
                                     Font = Enum.Font.GothamBold,
                                     ZIndex = 35
@@ -534,7 +553,8 @@ local function GamepassPanel(props)
                                     Size = UDim2.new(1, 0, 1, 0),
                                     Text = gamepass.category,
                                     TextColor3 = Color3.fromRGB(255, 255, 255),
-                                    TextScaled = true,
+                                    TextSize = normalTextSize,
+            TextWrapped = true,
                                     BackgroundTransparency = 1,
                                     Font = Enum.Font.GothamBold,
                                     ZIndex = 34
@@ -590,7 +610,8 @@ local function GamepassPanel(props)
                                 Position = UDim2.new(0, 85, 0, 40),
                                 Text = gamepass.name,
                                 TextColor3 = Color3.fromRGB(40, 50, 80),
-                                TextScaled = true,
+                                TextSize = cardTitleSize,
+            TextWrapped = true,
                                 BackgroundTransparency = 1,
                                 Font = Enum.Font.GothamBold,
                                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -604,7 +625,7 @@ local function GamepassPanel(props)
                                 Position = UDim2.new(0, 85, 0, 65),
                                 Text = gamepass.description,
                                 TextColor3 = Color3.fromRGB(70, 80, 120),
-                                TextSize = isMobile and 10 or 12,
+                                TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
                                 BackgroundTransparency = 1,
                                 Font = Enum.Font.Gotham,
                                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -620,7 +641,8 @@ local function GamepassPanel(props)
                                 Position = UDim2.new(0, 10, 1, -45),
                                 Text = isOwned and "✅ OWNED" or "",
                                 TextColor3 = Color3.fromRGB(255, 255, 255),
-                                TextScaled = true,
+                                TextSize = normalTextSize,
+            TextWrapped = true,
                                 BackgroundColor3 = isOwned and Color3.fromRGB(50, 150, 50) or gamepass.gradientColors[1],
                                 BorderSizePixel = 0,
                                 Font = Enum.Font.GothamBold,
@@ -685,7 +707,8 @@ local function GamepassPanel(props)
                                         AutomaticSize = Enum.AutomaticSize.X,
                                         Text = gamepass.price:gsub("R%$ ", ""), -- Remove "R$ " prefix
                                         TextColor3 = Color3.fromRGB(255, 255, 255),
-                                        TextScaled = true,
+                                        TextSize = cardValueSize,
+            TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
                                         ZIndex = 34,

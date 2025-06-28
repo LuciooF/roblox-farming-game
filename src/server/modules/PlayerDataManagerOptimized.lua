@@ -1,5 +1,5 @@
--- Player Data Management Module with ProfileStore
--- Handles all player data operations with local caching and automatic saves
+-- Optimized Player Data Management Module with ProfileStore
+-- Handles all player data operations with parallel loading for improved performance
 
 local GameConfig = require(script.Parent.GameConfig)
 local Logger = require(script.Parent.Logger)
@@ -33,9 +33,6 @@ local PROFILE_TEMPLATE = {
         currentStep = 1,
         completedSteps = {}, -- [stepId] = true for completed steps
         totalRewardsEarned = 0
-    },
-    settings = {
-        musicEnabled = true -- Default to music on
     }
     -- Note: gamepasses are not stored in datastore - they're session-only from MarketplaceService
 }
@@ -79,11 +76,8 @@ function PlayerDataManager.initialize()
     end
 end
 
--- Handle player joining
+-- Optimized player joining handler with parallel loading
 function PlayerDataManager.onPlayerJoined(player)
-    local totalStartTime = tick()
-    log.debug("🔄 PlayerDataManager.onPlayerJoined STARTED for:", player.Name)
-    
     if not ProfileStore then
         log.error("🚫 CRITICAL: ProfileStore not initialized - CANNOT PROCEED")
         player:Kick("Game initialization error. Please try rejoining. If this persists, the game servers may be experiencing issues.")
@@ -91,16 +85,20 @@ function PlayerDataManager.onPlayerJoined(player)
     end
     
     local userId = tostring(player.UserId)
-    
-    -- Add timeout handling for ProfileStore operations
-    local profile = nil
-    local profileSuccess = false
-    
-    log.debug("🔄 Starting ProfileStore session for:", player.Name)
-    
-    -- Use pcall with timeout to prevent indefinite hanging
     local startTime = tick()
-    spawn(function()
+    
+    log.info("🔄 Loading data for", player.Name, "...")
+    
+    -- Start both ProfileStore and Gamepass loading in parallel
+    local profileTask = nil
+    local profileSuccess = false
+    local profile = nil
+    
+    local gamepassTask = nil
+    local gamepassesLoaded = false
+    
+    -- Load ProfileStore data asynchronously
+    profileTask = task.spawn(function()
         local success, result = pcall(function()
             return ProfileStore:StartSessionAsync(userId)
         end)
@@ -108,21 +106,39 @@ function PlayerDataManager.onPlayerJoined(player)
         if success then
             profile = result
             profileSuccess = true
-            log.info("✅ ProfileStore session completed for:", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms")
+            log.info("✅ Profile loaded for", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms")
         else
-            log.error("❌ ProfileStore failed for", player.Name, "error:", result)
+            log.warn("❌ ProfileStore failed for", player.Name, "error:", result)
         end
     end)
     
-    -- Optimized polling: check every 50ms instead of 100ms for faster response
+    -- Load gamepass data asynchronously (in parallel with profile)
+    gamepassTask = task.spawn(function()
+        local GamepassService = require(script.Parent.GamepassService)
+        GamepassService.initializePlayerGamepassOwnership(player)
+        gamepassesLoaded = true
+        log.info("✅ Gamepasses loaded for", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms")
+    end)
+    
+    -- Wait for both operations to complete with proper timeout
     local RunService = game:GetService("RunService")
-    local timeout = RunService:IsStudio() and 3 or 8 -- Reduced timeout from 10 to 8 seconds
+    local timeout = RunService:IsStudio() and 3 or 10
     local elapsed = 0
-    while not profileSuccess and elapsed < timeout and player.Parent do
-        wait(0.05) -- Check every 50ms instead of 100ms
+    
+    while (not profileSuccess or not gamepassesLoaded) and elapsed < timeout and player.Parent do
+        task.wait(0.05) -- Use task.wait for better performance
         elapsed = elapsed + 0.05
     end
     
+    -- Cancel tasks if still running
+    if profileTask then
+        task.cancel(profileTask)
+    end
+    if gamepassTask then
+        task.cancel(gamepassTask)
+    end
+    
+    -- Check if profile loaded successfully
     if not profileSuccess or not profile then
         local RunService = game:GetService("RunService")
         if RunService:IsStudio() then
@@ -166,7 +182,6 @@ function PlayerDataManager.onPlayerJoined(player)
             end
             
             -- Set up starting values for new players using safe initialization flag
-            
             if not profile.Data.isInitialized then
                 log.debug("NEW PLAYER: Giving starting resources")
                 profile.Data.money = GameConfig.Settings.startingMoney
@@ -212,10 +227,15 @@ function PlayerDataManager.onPlayerJoined(player)
             local TutorialManager = require(script.Parent.TutorialManager)
             TutorialManager.initializePlayer(player)
             
-            -- Note: Gamepass initialization is now handled asynchronously in FarmingSystemNew.lua
-            -- to prevent blocking the main PlayerDataManager.onPlayerJoined thread
+            -- Apply gamepass effects (gamepasses were already loaded in parallel)
+            local GamepassService = require(script.Parent.GamepassService)
+            for gamepassKey, owned in pairs(GamepassService.getPlayerGamepasses(player)) do
+                if owned then
+                    GamepassService.applyGamepassEffects(player, gamepassKey, false) -- false = not a new purchase
+                end
+            end
             
-            log.info("🔄 PlayerDataManager.onPlayerJoined COMPLETED for:", player.Name, "in", math.floor((tick() - totalStartTime) * 1000), "ms")
+            log.info("✅ Player", player.Name, "fully loaded in", math.floor((tick() - startTime) * 1000), "ms")
         else
             profile:Release()
         end
@@ -253,7 +273,7 @@ function PlayerDataManager.getPlayerData(player)
     end
     
     if not PlayerDataManager._loggedMissingData[player.UserId] then
-        log.debug("📊 getPlayerData() called before profile loaded for", player.Name, "- this is normal during optimized loading")
+        log.warn("⚠️ getPlayerData() called before profile loaded for", player.Name)
         PlayerDataManager._loggedMissingData[player.UserId] = true
     end
     
@@ -305,29 +325,17 @@ function PlayerDataManager.performRebirth(player)
     -- Update leaderstats since money and rebirths changed
     PlayerDataManager.updateLeaderstats(player)
     
-    -- Clear all crops from plots in the world and update visibility (async to prevent lag)
-    spawn(function()
-        local FarmManager = require(script.Parent.FarmManager)
-        local farmId = FarmManager.getPlayerFarm(player.UserId)
-        if farmId then
-            local PlotManager = require(script.Parent.PlotManager)
-            -- Clear all plots for this player
-            for plotIndex = 1, 40 do -- Clear all possible plots
-                local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
-                PlotManager.resetPlot(globalPlotId)
-            end
-            log.debug("Async plot clearing completed for", player.Name)
-            
-            -- Update plot visibility states after rebirth reset
-            log.debug("Updating plot visibility after rebirth for", player.Name)
-            FarmManager.updatePlayerPlotVisibility(player)
-            
-            -- Add small delay and force another refresh to ensure plots are properly hidden
-            wait(0.1)
-            log.debug("Forcing secondary plot visibility refresh for", player.Name)
-            FarmManager.updatePlayerPlotVisibility(player)
+    -- Clear all crops from plots in the world
+    local FarmManager = require(script.Parent.FarmManager)
+    local farmId = FarmManager.getPlayerFarm(player.UserId)
+    if farmId then
+        local PlotManager = require(script.Parent.PlotManager)
+        -- Clear all plots for this player
+        for plotIndex = 1, 40 do -- Clear all possible plots
+            local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
+            PlotManager.resetPlot(globalPlotId)
         end
-    end)
+    end
     
     return true, {
         oldRebirths = oldRebirths,
@@ -558,35 +566,14 @@ end
 -- Add item to inventory
 function PlayerDataManager.addToInventory(player, itemType, itemName, amount)
     local playerData = PlayerDataManager.getPlayerData(player)
-    if not playerData then return false, 0 end
+    if not playerData then return false end
     
     if not playerData.inventory[itemType] then
         playerData.inventory[itemType] = {}
     end
     
-    -- Implement 1k crop limit for crops
-    if itemType == "crops" then
-        local currentAmount = playerData.inventory[itemType][itemName] or 0
-        local CROP_LIMIT = 1000
-        
-        if currentAmount >= CROP_LIMIT then
-            -- Already at limit, can't add any
-            return true, 0, true -- success, amountAdded, limitHit
-        elseif currentAmount + amount > CROP_LIMIT then
-            -- Would exceed limit, add only what fits
-            local amountToAdd = CROP_LIMIT - currentAmount
-            playerData.inventory[itemType][itemName] = CROP_LIMIT
-            return true, amountToAdd, true -- success, amountAdded, limitHit
-        else
-            -- Normal addition, under limit
-            playerData.inventory[itemType][itemName] = currentAmount + amount
-            return true, amount, false -- success, amountAdded, limitHit
-        end
-    else
-        -- Non-crop items have no limit
-        playerData.inventory[itemType][itemName] = (playerData.inventory[itemType][itemName] or 0) + amount
-        return true, amount, false
-    end
+    playerData.inventory[itemType][itemName] = (playerData.inventory[itemType][itemName] or 0) + amount
+    return true
 end
 
 -- Remove item from inventory
@@ -671,7 +658,7 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
     local plotKey = tostring(plotIndex)
     
     -- Copy plot state to avoid reference issues
-    local plotDataToSave = {
+    playerData.plots[plotKey] = {
         state = plotState.state,
         seedType = plotState.seedType,
         plantedTime = plotState.plantedTime,
@@ -686,40 +673,18 @@ function PlayerDataManager.savePlotState(player, plotIndex, plotState)
         harvestCooldown = plotState.harvestCooldown,
         growthTime = plotState.growthTime,
         waterTime = plotState.waterTime,
+        plantedAt = plotState.plantedAt,
+        lastWateredAt = plotState.lastWateredAt,
         lastUpdateTime = plotState.lastUpdateTime or tick(),
-        
-        -- Growth calculator fields
-        accumulatedCrops = plotState.accumulatedCrops or 0,
-        lastReadyTime = plotState.lastReadyTime or 0,
-        baseYieldRate = plotState.baseYieldRate or 1,
         
         -- Maintenance watering system
         lastMaintenanceWater = plotState.lastMaintenanceWater or 0,
         needsMaintenanceWater = plotState.needsMaintenanceWater or false,
-        maintenanceWaterInterval = plotState.maintenanceWaterInterval or 43200,
-        
-        -- Add save timestamp for debugging
-        savedAt = tick()
+        maintenanceWaterInterval = plotState.maintenanceWaterInterval or 43200
     }
     
-    -- Save to player data in memory
-    playerData.plots[plotKey] = plotDataToSave
-    
-    -- CRITICAL: Verify the save worked by reading it back
-    local verification = playerData.plots[plotKey]
-    if not verification or verification.state ~= plotState.state or verification.accumulatedCrops ~= (plotState.accumulatedCrops or 0) then
-        log.error("❌ SAVE VERIFICATION FAILED for plot", plotIndex, "player", player.Name)
-        log.error("Expected state:", plotState.state, "crops:", plotState.accumulatedCrops)
-        log.error("Actual saved:", verification and verification.state or "nil", "crops:", verification and verification.accumulatedCrops or "nil")
-        return false
-    end
-    
-    -- ProfileStore automatically handles DataStore persistence, but we should log when critical data is saved
-    if plotState.accumulatedCrops and plotState.accumulatedCrops > 0 then
-        log.warn("🌾 CRITICAL SAVE: Plot", plotIndex, "has", plotState.accumulatedCrops, "crops ready for", player.Name, "- ProfileStore MUST persist this!")
-    end
-    
-    log.info("✅ Saved plot", plotIndex, "state:", plotState.state, "seed:", plotState.seedType, "crops:", plotState.accumulatedCrops or 0, "for player", player.Name)
+    -- ProfileStore automatically handles saving - no manual save needed!
+    log.info("Saved plot", plotIndex, "state", plotState.state, "seed", plotState.seedType, "for player", player.Name)
     
     return true
 end
@@ -958,34 +923,6 @@ function PlayerDataManager.updateLeaderstats(player)
     if rebirths then
         rebirths.Value = playerData.rebirths or 0
     end
-end
-
--- Get music preference
-function PlayerDataManager.getMusicEnabled(player)
-    local playerData = PlayerDataManager.getPlayerData(player)
-    if not playerData then return true end -- Default to true if no data
-    
-    -- Handle legacy players who don't have settings yet
-    if not playerData.settings then
-        playerData.settings = { musicEnabled = true }
-    end
-    
-    return playerData.settings.musicEnabled
-end
-
--- Set music preference
-function PlayerDataManager.setMusicEnabled(player, enabled)
-    local playerData = PlayerDataManager.getPlayerData(player)
-    if not playerData then return false end
-    
-    -- Initialize settings if not present (for legacy players)
-    if not playerData.settings then
-        playerData.settings = {}
-    end
-    
-    playerData.settings.musicEnabled = enabled
-    log.debug("Set music preference for", player.Name, "to", enabled)
-    return true
 end
 
 return PlayerDataManager

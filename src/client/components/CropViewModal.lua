@@ -3,6 +3,7 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
+local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 local Modal = require(script.Parent.Modal)
 local CropCard = require(script.Parent.CropCard)
@@ -15,10 +16,9 @@ local function CropViewModal(props)
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
     -- Responsive sizing
-    local isMobile = screenSize.X < 768
-    local scale = isMobile and 0.85 or 1
-    local panelWidth = isMobile and 500 or 600
-    local panelHeight = isMobile and 400 or 500
+    local scale = ScreenUtils.getProportionalScale(screenSize)
+    local panelWidth = ScreenUtils.getProportionalSize(screenSize, 600)
+    local panelHeight = ScreenUtils.getProportionalSize(screenSize, 500)
     
     -- Get available crops for display
     local function getAvailableCrops()

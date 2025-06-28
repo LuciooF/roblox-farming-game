@@ -181,24 +181,24 @@ local IconAssets = {
     -- WEATHER
     weather = {
         sun = {
-            flat = "rbxassetid://PENDING",
-            outline = "rbxassetid://PENDING",
-            colored = "rbxassetid://PENDING",
+            flat = "http://www.roblox.com/asset/?id=240651661",
+            outline = "http://www.roblox.com/asset/?id=240651661",
+            colored = "http://www.roblox.com/asset/?id=240651661",
         },
         rain = {
-            flat = "rbxassetid://PENDING",
-            outline = "rbxassetid://PENDING",
-            colored = "rbxassetid://PENDING",
+            flat = "http://www.roblox.com/asset/?id=240651406",
+            outline = "http://www.roblox.com/asset/?id=240651406",
+            colored = "http://www.roblox.com/asset/?id=240651406",
         },
         cloud = {
-            flat = "rbxassetid://PENDING",
-            outline = "rbxassetid://PENDING",
-            colored = "rbxassetid://PENDING",
+            flat = "http://www.roblox.com/asset/?id=240650939",
+            outline = "http://www.roblox.com/asset/?id=240650939",
+            colored = "http://www.roblox.com/asset/?id=240650939",
         },
         storm = {
-            flat = "rbxassetid://PENDING",
-            outline = "rbxassetid://PENDING",
-            colored = "rbxassetid://PENDING",
+            flat = "http://www.roblox.com/asset/?id=261307430",
+            outline = "http://www.roblox.com/asset/?id=261307430",
+            colored = "http://www.roblox.com/asset/?id=261307430",
         }
     },
     

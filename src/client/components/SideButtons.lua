@@ -41,7 +41,10 @@ local function createIconSpin(iconRef, animationTracker)
     -- Cancel any existing animation for this icon
     if animationTracker.current then
         animationTracker.current:Cancel()
-        animationTracker.current:Destroy()
+        if animationTracker.current and animationTracker.current.Destroy then
+            animationTracker.current:Destroy()
+        end
+        animationTracker.current = nil
     end
     
     -- Reset rotation to 0 to prevent accumulation
@@ -75,20 +78,59 @@ local function SideButtons(props)
     local onInventoryClick = props.onInventoryClick or function() end
     local onWeatherClick = props.onWeatherClick or function() end
     local onGamepassClick = props.onGamepassClick or function() end
-    local onRankClick = props.onRankClick or function() end
     local onPetsClick = props.onPetsClick or function() end
     local onRebirthClick = props.onRebirthClick or function() end
+    local onComingSoonClick = props.onComingSoonClick or function() end
     local tutorialData = props.tutorialData
     
-    -- Responsive sizing using ScreenUtils
-    local screenSize = props.screenSize or Vector2.new(1024, 768)
-    local isMobile = screenSize.X < 768
-    local scale = ScreenUtils.getCustomScale(screenSize, 0.9, 1)
+    -- Tooltip state
+    local tooltipText, setTooltipText = React.useState("")
+    local tooltipVisible, setTooltipVisible = React.useState(false)
+    local mousePosition, setMousePosition = React.useState(Vector2.new(0, 0))
     
-    -- Mobile-specific sizing
-    local buttonSize = isMobile and 35 * scale or 40 * scale -- Smaller on mobile
-    local iconSize = isMobile and 20 * scale or 24 * scale -- Smaller icons on mobile
-    local spacing = isMobile and 8 * scale or 10 * scale -- Tighter spacing on mobile
+    -- Mouse tracking for tooltip positioning
+    React.useEffect(function()
+        local connection
+        local mouse = game.Players.LocalPlayer:GetMouse()
+        
+        local function updateMousePosition()
+            setMousePosition(Vector2.new(mouse.X, mouse.Y))
+        end
+        
+        if tooltipVisible then
+            connection = game:GetService("RunService").Heartbeat:Connect(updateMousePosition)
+        end
+        
+        return function()
+            if connection then
+                connection:Disconnect()
+            end
+        end
+    end, {tooltipVisible})
+    
+    -- Tooltip helper functions
+    local function showTooltip(text)
+        setTooltipText(text)
+        setTooltipVisible(true)
+    end
+    
+    local function hideTooltip()
+        setTooltipVisible(false)
+    end
+    
+    -- Responsive sizing using ScreenUtils with proportional scaling
+    local screenSize = props.screenSize or Vector2.new(1024, 768)
+    local scale = ScreenUtils.getProportionalScale(screenSize)
+    
+    -- Proportional sizing
+    local buttonSize = ScreenUtils.getProportionalSize(screenSize, 55)
+    local iconSize = ScreenUtils.getProportionalSize(screenSize, 32)
+    local spacing = ScreenUtils.getProportionalSize(screenSize, 12)
+    
+    -- Proportional text sizes
+    local tooltipTextSize = ScreenUtils.getProportionalTextSize(screenSize, 20)
+    local smallTextSize = ScreenUtils.getProportionalTextSize(screenSize, 12)
+    local soonTextSize = ScreenUtils.getProportionalTextSize(screenSize, 10)
     
     -- Check if buttons should be highlighted for tutorial
     local shouldHighlightInventory = false
@@ -114,6 +156,8 @@ local function SideButtons(props)
     local rebirthIconRef = React.useRef(nil)
     local petsIconRef = React.useRef(nil)
     local petsSoonTextRef = React.useRef(nil)
+    local comingSoonIconRef = React.useRef(nil)
+    local comingSoonTextRef = React.useRef(nil)
     
     -- Animation trackers to prevent stacking
     local shopAnimTracker = React.useRef(nil)
@@ -122,32 +166,61 @@ local function SideButtons(props)
     local gamepassAnimTracker = React.useRef(nil)
     local rebirthAnimTracker = React.useRef(nil)
     local petsAnimTracker = React.useRef(nil)
+    local comingSoonAnimTracker = React.useRef(nil)
     
-    -- Bouncing animation for both icon and text + rainbow color cycling
+    -- Bouncing animation for both pets and coming soon buttons + rainbow color cycling
     React.useEffect(function()
         
         local function startBounceAnimation()
+            local animations = {}
+            
+            -- Pets button animations
             if petsSoonTextRef.current and petsIconRef.current then
-                -- Bounce animation for text
-                local textBounce = TweenService:Create(petsSoonTextRef.current,
+                -- Bounce animation for pets text
+                local petsTextBounce = TweenService:Create(petsSoonTextRef.current,
                     TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
                     {Position = UDim2.new(0.5, 0, 0.5, -22)}
                 )
                 
-                -- Bounce animation for icon (smaller bounce)
-                local iconBounce = TweenService:Create(petsIconRef.current,
+                -- Bounce animation for pets icon (smaller bounce)
+                local petsIconBounce = TweenService:Create(petsIconRef.current,
                     TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
                     {Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2 - 3)}
                 )
                 
-                textBounce:Play()
-                iconBounce:Play()
+                petsTextBounce:Play()
+                petsIconBounce:Play()
                 
-                return {textBounce, iconBounce}
+                table.insert(animations, petsTextBounce)
+                table.insert(animations, petsIconBounce)
             end
+            
+            -- Coming Soon button animations
+            if comingSoonTextRef.current and comingSoonIconRef.current then
+                -- Bounce animation for coming soon text
+                local comingSoonTextBounce = TweenService:Create(comingSoonTextRef.current,
+                    TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                    {Position = UDim2.new(0.5, 0, 0.5, -22)}
+                )
+                
+                -- Bounce animation for coming soon icon (smaller bounce)
+                local comingSoonIconBounce = TweenService:Create(comingSoonIconRef.current,
+                    TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                    {Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2 - 3)}
+                )
+                
+                comingSoonTextBounce:Play()
+                comingSoonIconBounce:Play()
+                
+                table.insert(animations, comingSoonTextBounce)
+                table.insert(animations, comingSoonIconBounce)
+            end
+            
+            return animations
         end
         
         local function startRainbowAnimation()
+            -- Pets rainbow animation
             if petsSoonTextRef.current then
                 -- Bright, high-contrast colors for visibility
                 local rainbowColors = {
@@ -177,6 +250,38 @@ local function SideButtons(props)
                 
                 -- Start the cycle
                 cycleColors(1)
+            end
+            
+            -- Coming Soon rainbow animation (slightly different timing)
+            if comingSoonTextRef.current then
+                local rainbowColors = {
+                    Color3.fromRGB(255, 50, 50),   -- Bright Red
+                    Color3.fromRGB(255, 150, 0),   -- Bright Orange
+                    Color3.fromRGB(255, 255, 0),   -- Bright Yellow
+                    Color3.fromRGB(0, 255, 100),   -- Bright Green
+                    Color3.fromRGB(0, 255, 255),   -- Bright Cyan
+                    Color3.fromRGB(255, 100, 255), -- Bright Magenta
+                }
+                
+                local function cycleColorsComingSoon(colorIndex)
+                    if not comingSoonTextRef.current then return end
+                    
+                    local nextIndex = (colorIndex % #rainbowColors) + 1
+                    local colorTween = TweenService:Create(comingSoonTextRef.current,
+                        TweenInfo.new(0.6, Enum.EasingStyle.Linear),
+                        {TextColor3 = rainbowColors[nextIndex]}
+                    )
+                    
+                    colorTween:Play()
+                    colorTween.Completed:Connect(function()
+                        colorTween:Destroy()
+                        cycleColorsComingSoon(nextIndex)
+                    end)
+                end
+                
+                -- Start the cycle with slight offset
+                wait(0.2)
+                cycleColorsComingSoon(3) -- Start at different color
             end
         end
         
@@ -257,18 +362,22 @@ local function SideButtons(props)
         end
     end, {shouldHighlightShop})
     
+    -- Use aspect ratio to determine layout instead of screen width
+    local aspectRatio = screenSize.X / screenSize.Y
+    local isCompactLayout = aspectRatio < 1.5 -- Compact layout for portrait or square screens
+    
     return e("Frame", {
         Name = "SideButtonsFrame",
-        Size = isMobile and 
-            UDim2.new(0, (2 * buttonSize) + spacing, 0, (3 * buttonSize) + (2 * spacing)) or -- 2x3 grid on mobile
-            UDim2.new(0, buttonSize, 0, (6 * buttonSize) + (5 * spacing)), -- 1x6 column on desktop
-        Position = isMobile and 
-            UDim2.new(1, -((2 * buttonSize) + spacing + 15 * scale), 0, 80 * scale) or -- Top-right on mobile, away from thumbstick completely
-            UDim2.new(0, 20 * scale, 0.5, -((6 * buttonSize) + (5 * spacing))/2), -- Left-center on desktop
+        Size = isCompactLayout and 
+            UDim2.new(0, (2 * buttonSize) + spacing, 0, (4 * buttonSize) + (3 * spacing)) or -- 2x4 grid on compact screens
+            UDim2.new(0, buttonSize, 0, (7 * buttonSize) + (6 * spacing)), -- 1x7 column on wide screens
+        Position = isCompactLayout and 
+            UDim2.new(1, -((2 * buttonSize) + spacing + ScreenUtils.getProportionalSize(screenSize, 15)), 0, ScreenUtils.getProportionalSize(screenSize, 80)) or -- Top-right on compact
+            UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 20), 0.5, -((7 * buttonSize) + (6 * spacing))/2), -- Left-center on wide
         BackgroundTransparency = 1,
         ZIndex = 10
     }, {
-        Layout = isMobile and e("UIGridLayout", {
+        Layout = isCompactLayout and e("UIGridLayout", {
             CellSize = UDim2.new(0, buttonSize, 0, buttonSize),
             CellPadding = UDim2.new(0, spacing, 0, spacing),
             FillDirection = Enum.FillDirection.Horizontal,
@@ -297,9 +406,13 @@ local function SideButtons(props)
                 createIconSpin(shopIconRef, shopAnimTracker)
                 onShopClick()
             end,
-            [React.Event.MouseEnter] = function()
+            [React.Event.MouseEnter] = function(rbx)
                 playSound("hover")
                 createIconSpin(shopIconRef, shopAnimTracker)
+                showTooltip("Shop - Buy seeds and crops")
+            end,
+            [React.Event.MouseLeave] = function()
+                hideTooltip()
             end
         }, {
             Corner = e("UICorner", {
@@ -315,7 +428,7 @@ local function SideButtons(props)
                 Name = "ShopIcon",
                 Size = UDim2.new(0, iconSize, 0, iconSize),
                 Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2),
-                Image = assets["Plus/Plus Outline 64.png"],
+                Image = assets["General/Shop/Shop Outline 256.png"],
                 ScaleType = Enum.ScaleType.Fit,
                 BackgroundTransparency = 1,
                 ZIndex = 12,
@@ -337,9 +450,13 @@ local function SideButtons(props)
                 createIconSpin(inventoryIconRef, inventoryAnimTracker)
                 onInventoryClick()
             end,
-            [React.Event.MouseEnter] = function()
+            [React.Event.MouseEnter] = function(rbx)
                 playSound("hover")
                 createIconSpin(inventoryIconRef, inventoryAnimTracker)
+                showTooltip("Inventory - Manage your crops")
+            end,
+            [React.Event.MouseLeave] = function()
+                hideTooltip()
             end
         }, {
             Corner = e("UICorner", {
@@ -355,7 +472,7 @@ local function SideButtons(props)
                 Name = "InventoryIcon",
                 Size = UDim2.new(0, iconSize, 0, iconSize),
                 Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2),
-                Image = assets["Hamburger Menu/Hamburger Menu Outline 64.png"],
+                Image = assets["General/Barn/Barn Outline 256.png"],
                 ScaleType = Enum.ScaleType.Fit,
                 BackgroundTransparency = 1,
                 ZIndex = 12,
@@ -377,9 +494,13 @@ local function SideButtons(props)
                 createIconSpin(weatherIconRef, weatherAnimTracker)
                 onWeatherClick()
             end,
-            [React.Event.MouseEnter] = function()
+            [React.Event.MouseEnter] = function(rbx)
                 playSound("hover")
                 createIconSpin(weatherIconRef, weatherAnimTracker)
+                showTooltip("Weather - Check farm conditions")
+            end,
+            [React.Event.MouseLeave] = function()
+                hideTooltip()
             end
         }, {
             Corner = e("UICorner", {
@@ -417,9 +538,13 @@ local function SideButtons(props)
                 createIconSpin(gamepassIconRef, gamepassAnimTracker)
                 onGamepassClick()
             end,
-            [React.Event.MouseEnter] = function()
+            [React.Event.MouseEnter] = function(rbx)
                 playSound("hover")
                 createIconSpin(gamepassIconRef, gamepassAnimTracker)
+                showTooltip("Gamepasses - Unlock premium features")
+            end,
+            [React.Event.MouseLeave] = function()
+                hideTooltip()
             end
         }, {
             Corner = e("UICorner", {
@@ -457,9 +582,13 @@ local function SideButtons(props)
                 createIconSpin(rebirthIconRef, rebirthAnimTracker)
                 onRebirthClick()
             end,
-            [React.Event.MouseEnter] = function()
+            [React.Event.MouseEnter] = function(rbx)
                 playSound("hover")
                 createIconSpin(rebirthIconRef, rebirthAnimTracker)
+                showTooltip("Rebirth - Reset for bonuses")
+            end,
+            [React.Event.MouseLeave] = function()
+                hideTooltip()
             end
         }, {
             Corner = e("UICorner", {
@@ -483,43 +612,6 @@ local function SideButtons(props)
             })
         }),
         
-        -- Rank Button
-        RankButton = e("TextButton", {
-            Name = "RankButton",
-            Size = UDim2.new(0, buttonSize, 0, buttonSize),
-            Text = "",
-            BackgroundColor3 = Color3.fromRGB(255, 215, 0), -- Gold color for rank
-            BorderSizePixel = 0,
-            ZIndex = 11,
-            LayoutOrder = 6,
-            [React.Event.Activated] = function()
-                playSound("click")
-                onRankClick()
-            end,
-            [React.Event.MouseEnter] = function()
-                playSound("hover")
-            end
-        }, {
-            Corner = e("UICorner", {
-                CornerRadius = UDim.new(0, 12)
-            }),
-            Shadow = e("UIStroke", {
-                Color = Color3.fromRGB(0, 0, 0),
-                Thickness = 3,
-                Transparency = 0,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-            }),
-            Icon = e("TextLabel", {
-                Name = "RankIcon",
-                Size = UDim2.new(0, iconSize, 0, iconSize),
-                Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2),
-                Text = "🏆", -- Crown/trophy emoji for ranks
-                TextScaled = true,
-                Font = Enum.Font.SourceSansBold,
-                BackgroundTransparency = 1,
-                ZIndex = 12
-            })
-        }),
         
         -- Pets Button (Secret Debug Access!)
         PetsButton = e("TextButton", {
@@ -529,15 +621,19 @@ local function SideButtons(props)
             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
             BorderSizePixel = 0,
             ZIndex = 11,
-            LayoutOrder = 7,
+            LayoutOrder = 6,
             [React.Event.Activated] = function()
                 playSound("click")
                 createIconSpin(petsIconRef, petsAnimTracker)
                 onPetsClick()
             end,
-            [React.Event.MouseEnter] = function()
+            [React.Event.MouseEnter] = function(rbx)
                 playSound("hover")
                 createIconSpin(petsIconRef, petsAnimTracker)
+                showTooltip("Debug - Developer tools")
+            end,
+            [React.Event.MouseLeave] = function()
+                hideTooltip()
             end
         }, {
             Corner = e("UICorner", {
@@ -552,8 +648,8 @@ local function SideButtons(props)
             Icon = e("ImageLabel", {
                 Name = "PetsIcon",
                 Size = UDim2.new(0, iconSize, 0, iconSize),
-                Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2),
-                Image = assets["General/Paw/Paw Outline 256.png"],
+                Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2 + 3), -- Moved down slightly to center better with text
+                Image = assets["General/Pet/Pet Brown Outline 256.png"] or "",
                 ScaleType = Enum.ScaleType.Fit,
                 BackgroundTransparency = 1,
                 ZIndex = 12,
@@ -562,14 +658,15 @@ local function SideButtons(props)
             -- Main text with double stroke (simpler approach)
             SoonText = e("TextLabel", {
                 Name = "SoonText",
-                Size = UDim2.new(0, 40, 0, 12),
-                Position = UDim2.new(0.5, 0, 0.5, -18), -- Position inside the button, above center
+                Size = UDim2.new(0, 50, 0, 16), -- Made wider and taller
+                Position = UDim2.new(0.5, 0, 0.5, -20), -- Position inside the button, above center
                 AnchorPoint = Vector2.new(0.5, 0.5),
                 Text = "SOON!",
                 TextColor3 = Color3.fromRGB(255, 50, 50), -- Will be animated to rainbow
                 TextStrokeColor3 = Color3.fromRGB(0, 0, 0), -- Black stroke
                 TextStrokeTransparency = 0, -- Solid black stroke
-                TextScaled = true,
+                TextSize = soonTextSize,
+                TextWrapped = true,
                 BackgroundTransparency = 1,
                 Font = Enum.Font.GothamBold,
                 Rotation = -15, -- Tilted text
@@ -577,11 +674,112 @@ local function SideButtons(props)
                 ref = petsSoonTextRef
             }, {
                 TextSizeConstraint = e("UITextSizeConstraint", {
-                    MaxTextSize = 10,
-                    MinTextSize = 6
+                    MaxTextSize = 14, -- Increased from 10 to 14
+                    MinTextSize = 8   -- Increased from 6 to 8
                 })
             })
-        })
+        }),
+        
+        -- Coming Soon Button (Mysterious Potion Feature)
+        ComingSoonButton = e("TextButton", {
+            Name = "ComingSoonButton",
+            Size = UDim2.new(0, buttonSize, 0, buttonSize),
+            Text = "",
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BorderSizePixel = 0,
+            ZIndex = 11,
+            LayoutOrder = 7,
+            [React.Event.Activated] = function()
+                playSound("click")
+                createIconSpin(comingSoonIconRef, comingSoonAnimTracker)
+                onComingSoonClick()
+            end,
+            [React.Event.MouseEnter] = function(rbx)
+                playSound("hover")
+                createIconSpin(comingSoonIconRef, comingSoonAnimTracker)
+                showTooltip("??? - Something mysterious is brewing...")
+            end,
+            [React.Event.MouseLeave] = function()
+                hideTooltip()
+            end
+        }, {
+            Corner = e("UICorner", {
+                CornerRadius = UDim.new(0.5, 0)
+            }),
+            Stroke = e("UIStroke", {
+                Color = Color3.fromRGB(0, 0, 0),
+                Thickness = 2,
+                Transparency = 0,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            }),
+            Icon = e("ImageLabel", {
+                Name = "ComingSoonIcon",
+                Size = UDim2.new(0, iconSize, 0, iconSize),
+                Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2 + 3), -- Moved down slightly to center better with text
+                Image = "rbxassetid://111808847228811", -- Potion icon
+                ImageColor3 = Color3.fromRGB(0, 0, 0), -- Make it black for mystery
+                ScaleType = Enum.ScaleType.Fit,
+                BackgroundTransparency = 1,
+                ZIndex = 12,
+                ref = comingSoonIconRef
+            }),
+            -- Main text with double stroke (simpler approach)
+            SoonText = e("TextLabel", {
+                Name = "ComingSoonText",
+                Size = UDim2.new(0, 50, 0, 16), -- Made wider and taller
+                Position = UDim2.new(0.5, 0, 0.5, -20), -- Position inside the button, above center
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Text = "SOON!",
+                TextColor3 = Color3.fromRGB(255, 50, 50), -- Will be animated to rainbow
+                TextStrokeColor3 = Color3.fromRGB(0, 0, 0), -- Black stroke
+                TextStrokeTransparency = 0, -- Solid black stroke
+                TextSize = soonTextSize,
+                TextWrapped = true,
+                BackgroundTransparency = 1,
+                Font = Enum.Font.GothamBold,
+                Rotation = -15, -- Tilted text
+                ZIndex = 13,
+                ref = comingSoonTextRef
+            }, {
+                TextSizeConstraint = e("UITextSizeConstraint", {
+                    MaxTextSize = 14, -- Increased from 10 to 14
+                    MinTextSize = 8   -- Increased from 6 to 8
+                })
+            })
+        }),
+        
+        -- Tooltip Component (positioned at mouse cursor) - Modern clean style
+        Tooltip = tooltipVisible and e("ScreenGui", {
+            Name = "TooltipGui",
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            ResetOnSpawn = false
+        }, {
+            -- Direct text label with no background frame for cleaner look
+            TooltipText = e("TextLabel", {
+                Name = "TooltipText",
+                Size = UDim2.new(0, 0, 0, 0), -- Auto-size based on text
+                Position = UDim2.new(0, mousePosition.X + 15 * scale, 0, mousePosition.Y - 30 * scale), -- Scaled offset from cursor
+                AnchorPoint = Vector2.new(0, 0.5),
+                AutomaticSize = Enum.AutomaticSize.XY,
+                Text = tooltipText,
+                TextColor3 = Color3.fromRGB(255, 255, 255), -- Clean white text
+                TextSize = tooltipTextSize,
+                TextWrapped = true,
+                BackgroundTransparency = 1, -- No background
+                Font = Enum.Font.GothamBold, -- Bold font for better readability
+                TextStrokeTransparency = 0, -- Solid black outline
+                TextStrokeColor3 = Color3.fromRGB(0, 0, 0), -- Black outline
+                ZIndex = 200, -- Very high ZIndex to appear above everything
+            }, {
+                -- Add padding for better text spacing
+                Padding = e("UIPadding", {
+                    PaddingTop = UDim.new(0, 4 * scale),
+                    PaddingBottom = UDim.new(0, 4 * scale),
+                    PaddingLeft = UDim.new(0, 8 * scale),
+                    PaddingRight = UDim.new(0, 8 * scale)
+                })
+            })
+        }) or nil
     })
 end
 

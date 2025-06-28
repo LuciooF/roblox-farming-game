@@ -423,7 +423,6 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
     
     -- Get crop data from registry
     local cropData = CropRegistry.getCrop(seedType)
-    local visualData = CropRegistry.getVisuals(seedType, variation)
     
     if not cropData then
         log.error("Unknown crop type:", seedType, "- check CropRegistry")
@@ -431,7 +430,7 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
     end
     
     -- Use asset icon if available, then 3D mesh, then basic part
-    if visualData and visualData.assetId then
+    if cropData and cropData.assetId then
         -- Create Part with BillboardGui for 2D asset icons
         plant = Instance.new("Part")
         plant.Name = "Plant"
@@ -445,6 +444,7 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         billboard.Size = UDim2.new(0, 100, 0, 100) -- Base size
         billboard.StudsOffset = Vector3.new(0, 0.5, 0) -- Slightly above ground
         billboard.LightInfluence = 0
+        billboard.MaxDistance = 30 -- Only visible when close
         billboard.Parent = plant
         
         -- Create ImageLabel for the crop icon
@@ -452,7 +452,7 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         iconLabel.Name = "Icon"
         iconLabel.Size = UDim2.new(1, 0, 1, 0)
         iconLabel.BackgroundTransparency = 1
-        iconLabel.Image = visualData.assetId
+        iconLabel.Image = cropData.assetId
         iconLabel.Parent = billboard
         
         -- Scale based on growth stage
@@ -464,7 +464,7 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
         local scale = scaleMultipliers[growthStage] or 0.4
         billboard.Size = UDim2.new(0, 100 * scale, 0, 100 * scale)
         
-        log.debug("Created asset icon for", seedType, "with asset ID", visualData.assetId, "scale", scale)
+        log.debug("Created asset icon for", seedType, "with asset ID", cropData.assetId, "scale", scale)
     elseif cropData.meshId then
         -- Create Part with SpecialMesh for 3D assets
         plant = Instance.new("Part")
@@ -499,10 +499,10 @@ function WorldBuilder.createPlant(plot, seedType, growthStage, variation)
     end
     
     -- Apply basic crop coloring from CropRegistry
-    if visualData and visualData.color then
-        plant.Color = visualData.color
+    if cropData and cropData.color then
+        plant.Color = cropData.color
     else
-        -- Fallback to a default color if no visual data
+        -- Fallback to a default color if no crop data
         plant.Color = Color3.fromRGB(100, 200, 100)
     end
     
@@ -647,7 +647,7 @@ function WorldBuilder.addVariationEffects(plant, variation)
 end
 
 -- Update plot visual state with variation support
-function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterProgress, _, plotIndex, requiredRebirth)
+function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterProgress, _, plotIndex, requiredRebirth, viewingPlayer)
     variation = variation or "normal"
     waterProgress = waterProgress or {current = 0, needed = 1}
     plotIndex = plotIndex or 1
@@ -846,9 +846,18 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             proximityShine:Destroy()
         end
         
-        -- Create price indicator if it doesn't exist
+        -- Only show price to farm owner
+        local shouldShowPrice = false
+        if viewingPlayer then
+            -- Check if viewing player owns this farm
+            local FarmManager = require(script.Parent.modules.FarmManager)
+            local playerFarmId = FarmManager.getPlayerFarm(viewingPlayer.UserId)
+            shouldShowPrice = (playerFarmId == farmId)
+        end
+        
+        -- Create price indicator if it doesn't exist and player should see price
         local lockIndicator = plot:FindFirstChild("LockIndicator")
-        if not lockIndicator then
+        if not lockIndicator and shouldShowPrice then
             -- Create invisible attachment point for the GUI
             lockIndicator = Instance.new("Part")
             lockIndicator.Name = "LockIndicator"
@@ -905,6 +914,21 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             priceLabel.TextStrokeTransparency = 0
             priceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0) -- Black outline
             priceLabel.Parent = background
+        elseif lockIndicator and not shouldShowPrice then
+            -- Hide price indicator from non-owners
+            lockIndicator:Destroy()
+        elseif lockIndicator and shouldShowPrice then
+            -- Update existing price indicator for owner
+            local priceGui = lockIndicator:FindFirstChild("PriceGui")
+            if priceGui then
+                local background = priceGui:FindFirstChild("Frame")
+                if background then
+                    local priceLabel = background:FindFirstChild("PriceLabel")
+                    if priceLabel then
+                        priceLabel.Text = plotPrice == 0 and "FREE" or NumberFormatter.format(plotPrice)
+                    end
+                end
+            end
         end
         
         -- Enable action prompt for locked plots to allow purchase
@@ -954,7 +978,7 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             rebirthIndicator = Instance.new("Part")
             rebirthIndicator.Name = "RebirthIndicator"
             rebirthIndicator.Size = Vector3.new(0.1, 0.1, 0.1)
-            rebirthIndicator.Position = plot.Position + Vector3.new(0, 2, 0)
+            rebirthIndicator.Position = plot.Position + Vector3.new(0, 3.5, 0)
             rebirthIndicator.Anchored = true
             rebirthIndicator.CanCollide = false
             rebirthIndicator.Transparency = 1
@@ -989,7 +1013,7 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             rebirthLabel.Position = UDim2.new(0, 0, 0, 40)
             rebirthLabel.BackgroundTransparency = 1
             rebirthLabel.Text = "REBIRTH " .. requiredRebirth .. "\nREQUIRED"
-            rebirthLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Golden text
+            rebirthLabel.TextColor3 = Color3.fromRGB(200, 50, 80) -- Darker red text
             rebirthLabel.TextScaled = true
             rebirthLabel.Font = Enum.Font.SourceSansBold
             rebirthLabel.TextStrokeTransparency = 0
@@ -1450,6 +1474,51 @@ function WorldBuilder.getFarmPlots(farmId)
     return plots
 end
 
+
+-- Update only the farm nameplate text without touching character display
+function WorldBuilder.updateFarmNameOnly(farmId, playerName, player)
+    local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
+    if not farmsContainer then return end
+    
+    local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
+    if not farmFolder then return end
+    
+    -- Update farm name display ONLY (don't touch character)
+    local nameDisplay = farmFolder:FindFirstChild("FarmNameDisplay")
+    if nameDisplay then
+        local nameGui = nameDisplay:FindFirstChild("FarmNameGui")
+        if nameGui then
+            local nameLabel = nameGui:FindFirstChild("FarmNameLabel")
+            if nameLabel then
+                if playerName and player then
+                    -- Get player's rank information
+                    local PlayerDataManager = require(script.Parent.modules.PlayerDataManager)
+                    local RankConfig = require(game:GetService("ReplicatedStorage").Shared.RankConfig)
+                    
+                    local playerData = PlayerDataManager.getPlayerData(player)
+                    
+                    if playerData then
+                        local rebirths = playerData.rebirths or 0
+                        local rankInfo = RankConfig.getRankForRebirths(rebirths)
+                        
+                        -- Set farm name on first line, rank on second line
+                        nameLabel.Text = playerName .. "'s Farm\n" .. rankInfo.name
+                        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+                    else
+                        nameLabel.Text = playerName .. "'s Farm"
+                        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+                    end
+                    
+                    nameGui.MaxDistance = 250  -- Occupied farms visible from further away
+                else
+                    nameLabel.Text = "Available Farm"
+                    nameLabel.TextColor3 = Color3.fromRGB(200, 200, 200) -- Gray for available
+                    nameGui.MaxDistance = 100  -- Available farms only visible when closer
+                end
+            end
+        end
+    end
+end
 
 -- Update farm sign to show ownership with character display and farm name
 function WorldBuilder.updateFarmSign(farmId, playerName, player)

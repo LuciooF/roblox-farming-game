@@ -4,6 +4,7 @@
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 local e = React.createElement
 
 local function ShopSeedCard(props)
@@ -14,16 +15,14 @@ local function ShopSeedCard(props)
     local playerMoney = props.playerMoney or 0
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
-    local isMobile = screenSize.X < 768
-    local scale = isMobile and 0.8 or 1
+    local scale = ScreenUtils.getProportionalScale(screenSize)
     
     -- Get crop data from registry
     local cropData = CropRegistry.getCrop(seedType)
-    local visualData = CropRegistry.getVisuals(seedType)
     
-    local emoji = visualData and visualData.emoji or "🌱"
-    local color = visualData and visualData.color or Color3.fromRGB(100, 200, 100)
-    local assetId = visualData and visualData.assetId
+    local emoji = cropData and cropData.emoji or "🌱"
+    local color = cropData and cropData.color or Color3.fromRGB(100, 200, 100)
+    local assetId = cropData and cropData.assetId
     local cropName = cropData and cropData.name or seedType
     local rarity = cropData and cropData.rarity or "common"
     local canAfford = playerMoney >= price
@@ -40,7 +39,7 @@ local function ShopSeedCard(props)
     
     return e("Frame", {
         Name = seedType .. "ShopCard",
-        Size = UDim2.new(0, 100 * scale, 0, 140 * scale),
+        Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 100), 0, ScreenUtils.getProportionalSize(screenSize, 140)),
         BackgroundColor3 = canAfford and Color3.fromRGB(40, 45, 50) or Color3.fromRGB(25, 25, 25),
         BackgroundTransparency = 0.1,
         BorderSizePixel = 0,

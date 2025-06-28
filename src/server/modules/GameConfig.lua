@@ -7,18 +7,17 @@ local GameConfig = {}
 local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 
 -- Use new CropRegistry system
-GameConfig.SeedRarities = CropRegistry.getAllRarities()
+GameConfig.SeedRarities = CropRegistry.rarities
 GameConfig.CropColors = {}
-GameConfig.CropVariations = CropRegistry.getAllVariations()
 
 -- Build legacy color table from CropRegistry
-for cropId, crop in pairs(CropRegistry.getAllCrops()) do
+for cropId, crop in pairs(CropRegistry.crops) do
     GameConfig.CropColors[cropId] = crop.color
 end
 
 -- Legacy Plants compatibility (DEPRECATED - use CropRegistry instead)
 GameConfig.Plants = {}
-for cropId, crop in pairs(CropRegistry.getAllCrops()) do
+for cropId, crop in pairs(CropRegistry.crops) do
     GameConfig.Plants[cropId] = {
         growthTime = crop.growthTime,
         waterNeeded = crop.waterNeeded,

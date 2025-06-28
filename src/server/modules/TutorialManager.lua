@@ -9,17 +9,6 @@ local RemoteManager = require(script.Parent.RemoteManager)
 
 local TutorialManager = {}
 
--- Calculate total tutorial rewards
-local function getTotalTutorialRewards()
-    local total = 0
-    for _, step in ipairs(TUTORIAL_STEPS) do
-        if step.reward and step.reward.money then
-            total = total + step.reward.money
-        end
-    end
-    return total
-end
-
 -- Get module logger
 local log = Logger.getModuleLogger("TutorialManager")
 
@@ -108,6 +97,17 @@ local TUTORIAL_STEPS = {
         arrowTarget = nil -- No arrow, step 9 should clean up previous arrows
     }
 }
+
+-- Calculate total tutorial rewards
+local function getTotalTutorialRewards()
+    local total = 0
+    for _, step in ipairs(TUTORIAL_STEPS) do
+        if step.reward and step.reward.money then
+            total = total + step.reward.money
+        end
+    end
+    return total
+end
 
 -- Initialize tutorial for a player (now uses ProfileStore persistence)
 function TutorialManager.initializePlayer(player)

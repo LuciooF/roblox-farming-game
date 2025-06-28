@@ -82,7 +82,7 @@ function FarmingSystem.initialize()
     end)
     
     if not success then
-        log.error("Failed to build farm:", farm)
+        log.info("Failed to build farm:", farm)
         return
     end
     
@@ -236,7 +236,7 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
             -- Play plant sound at plot location
             -- SoundManager.playPlantSound(plot.Position)
         else
-            log.error("Failed to get plot or plot state for visual update. Plot:", plot ~= nil, "PlotState:", plotState ~= nil)
+            log.info("Failed to get plot or plot state for visual update. Plot:", plot ~= nil, "PlotState:", plotState ~= nil)
         end
         
         -- Check tutorial progress AFTER visual update (pass seedType for corn check)
@@ -338,7 +338,7 @@ function FarmingSystem.startMainLoop()
             end)
             
             if not success then
-                log.error("Growth monitoring loop error:", err)
+                log.info("Growth monitoring loop error:", err)
                 wait(10) -- Longer wait on error to prevent spam
             end
         end
@@ -349,7 +349,7 @@ end
 
 -- Player connection handlers
 function FarmingSystem.onPlayerJoined(player)
-    log.error("🚨 PLAYER JOINING - NEW OPTIMIZED CODE:", player.Name)
+    log.info("🚨 PLAYER JOINING - NEW OPTIMIZED CODE:", player.Name)
     
     -- Initialize remotes immediately (for loading screen communication)
     log.info("🔵 Initializing remotes for:", player.Name)
@@ -395,7 +395,7 @@ function FarmingSystem.onPlayerJoined(player)
             end
         end
         
-        log.error("❌ Failed to spawn character after", maxRetries, "attempts for:", player.Name)
+        log.info("❌ Failed to spawn character after", maxRetries, "attempts for:", player.Name)
         return false
     end
     
@@ -403,40 +403,40 @@ function FarmingSystem.onPlayerJoined(player)
     local earlySpawnStart = tick()
     local spawnSuccess = spawnCharacterSafely()
     local earlySpawnTime = tick()
-    log.error("⏱️ EARLY CHARACTER SPAWN TOOK:", (earlySpawnTime - earlySpawnStart), "SECONDS")
+    log.info("⏱️ EARLY CHARACTER SPAWN TOOK:", (earlySpawnTime - earlySpawnStart), "SECONDS")
     
     -- Load data in background and handle farm assignment/teleportation
     spawn(function()
         -- Character is already spawned above, now handle data loading and farm assignment
         
-        log.error("🔵 LOADING PLAYER DATA IN BACKGROUND FOR:", player.Name)
+        log.info("🔵 LOADING PLAYER DATA IN BACKGROUND FOR:", player.Name)
         
         -- Start gamepass initialization in parallel (non-blocking)
         local GamepassService = require(script.Parent.modules.GamepassService)
         spawn(function()
-            log.error("🎮 STARTING GAMEPASS INIT FOR:", player.Name)
+            log.info("🎮 STARTING GAMEPASS INIT FOR:", player.Name)
             GamepassService.initializePlayerGamepasses(player)
-            log.error("🎮 GAMEPASSES DONE FOR:", player.Name)
+            log.info("🎮 GAMEPASSES DONE FOR:", player.Name)
         end)
         
         -- Load ProfileStore data (this is the main bottleneck)
-        log.error("🔄 CALLING PlayerDataManager.onPlayerJoined FOR:", player.Name)
+        log.info("🔄 CALLING PlayerDataManager.onPlayerJoined FOR:", player.Name)
         PlayerDataManager.onPlayerJoined(player)
-        log.error("🔄 PlayerDataManager.onPlayerJoined COMPLETE FOR:", player.Name)
+        log.info("🔄 PlayerDataManager.onPlayerJoined COMPLETE FOR:", player.Name)
         
         -- Assign farm FIRST, then sync UI data after teleportation
         local startTime = tick()
-        log.error("🔵 STARTING FARM ASSIGNMENT FOR:", player.Name)
+        log.info("🔵 STARTING FARM ASSIGNMENT FOR:", player.Name)
         local farmId = FarmManager.assignFarmToPlayer(player)
         local farmAssignTime = tick()
-        log.error("🔵 FARM ASSIGNMENT COMPLETED FOR:", player.Name, "ID:", farmId, "in", (farmAssignTime - startTime), "seconds")
+        log.info("🔵 FARM ASSIGNMENT COMPLETED FOR:", player.Name, "ID:", farmId, "in", (farmAssignTime - startTime), "seconds")
         
         if farmId then
             FarmManager.setPlayerSpawn(player, farmId)
-            log.error("🔵 SETTING SPAWN LOCATION FOR:", player.Name, "FARM:", farmId)
+            log.info("🔵 SETTING SPAWN LOCATION FOR:", player.Name, "FARM:", farmId)
             
             -- Teleport existing character to their assigned farm BEFORE sending UI data
-            log.error("📍 STARTING CHARACTER TELEPORTATION FOR:", player.Name)
+            log.info("📍 STARTING CHARACTER TELEPORTATION FOR:", player.Name)
             local teleportStart = tick()
             
             local character = player.Character
@@ -445,41 +445,41 @@ function FarmingSystem.onPlayerJoined(player)
                 local spawnPoint = farmModel and farmModel:FindFirstChild("FarmSpawn_" .. farmId)
                 if spawnPoint then
                     character.HumanoidRootPart.CFrame = spawnPoint.CFrame + Vector3.new(0, 3, 0)
-                    log.error("✅ CHARACTER TELEPORTED:", player.Name, "TO FARM:", farmId)
+                    log.info("✅ CHARACTER TELEPORTED:", player.Name, "TO FARM:", farmId)
                     
                     -- NOW sync UI data after teleportation
-                    log.error("🚀 SYNCING UI DATA AFTER TELEPORTATION FOR:", player.Name)
+                    log.info("🚀 SYNCING UI DATA AFTER TELEPORTATION FOR:", player.Name)
                     RemoteManager.syncPlayerData(player)
-                    log.error("🚀 UI DATA SYNCED FOR:", player.Name)
+                    log.info("🚀 UI DATA SYNCED FOR:", player.Name)
                     
                     -- Send character ready signal after both teleportation AND UI sync
-                    log.error("📡 SENDING CHARACTER READY SIGNAL FOR:", player.Name)
+                    log.info("📡 SENDING CHARACTER READY SIGNAL FOR:", player.Name)
                     RemoteManager.sendCharacterReady(player)
-                    log.error("📡 CHARACTER READY SIGNAL SENT FOR:", player.Name)
+                    log.info("📡 CHARACTER READY SIGNAL SENT FOR:", player.Name)
                 else
-                    log.error("❌ NO SPAWN POINT FOUND FOR FARM:", farmId)
+                    log.info("❌ NO SPAWN POINT FOUND FOR FARM:", farmId)
                     -- Sync UI and send ready signal anyway
                     RemoteManager.syncPlayerData(player)
-                    log.error("📡 SENDING CHARACTER READY SIGNAL ANYWAY FOR:", player.Name)
+                    log.info("📡 SENDING CHARACTER READY SIGNAL ANYWAY FOR:", player.Name)
                     RemoteManager.sendCharacterReady(player)
                 end
             else
-                log.error("⚠️ NO CHARACTER FOUND FOR TELEPORTATION:", player.Name, "- will rely on onCharacterAdded")
+                log.info("⚠️ NO CHARACTER FOUND FOR TELEPORTATION:", player.Name, "- will rely on onCharacterAdded")
                 -- Still sync UI data even without character
                 RemoteManager.syncPlayerData(player)
                 -- Character ready signal will be sent by onCharacterAdded when character spawns at farm
             end
             
             local teleportTime = tick()
-            log.error("⏱️ CHARACTER TELEPORTATION TOOK:", (teleportTime - teleportStart), "SECONDS")
-            log.error("⏱️ TOTAL FARM ASSIGNMENT TOOK:", (teleportTime - startTime), "SECONDS")
+            log.info("⏱️ CHARACTER TELEPORTATION TOOK:", (teleportTime - teleportStart), "SECONDS")
+            log.info("⏱️ TOTAL FARM ASSIGNMENT TOOK:", (teleportTime - startTime), "SECONDS")
         end
         
         -- Send a final sync after everything is complete (includes updated gamepass data)
         wait(1) -- Give gamepasses a moment to finish
-        log.error("🔵 FINAL DATA SYNC FOR:", player.Name)
+        log.info("🔵 FINAL DATA SYNC FOR:", player.Name)
         RemoteManager.syncPlayerData(player)
-        log.error("🔵 ALL DATA SYNCED FOR:", player.Name)
+        log.info("🔵 ALL DATA SYNCED FOR:", player.Name)
         
         -- Initialize chat rank tracking after data is loaded
         local ChatManager = require(script.Parent.modules.ChatManager)
@@ -516,9 +516,23 @@ function FarmingSystem.onCharacterAdded(character)
         if spawnPoint then
             humanoidRootPart.CFrame = spawnPoint.CFrame + Vector3.new(0, 3, 0)
         else
-            log.error("No spawn point found for farm", farmId)
+            log.info("No spawn point found for farm", farmId)
         end
     end
+    
+    -- Set up death handling to ensure respawn
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.Died:Connect(function()
+        log.debug("Player", player.Name, "died - scheduling respawn")
+        
+        -- Wait a short delay then load a new character
+        wait(2) -- Give time for death animation
+        
+        if player and player.Parent then
+            player:LoadCharacter()
+            log.debug("Respawned player", player.Name)
+        end
+    end)
     
     -- Update rank display (handled by RankDisplayManager.onCharacterAdded)
     RankDisplayManager.onCharacterAdded(character)

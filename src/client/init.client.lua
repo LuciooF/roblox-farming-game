@@ -110,6 +110,8 @@ local PlotProximityHandler = require(script.PlotProximityHandler)
 local FlyController = require(script.FlyController)
 local CharacterFaceTracker = require(script.CharacterFaceTracker)
 local TutorialArrowManager = require(script.TutorialArrowManager)
+local DoubleJumpController = require(script.DoubleJumpController)
+local BackgroundMusicManager = require(script.BackgroundMusicManager)
 
 -- Wait for farming remotes
 log.debug("Waiting for FarmingRemotes folder...")
@@ -139,9 +141,14 @@ local automationRemote = farmingRemotes:WaitForChild("Automation")
 local openPlotUIRemote = farmingRemotes:WaitForChild("OpenPlotUI")
 local gamepassPurchaseRemote = farmingRemotes:WaitForChild("GamepassPurchase")
 local gamepassDataRemote = farmingRemotes:WaitForChild("GamepassData")
+local characterReadyRemote = farmingRemotes:WaitForChild("CharacterReady")
+local musicPreferenceRemote = farmingRemotes:WaitForChild("MusicPreference")
 
 -- Player data state (starts as nil - UI won't render until data loads)
 local playerData = nil
+
+-- Character ready state (starts as false - loading screen waits for this)
+local characterReady = false
 
 -- Tutorial data state
 local tutorialData = nil
@@ -174,7 +181,8 @@ local remotes = {
     automation = automationRemote,
     gamepassPurchase = gamepassPurchaseRemote,
     gamepassData = gamepassDataRemote,
-    farmAction = farmingRemotes:WaitForChild("FarmAction") -- Farm action remote for PlotUI
+    farmAction = farmingRemotes:WaitForChild("FarmAction"), -- Farm action remote for PlotUI
+    MusicPreference = musicPreferenceRemote
 }
 
 -- Handler for plot UI interactions
@@ -197,9 +205,15 @@ local function updateUI()
     -- Update screen size
     updateScreenSize()
     
-    if not playerData then
-        -- Show loading screen while waiting for player data
-        log.debug("Player data not loaded yet, showing loading screen")
+    if not playerData or not characterReady then
+        -- Show loading screen while waiting for player data AND character spawn
+        local reason = ""
+        if not playerData then
+            reason = "player data"
+        elseif not characterReady then
+            reason = "character spawn"
+        end
+        log.debug("Waiting for", reason, "- showing loading screen")
         root:render(React.createElement(LoadingScreen, {
             screenSize = screenSize
         }))
@@ -234,7 +248,14 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
     end
     
     if isFirstLoad then
-        log.info("Player data loaded for first time - switching from loading screen to main UI")
+        log.info("Player data loaded for first time - waiting for character spawn before showing main UI")
+        
+        -- Initialize background music with saved preference
+        local musicEnabled = true -- Default to true
+        if newPlayerData.settings and newPlayerData.settings.musicEnabled ~= nil then
+            musicEnabled = newPlayerData.settings.musicEnabled
+        end
+        BackgroundMusicManager.setInitialState(musicEnabled)
     end
     
     -- Update player data
@@ -272,6 +293,13 @@ end)
 gamepassDataRemote.OnClientEvent:Connect(function(newGamepassData)
     log.debug("Gamepass data received with", newGamepassData and #newGamepassData or 0, "gamepasses")
     gamepassData = newGamepassData
+    updateUI()
+end)
+
+-- Handle character ready signal
+characterReadyRemote.OnClientEvent:Connect(function()
+    log.info("Character ready signal received - switching from loading screen to main UI")
+    characterReady = true
     updateUI()
 end)
 
@@ -323,6 +351,11 @@ PlotInteractionManager.updatePlayerData(playerData)
 -- PlotProximityHandler.initialize() -- Disabled: using simpler server-side UI opening
 FlyController.initialize()
 CharacterFaceTracker.initialize()
+BackgroundMusicManager.initialize()
+
+-- Initialize RewardsService
+local RewardsService = require(script.RewardsService)
+RewardsService.initialize()
 
 
 -- Set up camera viewport size change detection
@@ -347,7 +380,11 @@ end)
 spawn(function()
     local character = player.Character or player.CharacterAdded:Wait()
     local hrp = character:WaitForChild("HumanoidRootPart", 10)
-    end)
+    
+    -- Initialize double jump controller
+    DoubleJumpController.initialize()
+    log.info("Double jump controller initialized")
+end)
 
 -- Start cleanup timer for pending interactions
 spawn(function()

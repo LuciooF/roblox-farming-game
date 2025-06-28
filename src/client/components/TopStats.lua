@@ -5,30 +5,38 @@ local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
+local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local function TopStats(props)
-    local playerData = props.playerData
+    local playerData = props.playerData or {}
     
-    -- Calculate rebirth requirements
-    local moneyRequired = math.floor(1000 * (2.5 ^ playerData.rebirths))
-    local canRebirth = playerData.money >= moneyRequired
-    local multiplier = 1 + (playerData.rebirths * 0.5)
+    -- Calculate rebirth requirements with safe defaults
+    local rebirths = playerData.rebirths or 0
+    local money = playerData.money or 0
+    local moneyRequired = math.floor(1000 * (2.5 ^ rebirths))
+    local canRebirth = money >= moneyRequired
+    local multiplier = 1 + (rebirths * 0.5)
     
-    -- Responsive sizing based on screen size
+    -- Responsive sizing based on screen size with proportional scaling
     local screenSize = props.screenSize or Vector2.new(1024, 768)
-    local isMobile = screenSize.X < 768
-    local scale = isMobile and 0.8 or 1
+    local scale = ScreenUtils.getProportionalScale(screenSize, Vector2.new(1920, 1080), 0.7, 1.5)
+    
+    -- Proportional text sizes
+    local titleTextSize = ScreenUtils.getProportionalTextSize(screenSize, 24)
+    local normalTextSize = ScreenUtils.getProportionalTextSize(screenSize, 20)
+    local smallTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
+    local popupTextSize = ScreenUtils.getProportionalTextSize(screenSize, 18)
     
     -- Get text length to determine dynamic sizing
-    local moneyText = "$" .. NumberFormatter.format(playerData.money)
-    local rebirthText = tostring(playerData.rebirths)
+    local moneyText = NumberFormatter.format(money)
+    local rebirthText = tostring(rebirths)
     
-    -- Dynamic container width based on text length
-    local baseWidth = 100
-    local moneyWidth = math.max(baseWidth, 60 + (string.len(moneyText) * 8)) * scale
-    local rebirthWidth = math.max(baseWidth, 60 + (string.len(rebirthText) * 8)) * scale
+    -- Dynamic container width based on text length - add extra space for suffixes
+    local baseWidth = 120 -- Increased from 100 to give more space for suffixes like "K", "M", etc.
+    local moneyWidth = math.max(baseWidth, 80 + (string.len(moneyText) * 10)) * scale -- Increased multiplier and base
+    local rebirthWidth = math.max(baseWidth, 80 + (string.len(rebirthText) * 10)) * scale
     
     -- Container dimensions
     local containerHeight = 45 * scale
@@ -42,8 +50,8 @@ local function TopStats(props)
     local rebirthPopupRef = React.useRef()
     
     -- Previous values to detect changes
-    local prevMoney = React.useRef(playerData.money)
-    local prevRebirths = React.useRef(playerData.rebirths)
+    local prevMoney = React.useRef(money)
+    local prevRebirths = React.useRef(rebirths)
     
     -- Animation counters to track latest animations
     local moneyAnimationId = React.useRef(0)
@@ -59,7 +67,7 @@ local function TopStats(props)
     React.useEffect(function()
         if not cashIconRef.current then return end
         
-        local currentMoney = playerData.money
+        local currentMoney = money
         local previousMoney = prevMoney.current
         
         if currentMoney > previousMoney then
@@ -121,13 +129,13 @@ local function TopStats(props)
         end
         
         prevMoney.current = currentMoney
-    end, {playerData.money})
+    end, {money})
     
     -- Rebirth spin animation when rebirths change
     React.useEffect(function()
         if not rebirthIconRef.current then return end
         
-        local currentRebirths = playerData.rebirths
+        local currentRebirths = rebirths
         local previousRebirths = prevRebirths.current
         
         if currentRebirths ~= previousRebirths then
@@ -189,12 +197,12 @@ local function TopStats(props)
         end
         
         prevRebirths.current = currentRebirths
-    end, {playerData.rebirths})
+    end, {rebirths})
     
     return e("Frame", {
         Name = "TopStatsFrame",
         Size = UDim2.new(0, moneyWidth + rebirthWidth + containerSpacing, 0, containerHeight),
-        Position = UDim2.new(0.5, -(moneyWidth + rebirthWidth + containerSpacing)/2, 0, 20),
+        Position = UDim2.new(0.5, -(moneyWidth + rebirthWidth + containerSpacing)/2, 0, 5),
         BackgroundTransparency = 1,
         ZIndex = 10,
         ClipsDescendants = false -- Allow popups to show outside
@@ -234,11 +242,12 @@ local function TopStats(props)
             -- Money Text (moved right to avoid overlap)
             MoneyText = e("TextLabel", {
                 Name = "MoneyText",
-                Size = UDim2.new(1, -(iconSize * 0.7 + 10), 1, 0),
+                Size = UDim2.new(1, -(iconSize * 0.7 + 5), 1, 0), -- Reduced margin from 10 to 5
                 Position = UDim2.new(0, iconSize * 0.7 + 5, 0, 0),
                 Text = moneyText,
-                TextColor3 = Color3.fromRGB(0, 0, 0),
-                TextScaled = true,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                TextSize = titleTextSize,
+                TextWrapped = false, -- Changed to false to prevent text wrapping
                 TextXAlignment = Enum.TextXAlignment.Left,
                 TextYAlignment = Enum.TextYAlignment.Center,
                 BackgroundTransparency = 1,
@@ -247,11 +256,15 @@ local function TopStats(props)
             }, {
                 -- Text size constraint
                 TextSizeConstraint = e("UITextSizeConstraint", {
-                    MaxTextSize = 24 * scale,
-                    MinTextSize = 16 * scale
+                    MaxTextSize = ScreenUtils.getProportionalTextSize(screenSize, 24),
+                    MinTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
                 }),
-                Padding = e("UIPadding", {
-                    PaddingRight = UDim.new(0, 10)
+                -- Removed right padding to prevent cutting off suffix letters like "K", "M", etc.
+                -- Black outline
+                TextStroke = e("UIStroke", {
+                    Color = Color3.fromRGB(0, 0, 0),
+                    Thickness = 2,
+                    Transparency = 0.3
                 })
             }),
             
@@ -262,7 +275,8 @@ local function TopStats(props)
                 Position = UDim2.new(0, moneyWidth/2 - 100, 1, 10),
                 Text = moneyPopupText,
                 TextColor3 = Color3.fromRGB(0, 200, 0),
-                TextScaled = true,
+                TextSize = popupTextSize,
+                TextWrapped = true,
                 BackgroundTransparency = 1,
                 Font = Enum.Font.SourceSansBold,
                 ZIndex = 15,
@@ -271,8 +285,8 @@ local function TopStats(props)
                 ref = moneyPopupRef
             }, {
                 TextSizeConstraint = e("UITextSizeConstraint", {
-                    MaxTextSize = 20 * scale,
-                    MinTextSize = 16 * scale
+                    MaxTextSize = ScreenUtils.getProportionalTextSize(screenSize, 20),
+                    MinTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
                 })
             }) or nil
         }),
@@ -316,8 +330,9 @@ local function TopStats(props)
                 Size = UDim2.new(1, -(iconSize * 0.7 + 10), 1, 0),
                 Position = UDim2.new(0, iconSize * 0.7 + 5, 0, 0),
                 Text = rebirthText,
-                TextColor3 = Color3.fromRGB(0, 0, 0),
-                TextScaled = true,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                TextSize = titleTextSize,
+                TextWrapped = true,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 TextYAlignment = Enum.TextYAlignment.Center,
                 BackgroundTransparency = 1,
@@ -326,11 +341,17 @@ local function TopStats(props)
             }, {
                 -- Text size constraint
                 TextSizeConstraint = e("UITextSizeConstraint", {
-                    MaxTextSize = 24 * scale,
-                    MinTextSize = 16 * scale
+                    MaxTextSize = ScreenUtils.getProportionalTextSize(screenSize, 24),
+                    MinTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
                 }),
                 Padding = e("UIPadding", {
                     PaddingRight = UDim.new(0, 10)
+                }),
+                -- Black outline
+                TextStroke = e("UIStroke", {
+                    Color = Color3.fromRGB(0, 0, 0),
+                    Thickness = 2,
+                    Transparency = 0.3
                 })
             })
         }),
@@ -342,7 +363,8 @@ local function TopStats(props)
             Position = UDim2.new(0, moneyWidth + containerSpacing + rebirthWidth/2 - 100, 1, 10),
             Text = rebirthPopupText,
             TextColor3 = Color3.fromRGB(255, 200, 0),
-            TextScaled = true,
+            TextSize = popupTextSize,
+            TextWrapped = true,
             BackgroundTransparency = 1,
             Font = Enum.Font.SourceSansBold,
             ZIndex = 15,
@@ -388,7 +410,8 @@ local function TopStats(props)
                     Position = UDim2.new(0, 0, 0, 0),
                     Text = "Current: " .. string.format("%.1fx multiplier", multiplier),
                     TextColor3 = Color3.fromRGB(0, 150, 0),
-                    TextScaled = true,
+                    TextSize = smallTextSize,
+                    TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.SourceSansBold,
                     ZIndex = 16
@@ -399,7 +422,8 @@ local function TopStats(props)
                     Position = UDim2.new(0, 0, 0.5, 2),
                     Text = "Next rebirth: $" .. NumberFormatter.format(moneyRequired),
                     TextColor3 = canRebirth and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(200, 50, 50),
-                    TextScaled = true,
+                    TextSize = smallTextSize,
+                    TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.SourceSans,
                     ZIndex = 16

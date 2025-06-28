@@ -7,6 +7,7 @@ local SoundService = game:GetService("SoundService")
 
 local e = React.createElement
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
+local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 local Modal = require(script.Parent.Modal)
 
@@ -14,12 +15,12 @@ local Modal = require(script.Parent.Modal)
 local HOVER_SOUND_ID = "rbxassetid://15675059323"
 local CLICK_SOUND_ID = "rbxassetid://6324790483"
 
--- Weather icon mappings - using working assets from the game
+-- Weather icon mappings - using hardcoded working asset ID temporarily
 local WEATHER_ICONS = {
-    Sunny = assets["General/Broken Heart/Broken Heart 256.png"], -- Test with known working asset
-    Cloudy = assets["Materials/Water/Water Outline 256.png"], -- Test with known working asset
-    Rainy = assets["Materials/Water/Water Outline 256.png"], -- This one exists in assets
-    Thunderstorm = assets["General/Lightning Bolt/Lightning Bolt Outline 256.png"] -- This one exists in assets
+    Sunny = "rbxassetid://79801759978961",
+    Cloudy = "rbxassetid://79801759978961", 
+    Rainy = "rbxassetid://79801759978961",
+    Thunderstorm = "rbxassetid://79801759978961"
 }
 
 local function WeatherPanel(props)
@@ -30,10 +31,17 @@ local function WeatherPanel(props)
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
     -- Responsive sizing
-    local isMobile = screenSize.X < 768
-    local scale = isMobile and 0.9 or 1
-    local panelWidth = isMobile and screenSize.X * 0.95 or 600
-    local panelHeight = isMobile and screenSize.Y * 0.85 or 520
+    local scale = ScreenUtils.getProportionalScale(screenSize)
+    local panelWidth = math.min(screenSize.X * 0.9, ScreenUtils.getProportionalSize(screenSize, 600))
+    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 520))
+    
+    -- Proportional text sizes
+    local titleTextSize = ScreenUtils.getProportionalTextSize(screenSize, 32)
+    local normalTextSize = ScreenUtils.getProportionalTextSize(screenSize, 18)
+    local smallTextSize = ScreenUtils.getProportionalTextSize(screenSize, 14)
+    local buttonTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
+    local cardTitleSize = ScreenUtils.getProportionalTextSize(screenSize, 20)
+    local cardValueSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
     
     -- Current weather info
     local currentWeather = weatherData.current or {}
@@ -88,10 +96,18 @@ local function WeatherPanel(props)
         end
     end, {})
     
-    -- Function to create weather icon with hover effects
-    local function createWeatherIcon(iconId, size, position, zIndex)
+    -- Function to create weather emoji with hover effects (no images)
+    local function createWeatherIcon(weatherType, size, position, zIndex)
         local iconRef = React.useRef(nil)
         local animationTracker = React.useRef(nil)
+        
+        -- Get emoji for weather type
+        local emoji = "☀️" -- Default sunny
+        if weatherType == "Sunny" then emoji = "☀️"
+        elseif weatherType == "Cloudy" then emoji = "☁️"  
+        elseif weatherType == "Rainy" then emoji = "🌧️"
+        elseif weatherType == "Thunderstorm" then emoji = "⛈️"
+        end
         
         local function createIconFlip()
             if animationTracker.current then
@@ -117,14 +133,16 @@ local function WeatherPanel(props)
             end
         end
         
-        return e("ImageButton", {
-            Name = "WeatherIcon",
+        return e("TextButton", {
+            Name = "WeatherEmoji",
             Size = size,
             Position = position,
-            Image = iconId,
-            ImageColor3 = Color3.fromRGB(255, 255, 255), -- Original/white color
-            BackgroundTransparency = 1, -- No background
-            ScaleType = Enum.ScaleType.Fit,
+            Text = emoji,
+            TextSize = normalTextSize,
+            TextWrapped = true,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.SourceSansBold,
             ZIndex = zIndex,
             ref = iconRef,
             [React.Event.MouseEnter] = function()
@@ -139,6 +157,12 @@ local function WeatherPanel(props)
                 end
                 createIconFlip()
             end
+        }, {
+            TextStroke = e("UIStroke", {
+                Color = Color3.fromRGB(0, 0, 0),
+                Thickness = 2,
+                Transparency = 0.3
+            })
         })
     end
     
@@ -149,63 +173,132 @@ local function WeatherPanel(props)
     }, {
         WeatherContainer = e("Frame", {
             Name = "WeatherContainer",
-            Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
-            Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -panelHeight * scale / 2),
-            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            Size = UDim2.new(0, panelWidth, 0, panelHeight + 50),
+            Position = UDim2.new(0.5, -panelWidth / 2, 0.5, -(panelHeight + 50) / 2),
+            BackgroundTransparency = 1,
             BorderSizePixel = 0,
-            ZIndex = 31
+            ZIndex = 30
         }, {
-            Corner = e("UICorner", {
-                CornerRadius = UDim.new(0, 20)
-            }),
-            
-            Stroke = e("UIStroke", {
-                Color = Color3.fromRGB(200, 200, 200),
-                Thickness = 2,
-                Transparency = 0
-            }),
-            
-            -- Close Button
-            CloseButton = e("ImageButton", {
-                Name = "CloseButton",
-                Size = UDim2.new(0, 32, 0, 32),
-                Position = UDim2.new(1, -16, 0, -16),
-                Image = assets["X Button/X Button 64.png"],
-                ImageColor3 = Color3.fromRGB(255, 255, 255),
-                ScaleType = Enum.ScaleType.Fit,
-                BackgroundColor3 = Color3.fromRGB(255, 100, 100),
+            WeatherPanel = e("Frame", {
+                Name = "WeatherPanel",
+                Size = UDim2.new(0, panelWidth, 0, panelHeight),
+                Position = UDim2.new(0, 0, 0, 50),
+                BackgroundColor3 = Color3.fromRGB(240, 245, 255),
+                BackgroundTransparency = 0.05,
                 BorderSizePixel = 0,
-                ZIndex = 35,
-                [React.Event.Activated] = onClose
+                ZIndex = 30
             }, {
-                Corner = e("UICorner", {
-                    CornerRadius = UDim.new(0, 6)
-                }),
-                Stroke = e("UIStroke", {
-                    Color = Color3.fromRGB(200, 200, 200),
-                    Thickness = 2,
-                    Transparency = 0
-                }),
-                Shadow = e("Frame", {
-                    Name = "Shadow",
-                    Size = UDim2.new(1, 2, 1, 2),
-                    Position = UDim2.new(0, 2, 0, 2),
-                    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-                    BackgroundTransparency = 0.8,
+                -- Floating Title (Weather-themed purple)
+                FloatingTitle = e("Frame", {
+                    Name = "FloatingTitle",
+                    Size = UDim2.new(0, 180, 0, 40),
+                    Position = UDim2.new(0, -10, 0, -25),
+                    BackgroundColor3 = Color3.fromRGB(150, 100, 255),
                     BorderSizePixel = 0,
-                    ZIndex = 34
+                    ZIndex = 32
+                }, {
+                    Corner = e("UICorner", {
+                        CornerRadius = UDim.new(0, 12)
+                    }),
+                    Gradient = e("UIGradient", {
+                        Color = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0, Color3.fromRGB(170, 130, 255)),
+                            ColorSequenceKeypoint.new(1, Color3.fromRGB(130, 80, 255))
+                        },
+                        Rotation = 45
+                    }),
+                    Stroke = e("UIStroke", {
+                        Color = Color3.fromRGB(255, 255, 255),
+                        Thickness = 3,
+                        Transparency = 0.2
+                    }),
+                    TitleText = e("TextLabel", {
+                        Size = UDim2.new(1, -10, 1, 0),
+                        Position = UDim2.new(0, 5, 0, 0),
+                        Text = "⛅ WEATHER",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = normalTextSize,
+            TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 33
+                    }, {
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 2,
+                            Transparency = 0.5
+                        })
+                    })
+                }),
+                
+                Corner = e("UICorner", {
+                    CornerRadius = UDim.new(0, 20)
+                }),
+                
+                Stroke = e("UIStroke", {
+                    Color = Color3.fromRGB(150, 100, 255),
+                    Thickness = 3,
+                    Transparency = 0.1
+                }),
+                
+                Gradient = e("UIGradient", {
+                    Color = ColorSequence.new{
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+                        ColorSequenceKeypoint.new(0.3, Color3.fromRGB(250, 245, 255)),
+                        ColorSequenceKeypoint.new(0.7, Color3.fromRGB(245, 240, 255)),
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(240, 235, 255))
+                    },
+                    Rotation = 135
+                }),
+            
+                -- Close Button
+                CloseButton = e("ImageButton", {
+                    Name = "CloseButton",
+                    Size = UDim2.new(0, 32, 0, 32),
+                    Position = UDim2.new(1, -16, 0, -16),
+                    Image = assets["X Button/X Button 64.png"],
+                    ImageColor3 = Color3.fromRGB(255, 255, 255),
+                    ScaleType = Enum.ScaleType.Fit,
+                    BackgroundColor3 = Color3.fromRGB(255, 100, 100),
+                    BorderSizePixel = 0,
+                    ZIndex = 34,
+                    [React.Event.Activated] = onClose
                 }, {
                     Corner = e("UICorner", {
                         CornerRadius = UDim.new(0, 6)
+                    }),
+                    Gradient = e("UIGradient", {
+                        Color = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 140, 140)),
+                            ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 60, 60))
+                        },
+                        Rotation = 90
+                    }),
+                    Stroke = e("UIStroke", {
+                        Color = Color3.fromRGB(255, 255, 255),
+                        Thickness = 2,
+                        Transparency = 0.2
+                    }),
+                    Shadow = e("Frame", {
+                        Name = "Shadow",
+                        Size = UDim2.new(1, 2, 1, 2),
+                        Position = UDim2.new(0, 2, 0, 2),
+                        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+                        BackgroundTransparency = 0.7,
+                        BorderSizePixel = 0,
+                        ZIndex = 33
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 6)
+                        })
                     })
-                })
             }),
             
-            -- Title Section
-            TitleSection = e("Frame", {
-                Name = "TitleSection",
-                Size = UDim2.new(1, -40, 0, 100),
-                Position = UDim2.new(0, 20, 0, 20),
+                -- Title Section
+                TitleSection = e("Frame", {
+                    Name = "TitleSection",
+                    Size = UDim2.new(1, -40, 0, 60),
+                    Position = UDim2.new(0, 20, 0, 20),
                 BackgroundTransparency = 1,
                 ZIndex = 32
             }, {
@@ -215,15 +308,16 @@ local function WeatherPanel(props)
                     Position = UDim2.new(0, 0, 0, 0),
                     Text = "🌤️ Weather Station",
                     TextColor3 = Color3.fromRGB(50, 50, 50),
-                    TextScaled = true,
+                    TextSize = normalTextSize,
+            TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
                     TextXAlignment = Enum.TextXAlignment.Center,
                     ZIndex = 32
                 }, {
                     TextSizeConstraint = e("UITextSizeConstraint", {
-                        MaxTextSize = 28 * scale,
-                        MinTextSize = 20 * scale
+                        MaxTextSize = 24,
+                        MinTextSize = 16
                     })
                 }),
                 
@@ -233,7 +327,8 @@ local function WeatherPanel(props)
                     Position = UDim2.new(0, 0, 0, 45),
                     Text = "Real-time weather forecast for your farm",
                     TextColor3 = Color3.fromRGB(120, 120, 120),
-                    TextScaled = true,
+                    TextSize = normalTextSize,
+            TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.Gotham,
                     TextXAlignment = Enum.TextXAlignment.Center,
@@ -251,7 +346,8 @@ local function WeatherPanel(props)
                     Position = UDim2.new(0, 0, 0, 70),
                     Text = "💡 Weather affects your farm! Plan strategically with the forecast.",
                     TextColor3 = Color3.fromRGB(60, 120, 60),
-                    TextScaled = true,
+                    TextSize = normalTextSize,
+            TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamMedium,
                     TextXAlignment = Enum.TextXAlignment.Center,
@@ -308,7 +404,7 @@ local function WeatherPanel(props)
                         LayoutOrder = 1
                     }, {
                         WeatherIcon = createWeatherIcon(
-                            weatherIcon,
+                            weatherName,
                             UDim2.new(1, 0, 1, 0),
                             UDim2.new(0, 0, 0, 0),
                             34
@@ -329,7 +425,8 @@ local function WeatherPanel(props)
                             Position = UDim2.new(0, 0, 0, 0),
                             Text = weatherName,
                             TextColor3 = Color3.fromRGB(30, 30, 30),
-                            TextScaled = true,
+                            TextSize = normalTextSize,
+            TextWrapped = true,
                             BackgroundTransparency = 1,
                             Font = Enum.Font.GothamBold,
                             TextXAlignment = Enum.TextXAlignment.Center,
@@ -347,7 +444,8 @@ local function WeatherPanel(props)
                             Position = UDim2.new(0, 0, 0, 25),
                             Text = dayName,
                             TextColor3 = Color3.fromRGB(100, 100, 100),
-                            TextScaled = true,
+                            TextSize = normalTextSize,
+            TextWrapped = true,
                             BackgroundTransparency = 1,
                             Font = Enum.Font.Gotham,
                             TextXAlignment = Enum.TextXAlignment.Center,
@@ -365,7 +463,8 @@ local function WeatherPanel(props)
                             Position = UDim2.new(0, 0, 0, 43),
                             Text = temperature .. "°F",
                             TextColor3 = Color3.fromRGB(60, 60, 60),
-                            TextScaled = true,
+                            TextSize = normalTextSize,
+            TextWrapped = true,
                             BackgroundTransparency = 1,
                             Font = Enum.Font.GothamBold,
                             TextXAlignment = Enum.TextXAlignment.Center,
@@ -410,7 +509,8 @@ local function WeatherPanel(props)
                     Position = UDim2.new(0, 0, 0, 0),
                     Text = "📅 3-Day Forecast",
                     TextColor3 = Color3.fromRGB(50, 50, 50),
-                    TextScaled = true,
+                    TextSize = normalTextSize,
+            TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
                     TextXAlignment = Enum.TextXAlignment.Left,
@@ -481,7 +581,8 @@ local function WeatherPanel(props)
                                         Position = UDim2.new(0, 5, 0, 5),
                                         Text = dayName,
                                         TextColor3 = Color3.fromRGB(60, 60, 60),
-                                        TextScaled = true,
+                                        TextSize = normalTextSize,
+            TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
                                         TextXAlignment = Enum.TextXAlignment.Center,
@@ -495,7 +596,7 @@ local function WeatherPanel(props)
                                     
                                     -- Weather Icon (Interactive)
                                     WeatherIcon = createWeatherIcon(
-                                        dayIcon,
+                                        dayWeatherName,
                                         UDim2.new(0, 40, 0, 40),
                                         UDim2.new(0.5, -20, 0, 30),
                                         34
@@ -508,7 +609,8 @@ local function WeatherPanel(props)
                                         Position = UDim2.new(0, 5, 0, 75),
                                         Text = dayWeatherName,
                                         TextColor3 = Color3.fromRGB(80, 80, 80),
-                                        TextScaled = true,
+                                        TextSize = normalTextSize,
+            TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.Gotham,
                                         TextXAlignment = Enum.TextXAlignment.Center,
@@ -528,6 +630,7 @@ local function WeatherPanel(props)
                 })
             })
         })
+    })
     })
 end
 

@@ -5,7 +5,7 @@
 local ConfigManager = {}
 
 -- Load all configuration modules
-local CropConfig = require(script.Parent.Parent.config.CropConfig)
+local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 local WeatherConfig = require(script.Parent.Parent.config.WeatherConfig)
 local GameplayConfig = require(script.Parent.Parent.config.GameplayConfig)
 
@@ -34,23 +34,23 @@ function ConfigManager.validateConfigs()
     local errors = {}
     
     -- Validate crop config
-    local crops = CropConfig.getAllCrops()
+    local crops = CropRegistry.crops
     local cropCount = 0
     for cropName, cropData in pairs(crops) do
         cropCount = cropCount + 1
         
-        -- Check required fields
-        if not cropData.baseProductionPerHour then
-            table.insert(errors, "Crop " .. cropName .. " missing baseProductionPerHour")
-        end
-        if not cropData.storageCapacity then
-            table.insert(errors, "Crop " .. cropName .. " missing storageCapacity")
-        end
+        -- Check required fields (CropRegistry uses different field names)
         if not cropData.seedCost then
             table.insert(errors, "Crop " .. cropName .. " missing seedCost")
         end
         if not cropData.basePrice then
             table.insert(errors, "Crop " .. cropName .. " missing basePrice")
+        end
+        if not cropData.growthTime then
+            table.insert(errors, "Crop " .. cropName .. " missing growthTime")
+        end
+        if not cropData.waterNeeded then
+            table.insert(errors, "Crop " .. cropName .. " missing waterNeeded")
         end
     end
     
@@ -80,7 +80,7 @@ end
 
 -- Log configuration summary
 function ConfigManager.logConfigSummary()
-    local crops = CropConfig.getAllCrops()
+    local crops = CropRegistry.crops
     local cropNames = {}
     for cropName, _ in pairs(crops) do
         table.insert(cropNames, cropName)
@@ -101,31 +101,37 @@ end
 
 -- === CROP CONFIGURATION ACCESS ===
 function ConfigManager.getAllCrops()
-    return CropConfig.getAllCrops()
+    return CropRegistry.crops
 end
 
 function ConfigManager.getCrop(cropName)
-    return CropConfig.getCrop(cropName)
+    return CropRegistry.getCrop(cropName)
 end
 
 function ConfigManager.getUnlockedCrops()
-    return CropConfig.getUnlockedCrops()
+    -- CropRegistry doesn't have unlocked system, return all crops for now
+    return CropRegistry.crops
 end
 
 function ConfigManager.getCropsForLevel(playerLevel)
-    return CropConfig.getCropsForLevel(playerLevel)
+    return CropRegistry.getCropsByUnlockLevel(playerLevel)
 end
 
 function ConfigManager.unlockCrop(cropName)
-    return CropConfig.unlockCrop(cropName)
+    -- CropRegistry doesn't have unlock system, return true
+    return true
 end
 
 function ConfigManager.getGrowthTimeFromRate(cropName)
-    return CropConfig.getGrowthTimeFromRate(cropName)
+    local crop = CropRegistry.getCrop(cropName)
+    return crop and crop.growthTime or 60
 end
 
 function ConfigManager.getProductionRate(cropName)
-    return CropConfig.getProductionRate(cropName)
+    local crop = CropRegistry.getCrop(cropName)
+    if not crop then return 0 end
+    -- Use hardcoded production rate from CropRegistry
+    return crop.productionRate or 0
 end
 
 -- === WEATHER CONFIGURATION ACCESS ===
@@ -158,14 +164,8 @@ function ConfigManager.getGlobalWeatherMultiplier(weatherName)
 end
 
 function ConfigManager.getCropWeatherBoost(cropName, weatherName)
-    -- Get crop-specific weather boost from CropConfig
-    local crop = CropConfig.getCrop(cropName)
-    if crop and crop.weatherBoosts and crop.weatherBoosts[weatherName] then
-        return crop.weatherBoosts[weatherName]
-    end
-    
-    -- Fallback to general weather boost from WeatherConfig
-    return WeatherConfig.getCropWeatherBoost(cropName, weatherName)
+    -- Get crop-specific weather boost from CropRegistry
+    return CropRegistry.getWeatherMultiplier(cropName, weatherName) or 1.0
 end
 
 -- === GAMEPLAY CONFIGURATION ACCESS ===

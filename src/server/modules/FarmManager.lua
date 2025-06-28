@@ -142,7 +142,8 @@ end
 -- Called when a farm is assigned to a player
 function FarmManager.onFarmAssigned(farmId, player)
     local totalStart = tick()
-    log.error("🔄 onFarmAssigned STARTED for:", player.Name, "farm:", farmId)
+    print("🚨 FARM ASSIGNED! Player:", player.Name, "Farm ID:", farmId)
+    log.debug("🔄 onFarmAssigned STARTED for:", player.Name, "farm:", farmId)
     
     -- Update farm sign with character display (make async to avoid blocking)
     local signStart = tick()
@@ -150,11 +151,11 @@ function FarmManager.onFarmAssigned(farmId, player)
     
     -- Do farm sign update asynchronously so it doesn't block player loading
     spawn(function()
-        log.error("🔄 Starting async farm sign update for:", player.Name)
+        log.debug("🔄 Starting async farm sign update for:", player.Name)
         WorldBuilder.updateFarmSign(farmId, player.Name, player)
-        log.error("🔄 Async farm sign update completed for:", player.Name, "in", (tick() - signStart), "seconds")
+        log.debug("🔄 Async farm sign update completed for:", player.Name, "in", (tick() - signStart), "seconds")
     end)
-    log.error("🔄 Farm sign update started asynchronously")
+    log.debug("🔄 Farm sign update started asynchronously")
     
     -- Initialize all plots in PlotManager
     local PlotManager = require(script.Parent.PlotManager)
@@ -162,7 +163,7 @@ function FarmManager.onFarmAssigned(farmId, player)
     
     -- Initialize owned plots with saved data
     local plotInitStart = tick()
-    log.error("🔄 Starting plot initialization loop for", MAX_PLOTS_PER_FARM, "plots")
+    log.debug("🔄 Starting plot initialization loop for", MAX_PLOTS_PER_FARM, "plots")
     for plotIndex = 1, MAX_PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
         
@@ -173,11 +174,11 @@ function FarmManager.onFarmAssigned(farmId, player)
             -- Update the visual state of the plot to match the loaded data
             local plotState = PlotManager.getPlotState(globalPlotId)
             if plotState then
-                log.info("Restoring owned plot", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
+                print("🌾 RESTORING OWNED PLOT", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
                 
                 local plot = WorldBuilder.getPlotById(globalPlotId)
                 if plot then
-                    WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation)
+                    WorldBuilder.updatePlotState(plot, plotState.state, plotState.seedType, plotState.variation, nil, nil, nil, nil, player)
                 end
                 
                 -- Send plot data to client
@@ -189,13 +190,13 @@ function FarmManager.onFarmAssigned(farmId, player)
             PlotManager.initializePlot(globalPlotId, nil, nil)
         end
     end
-    log.error("🔄 Plot initialization loop completed in:", (tick() - plotInitStart), "seconds")
+    log.debug("🔄 Plot initialization loop completed in:", (tick() - plotInitStart), "seconds")
     
     -- Update visual states for all plots based on ownership
     local visualStart = tick()
     local playerData = PlayerDataManager.getPlayerData(player)
     local rebirths = playerData and playerData.rebirths or 0
-    log.error("🔄 Starting visual state updates for", MAX_PLOTS_PER_FARM, "plots")
+    log.debug("🔄 Starting visual state updates for", MAX_PLOTS_PER_FARM, "plots")
     
     for plotIndex = 1, MAX_PLOTS_PER_FARM do
         local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
@@ -208,15 +209,15 @@ function FarmManager.onFarmAssigned(farmId, player)
                 log.debug("Plot", plotIndex, "is owned by", player.Name)
             elseif visibilityState == "locked" then
                 -- Plot is available for purchase (red with price)
-                WorldBuilder.updatePlotState(plot, "locked", "", nil, nil, nil, plotIndex)
+                WorldBuilder.updatePlotState(plot, "locked", "", nil, nil, nil, plotIndex, nil, player)
                 log.info("Plot", plotIndex, "set to PURCHASABLE for", player.Name)
             elseif visibilityState == "next_tier" then
                 -- Visible but shows rebirth requirement (gray, no price)
-                WorldBuilder.updatePlotState(plot, "rebirth_locked", "", nil, nil, nil, plotIndex, requiredRebirth)
+                WorldBuilder.updatePlotState(plot, "rebirth_locked", "", nil, nil, nil, plotIndex, requiredRebirth, player)
                 log.info("Plot", plotIndex, "set to NEXT-TIER (rebirth", requiredRebirth, "required) for", player.Name)
             else -- invisible
                 -- Completely hidden for future rebirth tiers
-                WorldBuilder.updatePlotState(plot, "invisible", "")
+                WorldBuilder.updatePlotState(plot, "invisible", "", nil, nil, nil, nil, nil, player)
                 log.info("Plot", plotIndex, "set to INVISIBLE for", player.Name)
             end
         else
@@ -228,8 +229,8 @@ function FarmManager.onFarmAssigned(farmId, player)
     local PlayerDataManager = require(script.Parent.PlayerDataManager)
     PlayerDataManager.setAssignedFarm(player, farmId)
     
-    log.error("🔄 Visual state updates completed in:", (tick() - visualStart), "seconds")
-    log.error("🔄 onFarmAssigned TOTAL TIME:", (tick() - totalStart), "seconds for", player.Name)
+    log.debug("🔄 Visual state updates completed in:", (tick() - visualStart), "seconds")
+    log.info("🔄 onFarmAssigned TOTAL TIME:", (tick() - totalStart), "seconds for", player.Name)
     
     -- Notify player about online boost
     local NotificationManager = require(script.Parent.NotificationManager)
@@ -461,7 +462,7 @@ function FarmManager.unlockPlot(player)
         local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
         local plot = WorldBuilder.getPlotById(globalPlotId)
         if plot then
-            WorldBuilder.updatePlotState(plot, "empty", "")
+            WorldBuilder.updatePlotState(plot, "empty", "", nil, nil, nil, nil, nil, player)
             log.info("Unlocked plot", newPlotIndex, "for", player.Name)
         end
         
@@ -474,20 +475,20 @@ function FarmManager.unlockPlot(player)
                     -- Plot is unlocked, ensure it's not showing locked state
                     local plotState = PlotManager.getPlotState(checkGlobalPlotId)
                     if plotState then
-                        WorldBuilder.updatePlotState(checkPlot, plotState.state, plotState.seedType, plotState.variation)
+                        WorldBuilder.updatePlotState(checkPlot, plotState.state, plotState.seedType, plotState.variation, nil, nil, nil, nil, player)
                     else
-                        WorldBuilder.updatePlotState(checkPlot, "empty", "")
+                        WorldBuilder.updatePlotState(checkPlot, "empty", "", nil, nil, nil, nil, nil, player)
                     end
                 else
                     -- Plot is still locked - use progressive visibility system
                     local visibilityState, requiredRebirth = PlayerDataManager.getPlotVisibilityState(player, plotIndex)
                     
                     if visibilityState == "locked" then
-                        WorldBuilder.updatePlotState(checkPlot, "locked", "", nil, nil, nil, plotIndex) -- Purchasable with price
+                        WorldBuilder.updatePlotState(checkPlot, "locked", "", nil, nil, nil, plotIndex, nil, player) -- Purchasable with price
                     elseif visibilityState == "next_tier" then
-                        WorldBuilder.updatePlotState(checkPlot, "rebirth_locked", "", nil, nil, nil, plotIndex, requiredRebirth) -- Visible, needs rebirth
+                        WorldBuilder.updatePlotState(checkPlot, "rebirth_locked", "", nil, nil, nil, plotIndex, requiredRebirth, player) -- Visible, needs rebirth
                     else -- invisible
-                        WorldBuilder.updatePlotState(checkPlot, "invisible", "") -- Hidden
+                        WorldBuilder.updatePlotState(checkPlot, "invisible", "", nil, nil, nil, nil, nil, player) -- Hidden
                     end
                 end
             end
@@ -502,6 +503,54 @@ function FarmManager.unlockPlot(player)
     end
     
     return success, message
+end
+
+-- Update plot visibility for a player (used after rebirth reset)
+function FarmManager.updatePlayerPlotVisibility(player)
+    local farmId = FarmManager.getPlayerFarm(player.UserId)
+    if not farmId then
+        log.warn("Cannot update plot visibility - no farm assigned to", player.Name)
+        return
+    end
+    
+    local PlayerDataManager = require(script.Parent.PlayerDataManager)
+    local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+    local playerData = PlayerDataManager.getPlayerData(player)
+    local currentRebirths = playerData and playerData.rebirths or 0
+    
+    log.info("Updating plot visibility for", player.Name, "on farm", farmId, "with", currentRebirths, "rebirths")
+    
+    -- Update all plots based on current player progression
+    for plotIndex = 1, MAX_PLOTS_PER_FARM do
+        local globalPlotId = FarmManager.getGlobalPlotId(farmId, plotIndex)
+        local plot = WorldBuilder.getPlotById(globalPlotId)
+        if plot then
+            local visibilityState, requiredRebirth = PlayerDataManager.getPlotVisibilityState(player, plotIndex)
+            local isOwned = PlayerDataManager.isPlotOwned(player, plotIndex)
+            
+            if isOwned then
+                -- Player owns this plot - set to empty/farmable state
+                WorldBuilder.updatePlotState(plot, "empty", "", nil, nil, nil, nil, nil, player)
+                log.debug("Plot", plotIndex, "set to OWNED for", player.Name)
+            elseif visibilityState == "locked" then
+                -- Plot is available for purchase (red with price)
+                WorldBuilder.updatePlotState(plot, "locked", "", nil, nil, nil, plotIndex, nil, player)
+                log.debug("Plot", plotIndex, "set to PURCHASABLE for", player.Name)
+            elseif visibilityState == "next_tier" then
+                -- Visible but shows rebirth requirement (gray, no price)
+                WorldBuilder.updatePlotState(plot, "rebirth_locked", "", nil, nil, nil, plotIndex, requiredRebirth, player)
+                log.debug("Plot", plotIndex, "set to NEXT-TIER (needs rebirth", requiredRebirth, ") for", player.Name)
+            else -- invisible
+                -- Completely hidden for future rebirth tiers - FORCE INVISIBLE
+                WorldBuilder.updatePlotState(plot, "invisible", "", nil, nil, nil, nil, nil, player)
+                log.info("Plot", plotIndex, "FORCED INVISIBLE for", player.Name, "(exceeds rebirth tier)")
+            end
+        else
+            log.warn("Plot", plotIndex, "not found in world for", player.Name)
+        end
+    end
+    
+    log.info("Plot visibility refresh completed for", player.Name, "with", currentRebirths, "rebirths")
 end
 
 -- Get farm configuration info

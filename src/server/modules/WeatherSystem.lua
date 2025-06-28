@@ -21,7 +21,7 @@ local WeatherTypes = {
     Sunny = {
         name = "Sunny",
         emoji = "☀️",
-        icon = "rbxassetid://136624504416104", -- Lightning bolt as temp sunny icon
+        icon = "http://www.roblox.com/asset/?id=240651661", -- Proper sunny weather icon
         description = "Perfect growing conditions with enhanced crop growth",
         gameplayDescription = "• 20% faster growth for sun-loving crops\n• Plants need watering more often",
         effects = {
@@ -36,7 +36,7 @@ local WeatherTypes = {
     Rainy = {
         name = "Rainy",
         emoji = "🌧️", 
-        icon = "rbxassetid://81214849669091", -- Water Outline 256 icon
+        icon = "http://www.roblox.com/asset/?id=240651406", -- Proper rainy weather icon
         description = "Gentle rainfall keeps crops hydrated automatically",
         gameplayDescription = "• No watering needed - auto-waters all crops\n• Slightly slower overall growth",
         effects = {
@@ -52,7 +52,7 @@ local WeatherTypes = {
     Cloudy = {
         name = "Cloudy",
         emoji = "☁️",
-        icon = "rbxassetid://81214849669091", -- Use water icon as temporary test
+        icon = "http://www.roblox.com/asset/?id=240650939", -- Proper cloudy weather icon
         description = "Mild conditions with no special effects",
         gameplayDescription = "• Normal growth rates\n• Standard watering requirements",
         effects = {
@@ -67,7 +67,7 @@ local WeatherTypes = {
     Thunderstorm = {
         name = "Thunderstorm",
         emoji = "⛈️",
-        icon = "rbxassetid://133347090079877", -- Lightning Bolt Yellow Outline 256 icon
+        icon = "http://www.roblox.com/asset/?id=261307430", -- Proper thunderstorm weather icon
         description = "Dangerous weather that can damage unprotected crops",
         gameplayDescription = "• Auto-waters crops but slows growth\n• 15% chance to damage crops",
         effects = {
