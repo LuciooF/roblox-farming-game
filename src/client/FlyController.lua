@@ -5,14 +5,15 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
-local ClientLogger = require(script.Parent.ClientLogger)
-local log = ClientLogger.getModuleLogger("FlyController")
+-- Simple logging
+local function logInfo(...) print("[INFO] FlyController:", ...) end
+local function logDebug(...) print("[DEBUG] FlyController:", ...) end
+local function logWarn(...) warn("[WARN] FlyController:", ...) end
 
 local FlyController = {}
 
 -- Configuration
 local FLY_SPEED = 50
-local FLY_TOGGLE_KEY = Enum.KeyCode.F -- Press F to toggle fly
 
 -- State
 local isFlying = false
@@ -22,17 +23,13 @@ local bodyAngularVelocity = nil
 local flyIndicator = nil
 local player = Players.LocalPlayer
 
+-- Events
+local flyStateChanged = Instance.new("BindableEvent")
+
 -- Initialize the fly controller
 function FlyController.initialize()
     
-    -- Connect to input
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
-        if input.KeyCode == FLY_TOGGLE_KEY then
-            FlyController.toggleFly()
-        end
-    end)
+    -- F key input removed - now controlled by UI button
     
     -- Handle character respawning
     player.CharacterAdded:Connect(function()
@@ -42,6 +39,21 @@ function FlyController.initialize()
             FlyController.startFlying()
         end
     end)
+    
+    logInfo("FlyController initialized - Use fly button to toggle flying")
+end
+
+-- Get current flying state
+function FlyController.isFlying()
+    return isFlying
+end
+
+-- Get fly state changed event
+FlyController.onFlyStateChanged = flyStateChanged.Event
+
+-- Fire state change event
+local function fireFlyStateChanged()
+    flyStateChanged:Fire(isFlying)
 end
 
 -- Toggle fly mode on/off
@@ -56,7 +68,7 @@ end
 -- Start flying
 function FlyController.startFlying()
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-        log.warn("Cannot start flying - no character or HumanoidRootPart")
+        logWarn("Cannot start flying - no character or HumanoidRootPart")
         return
     end
     
@@ -65,11 +77,12 @@ function FlyController.startFlying()
     local rootPart = character.HumanoidRootPart
     
     if not humanoid or not rootPart then
-        log.warn("Cannot start flying - missing humanoid or root part")
+        logWarn("Cannot start flying - missing humanoid or root part")
         return
     end
     
     isFlying = true
+    fireFlyStateChanged()
     
     -- Disable normal character physics
     humanoid.PlatformStand = true
@@ -100,6 +113,7 @@ function FlyController.stopFlying()
     if not isFlying then return end
     
     isFlying = false
+    fireFlyStateChanged()
     
     -- Disconnect update loop
     if flyConnection then
@@ -184,10 +198,6 @@ function FlyController.updateFly()
     end
 end
 
--- Get current fly state
-function FlyController.isFlying()
-    return isFlying
-end
 
 -- Create fly mode indicator UI
 function FlyController.createFlyIndicator()

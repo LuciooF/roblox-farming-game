@@ -4,10 +4,9 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local ClientLogger = require(script.Parent.ClientLogger)
+-- Simple logging removed ClientLogger
 local PlotInteractionManager = require(script.Parent.PlotInteractionManager)
 local PlotUtils = require(script.Parent.PlotUtils)
-local log = ClientLogger.getModuleLogger("PlotProximity")
 
 local PlotProximityHandler = {}
 
@@ -18,7 +17,7 @@ local MAX_CONNECTIONS = 150 -- Prevent memory overflow from too many connections
 
 -- Initialize proximity handler
 function PlotProximityHandler.initialize()
-    log.info("Plot proximity handler initialized")
+    print("[INFO]", "Plot proximity handler initialized")
     
     -- Start scanning for plots
     PlotProximityHandler.scanForPlots()
@@ -44,7 +43,7 @@ function PlotProximityHandler.initialize()
                 end)
                 
                 if not success then
-                    log.error("Plot scanning error:", err)
+                    error("[ERROR]", "Plot scanning error:", err)
                     wait(60) -- Longer wait on error
                 end
             end
@@ -62,14 +61,14 @@ function PlotProximityHandler.scanForPlots()
         connectionCount = connectionCount + 1
     end
     
-    log.info("🔍 Scanning plots - Found", #plots, "plots, currently have", connectionCount, "connections")
+    print("[INFO]", "🔍 Scanning plots - Found", #plots, "plots, currently have", connectionCount, "connections")
     
     local newConnections = 0
     for _, plot in pairs(plots) do
         local plotIdValue = plot:FindFirstChild("PlotId")
         if plotIdValue then
             local plotId = plotIdValue.Value
-            log.info("📍 Found plot", plotId, "attempting to connect ActionPrompt")
+            print("[INFO]", "📍 Found plot", plotId, "attempting to connect ActionPrompt")
             
             -- Connect to the single ActionPrompt (will skip if already connected)
             local connected = PlotProximityHandler.connectPrompt(plot, plotId, "ActionPrompt", "action")
@@ -77,12 +76,12 @@ function PlotProximityHandler.scanForPlots()
                 newConnections = newConnections + 1
             end
         else
-            log.warn("⚠️ Plot without PlotId found:", plot.Name)
+            warn("[WARN]", "⚠️ Plot without PlotId found:", plot.Name)
         end
     end
     
     if newConnections > 0 then
-        log.info("🎯 Connected", newConnections, "new plot prompts")
+        print("[INFO]", "🎯 Connected", newConnections, "new plot prompts")
     end
     
     return #plots -- Return number of plots found
@@ -92,11 +91,11 @@ end
 function PlotProximityHandler.connectPrompt(plot, plotId, promptName, actionType)
     local prompt = plot:FindFirstChild(promptName)
     if not prompt then 
-        log.warn("⚠️ No", promptName, "found on plot", plotId)
+        warn("[WARN]", "⚠️ No", promptName, "found on plot", plotId)
         return 
     end
     
-    log.info("✅ Found", promptName, "on plot", plotId)
+    print("[INFO]", "✅ Found", promptName, "on plot", plotId)
     
     -- Check if already connected
     local connectionKey = plotId .. "_" .. promptName
@@ -115,7 +114,7 @@ function PlotProximityHandler.connectPrompt(plot, plotId, promptName, actionType
     end
     
     if connectionCount >= MAX_CONNECTIONS then
-        log.warn("Connection limit reached (" .. MAX_CONNECTIONS .. "), skipping new connection for plot", plotId, promptName)
+        warn("[WARN]", "Connection limit reached (" .. MAX_CONNECTIONS .. "), skipping new connection for plot", plotId, promptName)
         return false
     end
     
@@ -123,26 +122,26 @@ function PlotProximityHandler.connectPrompt(plot, plotId, promptName, actionType
     local connection = prompt.Triggered:Connect(function(triggeringPlayer)
         if triggeringPlayer ~= player then return end
         
-        log.info("🎯 Proximity prompt triggered:", actionType, "on plot", plotId)
+        print("[INFO]", "🎯 Proximity prompt triggered:", actionType, "on plot", plotId)
         
         -- Immediate visual feedback for context-sensitive action
         local success = false
         if actionType == "action" then
-            log.info("🚀 Calling PlotInteractionManager.predictContextualAction for plot", plotId)
+            print("[INFO]", "🚀 Calling PlotInteractionManager.predictContextualAction for plot", plotId)
             success = PlotInteractionManager.predictContextualAction(plot, plotId)
-            log.info("📊 predictContextualAction returned:", success)
+            print("[INFO]", "📊 predictContextualAction returned:", success)
         end
         
         if success then
-            log.info("✅ Applied immediate visual feedback for", actionType, "on plot", plotId)
+            print("[INFO]", "✅ Applied immediate visual feedback for", actionType, "on plot", plotId)
         else
-            log.warn("❌ No prediction applied for", actionType, "on plot", plotId)
+            warn("[WARN]", "❌ No prediction applied for", actionType, "on plot", plotId)
         end
     end)
     
     -- Store connection to prevent duplicates
     connectedPrompts[connectionKey] = connection
-    log.info("🔗 Connected to", promptName, "for plot", plotId, "(", connectionCount + 1, "total connections)")
+    print("[INFO]", "🔗 Connected to", promptName, "for plot", plotId, "(", connectionCount + 1, "total connections)")
     
     return true -- Successfully connected
 end
@@ -162,7 +161,7 @@ function PlotProximityHandler.cleanupPlot(plotId)
     end
     
     if #toRemove > 0 then
-        log.debug("Cleaned up", #toRemove, "connections for plot", plotId)
+        print("[DEBUG]", "Cleaned up", #toRemove, "connections for plot", plotId)
     end
 end
 
@@ -203,7 +202,7 @@ function PlotProximityHandler.cleanupStaleConnections()
     end
     
     if staleCount > 0 or disconnectedCount > 0 then
-        log.info("Cleaned up", staleCount, "stale and", disconnectedCount, "disconnected proximity connections")
+        print("[INFO]", "Cleaned up", staleCount, "stale and", disconnectedCount, "disconnected proximity connections")
     end
 end
 
@@ -219,7 +218,7 @@ function PlotProximityHandler.cleanup()
         connection:Disconnect()
     end
     connectedPrompts = {}
-    log.info("Cleaned up all proximity prompt connections and scanning loop")
+    print("[INFO]", "Cleaned up all proximity prompt connections and scanning loop")
 end
 
 return PlotProximityHandler

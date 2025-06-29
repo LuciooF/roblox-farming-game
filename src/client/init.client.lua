@@ -4,27 +4,68 @@ local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 
--- Initialize client-side logging with fallback
-local ClientLogger
-local hasLogger = pcall(function()
-    ClientLogger = require(script.ClientLogger)
-end)
-
-if not hasLogger then
-    -- Fallback logging
-    ClientLogger = {
-        getModuleLogger = function(name)
-            return {
-                info = function(...) print("[INFO]", name, ...) end,
-                debug = function(...) print("[DEBUG]", name, ...) end,
-                warn = function(...) warn("[WARN]", name, ...) end,
-                error = function(...) error("[ERROR] " .. name .. ": " .. table.concat({...}, " ")) end
-            }
-        end
+-- Initialize client-side logging with simple print statements
+local function createLogger(name)
+    return {
+        info = function(...) print("[INFO]", name, ...) end,
+        debug = function(...) print("[DEBUG]", name, ...) end,
+        warn = function(...) warn("[WARN]", name, ...) end,
+        error = function(...) error("[ERROR] " .. name .. ": " .. table.concat({...}, " ")) end,
+        trace = function(...) print("[TRACE]", name, ...) end
     }
 end
 
-local log = ClientLogger.getModuleLogger("ClientMain")
+local log = createLogger("ClientMain")
+
+-- Client-side Sound Utilities
+local SoundService = game:GetService("SoundService")
+
+local SoundUtils = {}
+
+-- Sound IDs
+local SOUND_IDS = {
+    shopPurchase = "10066947742",
+    gamepassPurchase = "9068897474", 
+    sellCrops = "117754737160472"
+}
+
+-- Helper function to play a sound by ID
+local function playSound(soundId, volume, playbackSpeed)
+    volume = volume or 0.5
+    playbackSpeed = playbackSpeed or 1.0
+    
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://" .. soundId
+    sound.Volume = volume
+    sound.PlaybackSpeed = playbackSpeed
+    sound.Parent = SoundService
+    sound:Play()
+    
+    -- Clean up after sound finishes
+    sound.Ended:Connect(function()
+        sound:Destroy()
+    end)
+end
+
+-- Play shop purchase sound (for buying items or plots)
+function SoundUtils.playShopPurchaseSound()
+    playSound(SOUND_IDS.shopPurchase, 0.5)
+end
+
+-- Play gamepass purchase sound 
+function SoundUtils.playGamepassPurchaseSound()
+    playSound(SOUND_IDS.gamepassPurchase, 0.6)
+end
+
+-- Play crop selling sound (at 1.25x speed)
+function SoundUtils.playSellSound()
+    playSound(SOUND_IDS.sellCrops, 0.4, 1.25)
+end
+
+-- Purchase detection state
+local previousMoney = nil
+_G.lastActionTime = 0 -- Global so other modules can update it
+local pendingPurchase = false
 
 -- Ensure mobile controls are enabled and protected
 if UserInputService.TouchEnabled then
@@ -112,6 +153,8 @@ local CharacterFaceTracker = require(script.CharacterFaceTracker)
 local TutorialArrowManager = require(script.TutorialArrowManager)
 local DoubleJumpController = require(script.DoubleJumpController)
 local BackgroundMusicManager = require(script.BackgroundMusicManager)
+local CodesService = require(script.CodesService)
+local RewardsService = require(script.RewardsService)
 
 -- Wait for farming remotes
 log.debug("Waiting for FarmingRemotes folder...")
@@ -143,6 +186,8 @@ local gamepassPurchaseRemote = farmingRemotes:WaitForChild("GamepassPurchase")
 local gamepassDataRemote = farmingRemotes:WaitForChild("GamepassData")
 local characterReadyRemote = farmingRemotes:WaitForChild("CharacterReady")
 local musicPreferenceRemote = farmingRemotes:WaitForChild("MusicPreference")
+local redeemCodeRemote = farmingRemotes:WaitForChild("RedeemCode", 5) -- Optional, may not exist yet
+local showRewardRemote = farmingRemotes:WaitForChild("ShowReward")
 
 -- Player data state (starts as nil - UI won't render until data loads)
 local playerData = nil
@@ -182,7 +227,8 @@ local remotes = {
     gamepassPurchase = gamepassPurchaseRemote,
     gamepassData = gamepassDataRemote,
     farmAction = farmingRemotes:WaitForChild("FarmAction"), -- Farm action remote for PlotUI
-    MusicPreference = musicPreferenceRemote
+    MusicPreference = musicPreferenceRemote,
+    redeemCode = redeemCodeRemote
 }
 
 -- Handler for plot UI interactions
@@ -247,6 +293,41 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
         log.trace("Player data synced - Money:", newPlayerData.money)
     end
     
+    -- Detect shop purchases (money decreased recently)
+    if not isFirstLoad and previousMoney and newPlayerData.money then
+        local currentTime = tick()
+        local timeSinceLastAction = currentTime - _G.lastActionTime
+        
+        -- If money decreased and it was recent (within 3 seconds), it's likely a purchase
+        if newPlayerData.money < previousMoney and timeSinceLastAction < 3 then
+            log.debug("Shop purchase detected - money:", previousMoney, "→", newPlayerData.money)
+            SoundUtils.playShopPurchaseSound()
+        -- If money increased and it was recent, it's likely a sale
+        elseif newPlayerData.money > previousMoney and timeSinceLastAction < 3 then
+            -- Check if inventory decreased (indicating a sale vs other money gain)
+            local soldSomething = false
+            if playerData and playerData.inventory and newPlayerData.inventory then
+                for itemType, items in pairs(playerData.inventory) do
+                    if newPlayerData.inventory[itemType] then
+                        for itemName, oldCount in pairs(items) do
+                            local newCount = newPlayerData.inventory[itemType][itemName] or 0
+                            if newCount < oldCount then
+                                soldSomething = true
+                                break
+                            end
+                        end
+                    end
+                    if soldSomething then break end
+                end
+            end
+            
+            if soldSomething then
+                log.debug("Sale detected - money:", previousMoney, "→", newPlayerData.money)
+                SoundUtils.playSellSound()
+            end
+        end
+    end
+    
     if isFirstLoad then
         log.info("Player data loaded for first time - waiting for character spawn before showing main UI")
         
@@ -257,6 +338,9 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
         end
         BackgroundMusicManager.setInitialState(musicEnabled)
     end
+    
+    -- Store previous money for purchase detection
+    previousMoney = newPlayerData.money
     
     -- Update player data
     playerData = newPlayerData
@@ -292,6 +376,18 @@ end)
 -- Handle gamepass data updates
 gamepassDataRemote.OnClientEvent:Connect(function(newGamepassData)
     log.debug("Gamepass data received with", newGamepassData and #newGamepassData or 0, "gamepasses")
+    
+    -- Detect new gamepass purchases (when gamepass data increases)
+    if gamepassData and newGamepassData then
+        local oldCount = gamepassData and #gamepassData or 0
+        local newCount = newGamepassData and #newGamepassData or 0
+        
+        if newCount > oldCount then
+            log.debug("New gamepass detected - playing purchase sound")
+            SoundUtils.playGamepassPurchaseSound()
+        end
+    end
+    
     gamepassData = newGamepassData
     updateUI()
 end)
@@ -344,6 +440,18 @@ openPlotUIRemote.OnClientEvent:Connect(function(plotData)
     end
 end)
 
+-- Handle reward display requests from server
+showRewardRemote.OnClientEvent:Connect(function(rewardData)
+    log.info("Received reward from server:", rewardData.type, rewardData.amount)
+    
+    if rewardData.type == "money" then
+        RewardsService.showMoneyReward(rewardData.amount, rewardData.description)
+    else
+        -- For future reward types
+        RewardsService.showReward(rewardData)
+    end
+end)
+
 -- Initialize client systems
 PlotCountdownManager.initialize()
 PlotInteractionManager.initialize(farmingRemotes)
@@ -354,8 +462,10 @@ CharacterFaceTracker.initialize()
 BackgroundMusicManager.initialize()
 
 -- Initialize RewardsService
-local RewardsService = require(script.RewardsService)
 RewardsService.initialize()
+
+-- Initialize CodesService
+CodesService.initialize(remotes)
 
 
 -- Set up camera viewport size change detection

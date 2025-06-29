@@ -16,10 +16,10 @@ WeatherConfig.Types = {
     Sunny = {
         name = "Sunny",
         emoji = "☀️",
-        description = "Bright sunshine boosts certain crops",
+        description = "Bright sunshine boosts all crop growth by 50%",
         
         effects = {
-            globalGrowthMultiplier = 1.0,   -- Base growth rate
+            globalGrowthMultiplier = 1.5,   -- 50% faster growth
             waterEvaporationRate = 1.3,     -- Plants dry out 30% faster
             autoWater = false,
             damageChance = 0,

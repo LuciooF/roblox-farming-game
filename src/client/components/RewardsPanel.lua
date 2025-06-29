@@ -9,9 +9,6 @@ local e = React.createElement
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
-
-local log = ClientLogger.getModuleLogger("RewardsPanel")
 
 local function RewardsPanel(props)
     local visible, setVisible = React.useState(false)
@@ -68,7 +65,7 @@ local function RewardsPanel(props)
 
     -- Show reward function
     local showReward = React.useCallback(function(reward)
-        log.info("Showing reward:", reward.type, reward.amount or "")
+        print("Showing reward:", reward.type, reward.amount or "")
         setRewardData(reward)
         setVisible(true)
         setTimeRemaining(5) -- Reset timer

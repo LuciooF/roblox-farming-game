@@ -135,12 +135,14 @@ local function SideButtons(props)
     -- Check if buttons should be highlighted for tutorial
     local shouldHighlightInventory = false
     local shouldHighlightShop = false
+    local shouldHighlightRebirth = false
     
     if tutorialData and tutorialData.step then
         if tutorialData.step.id == "sell_crops" then
             shouldHighlightInventory = true
-        elseif tutorialData.step.id == "buy_corn" then
+        elseif tutorialData.step.id == "buy_potato" then
             shouldHighlightShop = true
+            shouldHighlightRebirth = true -- Also highlight rebirth button for potato challenge
         end
     end
     
@@ -573,7 +575,7 @@ local function SideButtons(props)
             Name = "RebirthButton",
             Size = UDim2.new(0, buttonSize, 0, buttonSize),
             Text = "",
-            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundColor3 = shouldHighlightRebirth and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(255, 255, 255),
             BorderSizePixel = 0,
             ZIndex = 11,
             LayoutOrder = 5,
@@ -596,7 +598,7 @@ local function SideButtons(props)
             }),
             Stroke = e("UIStroke", {
                 Color = Color3.fromRGB(0, 0, 0),
-                Thickness = 2,
+                Thickness = shouldHighlightRebirth and 3 or 2,
                 Transparency = 0,
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Border
             }),
@@ -611,7 +613,6 @@ local function SideButtons(props)
                 ref = rebirthIconRef
             })
         }),
-        
         
         -- Pets Button (Secret Debug Access!)
         PetsButton = e("TextButton", {

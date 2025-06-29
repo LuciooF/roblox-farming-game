@@ -7,17 +7,19 @@ local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local e = React.createElement
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
 local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
-local log = ClientLogger.getModuleLogger("ShopPanel")
+-- Simple logging functions for ShopPanel
+local function logInfo(...) print("[INFO] ShopPanel:", ...) end
+local function logDebug(...) print("[DEBUG] ShopPanel:", ...) end
 local Modal = require(script.Parent.Modal)
 
 -- Sound IDs for button interactions
 local HOVER_SOUND_ID = "rbxassetid://15675059323"
 local CLICK_SOUND_ID = "rbxassetid://6324790483"
+local PURCHASE_SOUND_ID = "rbxassetid://10066947742" -- Shop purchase sound
 
 -- Pre-create sounds for better performance
 local hoverSound = Instance.new("Sound")
@@ -30,12 +32,19 @@ clickSound.SoundId = CLICK_SOUND_ID
 clickSound.Volume = 0.4
 clickSound.Parent = SoundService
 
+local purchaseSound = Instance.new("Sound")
+purchaseSound.SoundId = PURCHASE_SOUND_ID
+purchaseSound.Volume = 0.5
+purchaseSound.Parent = SoundService
+
 -- Function to play sound effects
 local function playSound(soundType)
     if soundType == "hover" and hoverSound then
         hoverSound:Play()
     elseif soundType == "click" and clickSound then
         clickSound:Play()
+    elseif soundType == "purchase" and purchaseSound then
+        purchaseSound:Play()
     end
 end
 
@@ -68,10 +77,11 @@ local function ShopPanel(props)
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local remotes = props.remotes or {}
+    local tutorialData = props.tutorialData
     
     -- Debug shop visibility
     React.useEffect(function()
-        log.debug("ShopPanel visibility changed to:", visible)
+        logDebug("ShopPanel visibility changed to:", visible)
     end, {visible})
     
     -- Responsive sizing
@@ -87,24 +97,15 @@ local function ShopPanel(props)
     local cardTitleSize = ScreenUtils.getProportionalTextSize(screenSize, 20)
     local cardValueSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
     
-    -- Dynamic panel sizing based on screen dimensions - much wider for 4 columns
-    local panelWidth = math.min(screenSize.X * 0.95, ScreenUtils.getProportionalSize(screenSize, 1400))
-    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 750))
+    -- Panel sizing (exact same as BoostPanel)
+    local panelWidth = math.min(screenSize.X * 0.9, ScreenUtils.getProportionalSize(screenSize, 900))
+    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 600))
     
-    -- Card sizing - target 4 columns, allow dynamic adjustment based on screen
-    local targetColumns = 4
-    local availableWidth = panelWidth - 100
-    local cardSpacing = 15
-    local cardWidth = math.floor((availableWidth / targetColumns) - cardSpacing)
-    local minCardWidth = ScreenUtils.getProportionalSize(screenSize, 180) -- Smaller minimum
-    local cardsPerRow = targetColumns
-    
-    -- Ensure cards aren't too small, adjust columns if needed
-    if cardWidth < minCardWidth then
-        cardsPerRow = math.max(3, math.floor(availableWidth / (minCardWidth + cardSpacing)))
-        cardWidth = math.floor((availableWidth / cardsPerRow) - cardSpacing)
-    end
-    local cardHeight = ScreenUtils.getProportionalSize(screenSize, 280) -- Fixed proportional height
+    -- Calculate grid for shop cards - responsive layout
+    local minCardWidth = ScreenUtils.getProportionalSize(screenSize, 250)
+    local cardsPerRow = math.max(2, math.min(4, math.floor((panelWidth - 120) / (minCardWidth + 20)))) -- Force 2-4 columns
+    local cardWidth = (panelWidth - 120) / cardsPerRow - 20
+    local cardHeight = ScreenUtils.getProportionalSize(screenSize, 280)
     
     -- Organize crops by rarity categories with unlock requirements (2-3 items per category)
     local categories = {
@@ -162,11 +163,13 @@ local function ShopPanel(props)
     -- Multiply by 1.3 for safety buffer without excessive empty space
     local totalHeight = ((totalRows * cardHeight) + ((totalRows - 1) * 20) + 40) * 1.3
     
-    log.info("Shop Panel: Total items:", #shopSeeds, "Cards per row:", cardsPerRow, "Total rows:", totalRows, "Canvas height:", totalHeight, "Card width:", cardWidth)
+    logInfo("Shop Panel: Total items:", #shopSeeds, "Cards per row:", cardsPerRow, "Total rows:", totalRows, "Canvas height:", totalHeight, "Card width:", cardWidth)
     
     -- Handle crop purchase
     local function handleSeedPurchase(seedType, price)
         if remotes.buy then
+            -- Update the global lastActionTime for purchase detection
+            _G.lastActionTime = tick()
             remotes.buy:FireServer("crops", seedType, price)
             playSound("click")
         end
@@ -193,8 +196,8 @@ local function ShopPanel(props)
     
     return e("Frame", {
         Name = "ShopContainer",
-        Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale + 50), -- Extra space for floating title
-        Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -(panelHeight * scale + 50) / 2),
+        Size = UDim2.new(0, panelWidth, 0, panelHeight + 50), -- Extra space for floating title
+        Position = UDim2.new(0.5, -panelWidth / 2, 0.5, -(panelHeight + 50) / 2),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         Visible = visible,
@@ -203,7 +206,7 @@ local function ShopPanel(props)
         
         ShopPanel = e("Frame", {
             Name = "ShopPanel",
-            Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
+            Size = UDim2.new(0, panelWidth, 0, panelHeight),
             Position = UDim2.new(0, 0, 0, 50), -- Below floating title
             BackgroundColor3 = Color3.fromRGB(240, 245, 255),
             BackgroundTransparency = 0.05,
@@ -416,6 +419,12 @@ local function ShopPanel(props)
                         local colors = rarityColors[rarity] or rarityColors.common
                         local isLocked = not seedData.categoryUnlocked
                         
+                        -- Check if this is the potato card and tutorial is on buy_potato step
+                        local shouldHighlight = false
+                        if tutorialData and tutorialData.step and tutorialData.step.id == "buy_potato" and seedData.type == "potato" then
+                            shouldHighlight = true
+                        end
+                        
                         -- Animation refs - simplified without React.useRef in loop
                         local cropIconRef = {current = nil}
                         local priceIconRef = {current = nil}
@@ -451,7 +460,10 @@ local function ShopPanel(props)
                             
                             -- Card Gradient Background
                             CardGradient = e("UIGradient", {
-                                Color = ColorSequence.new{
+                                Color = shouldHighlight and ColorSequence.new{
+                                    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 200)),
+                                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 150))
+                                } or ColorSequence.new{
                                     ColorSequenceKeypoint.new(0, canAfford and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(240, 240, 240)),
                                     ColorSequenceKeypoint.new(1, canAfford and Color3.fromRGB(248, 252, 255) or Color3.fromRGB(230, 230, 230))
                                 },
@@ -459,9 +471,9 @@ local function ShopPanel(props)
                             }),
                             
                             Stroke = e("UIStroke", {
-                                Color = canAfford and colors[1] or Color3.fromRGB(150, 150, 150),
-                                Thickness = canAfford and 3 or 2,
-                                Transparency = canAfford and 0.1 or 0.3
+                                Color = shouldHighlight and Color3.fromRGB(255, 255, 0) or (canAfford and colors[1] or Color3.fromRGB(150, 150, 150)),
+                                Thickness = shouldHighlight and 4 or (canAfford and 3 or 2),
+                                Transparency = shouldHighlight and 0 or (canAfford and 0.1 or 0.3)
                             }),
                             
                             -- Black outline for card
@@ -477,8 +489,9 @@ local function ShopPanel(props)
                                 if isLocked then
                                     return e("ImageLabel", {
                                         Name = "QuestionIcon",
-                                        Size = UDim2.new(0, 60, 0, 60),
-                                        Position = UDim2.new(0.5, -30, 0, 15),
+                                        Size = UDim2.new(0.3, 0, 0.3, 0), -- 30% of card size
+                                        Position = UDim2.new(0.5, 0, 0.15, 0), -- Centered, 15% from top
+                                        AnchorPoint = Vector2.new(0.5, 0.5),
                                         Image = assets["ui/Question Mark/Question Mark Outline 256.png"] or "",
                                         ImageColor3 = Color3.fromRGB(100, 100, 100),
                                         BackgroundTransparency = 1,
@@ -489,8 +502,9 @@ local function ShopPanel(props)
                                 elseif seedData.visual and seedData.visual.assetId then
                                     return e("ImageLabel", {
                                         Name = "CropIcon",
-                                        Size = UDim2.new(0, 60, 0, 60),
-                                        Position = UDim2.new(0.5, -30, 0, 15),
+                                        Size = UDim2.new(0.3, 0, 0.3, 0), -- 30% of card size
+                                        Position = UDim2.new(0.5, 0, 0.15, 0), -- Centered, 15% from top
+                                        AnchorPoint = Vector2.new(0.5, 0.5),
                                         Image = seedData.visual.assetId:gsub("-64%.png", "-outline-256.png"):gsub("-256%.png", "-outline-256.png"),
                                         BackgroundTransparency = 1,
                                         ScaleType = Enum.ScaleType.Fit,
@@ -500,8 +514,9 @@ local function ShopPanel(props)
                                 else
                                     return e("TextLabel", {
                                         Name = "CropEmoji",
-                                        Size = UDim2.new(1, 0, 0, 50),
-                                        Position = UDim2.new(0, 0, 0, 15),
+                                        Size = UDim2.new(0.35, 0, 0.3, 0), -- 35% width, 30% height of card
+                                        Position = UDim2.new(0.5, 0, 0.15, 0), -- Centered, 15% from top
+                                        AnchorPoint = Vector2.new(0.5, 0.5),
                                         Text = tostring(seedData.visual and seedData.visual.emoji or "🌱"),
                                         TextSize = normalTextSize,
                                         TextWrapped = true,
@@ -527,11 +542,11 @@ local function ShopPanel(props)
                                 ZIndex = 33
                             }),
                             
-                            -- Crop Description (mysterious if locked)
+                            -- Crop Description (proportional positioning)
                             CropDescription = e("TextLabel", {
                                 Name = "CropDescription",
-                                Size = UDim2.new(1, -10, 0, 25),
-                                Position = UDim2.new(0, 5, 0, 100),
+                                Size = UDim2.new(0.9, 0, 0.15, 0), -- 90% card width, 15% card height
+                                Position = UDim2.new(0.05, 0, 0.4, 0), -- 5% from left, 40% from top
                                 Text = isLocked and "???" or (seedData.crop.description or "A wonderful crop to grow!"),
                                 TextColor3 = canAfford and Color3.fromRGB(70, 80, 120) or Color3.fromRGB(100, 100, 100),
                                 TextSize = smallTextSize,
@@ -543,11 +558,11 @@ local function ShopPanel(props)
                                 ZIndex = 33
                             }),
                             
-                            -- Water and Production Stats Table
+                            -- Water and Production Stats Table (proportional positioning)
                             StatsTable = not isLocked and e("Frame", {
                                 Name = "StatsTable",
-                                Size = UDim2.new(1, -10, 0, 30),
-                                Position = UDim2.new(0, 5, 0, 125),
+                                Size = UDim2.new(0.9, 0, 0.12, 0), -- 90% card width, 12% card height
+                                Position = UDim2.new(0.05, 0, 0.55, 0), -- 5% from left, 55% from top
                                 BackgroundTransparency = 1,
                                 ZIndex = 33
                             }, {
@@ -630,11 +645,12 @@ local function ShopPanel(props)
                                 })
                             }) or nil,
                             
-                            -- Rarity Badge
+                            -- Rarity Badge (moved up to avoid overlap)
                             RarityBadge = e("Frame", {
                                 Name = "RarityBadge",
-                                Size = UDim2.new(0, 60, 0, 15),
-                                Position = UDim2.new(0.5, -30, 0, 160),
+                                Size = UDim2.new(0.4, 0, 0.08, 0), -- 40% card width, 8% card height
+                                Position = UDim2.new(0.5, 0, 0.68, 0), -- Centered horizontally, 68% from top
+                                AnchorPoint = Vector2.new(0.5, 0.5),
                                 BackgroundColor3 = colors[1],
                                 BorderSizePixel = 0,
                                 ZIndex = 33
@@ -654,11 +670,11 @@ local function ShopPanel(props)
                                 })
                             }),
                             
-                            -- Buy Button
+                            -- Buy Button (moved up to fit properly)
                             BuyButton = e("TextButton", {
                                 Name = "BuyButton",
-                                Size = UDim2.new(1, -10, 0, 30),
-                                Position = UDim2.new(0, 5, 0, 185),
+                                Size = UDim2.new(0.9, 0, 0.12, 0), -- 90% card width, 12% card height
+                                Position = UDim2.new(0.05, 0, 0.76, 0), -- 5% from left, 76% from top
                                 Text = "",
                                 BackgroundColor3 = canAfford and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(150, 150, 150),
                                 BorderSizePixel = 0,

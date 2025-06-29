@@ -107,6 +107,10 @@ function RemoteManager.initialize()
     buySlotRemote.Name = "BuySlot"
     buySlotRemote.Parent = remoteFolder
     
+    local clearPlotsRemote = Instance.new("RemoteEvent")
+    clearPlotsRemote.Name = "ClearAllPlotDisplays"
+    clearPlotsRemote.Parent = remoteFolder
+    
     local buyPlotRemote = Instance.new("RemoteEvent")
     buyPlotRemote.Name = "BuyPlot"
     buyPlotRemote.Parent = remoteFolder
@@ -163,6 +167,10 @@ function RemoteManager.initialize()
     characterReadyRemote.Name = "CharacterReady"
     characterReadyRemote.Parent = remoteFolder
     
+    local showRewardRemote = Instance.new("RemoteEvent")
+    showRewardRemote.Name = "ShowReward"
+    showRewardRemote.Parent = remoteFolder
+    
     -- Store references
     remotes.plant = plantRemote
     remotes.water = waterRemote
@@ -181,6 +189,7 @@ function RemoteManager.initialize()
     remotes.logCommand = logCommandRemote
     remotes.selectedItem = selectedItemRemote
     remotes.buySlot = buySlotRemote
+    remotes.clearAllPlotDisplays = clearPlotsRemote
     remotes.buyPlot = buyPlotRemote
     remotes.plotUpdate = plotUpdateRemote
     remotes.characterTracking = characterTrackingRemote
@@ -195,6 +204,7 @@ function RemoteManager.initialize()
     remotes.getFarmId = getFarmIdRemote
     remotes.characterReady = characterReadyRemote
     remotes.MusicPreference = musicRemote
+    remotes.showReward = showRewardRemote
     
     -- Also create direct references for client access
     remotes.SyncPlayerData = syncRemote
@@ -272,6 +282,28 @@ function RemoteManager.syncPlayerData(player)
     log.debug("Player data sync sent successfully")
 end
 
+-- Send reward to client (triggers nice reward animation)
+function RemoteManager.sendReward(player, rewardType, amount, description)
+    if not remotes.showReward then
+        log.warn("Show reward remote not found!")
+        return
+    end
+    
+    local rewardData = {
+        type = rewardType,
+        amount = amount,
+        description = description
+    }
+    
+    log.info("Sending reward to", player.Name, "- Type:", rewardType, "Amount:", amount)
+    remotes.showReward:FireClient(player, rewardData)
+end
+
+-- Helper function for money rewards
+function RemoteManager.sendMoneyReward(player, amount, description)
+    RemoteManager.sendReward(player, "money", amount, description)
+end
+
 -- Remote event handlers
 function RemoteManager.onPlantCrop(player, plotId, cropType)
     local success, message = PlotManager.plantCrop(player, plotId, cropType)
@@ -343,6 +375,13 @@ function RemoteManager.onCutPlant(player, plotId)
     local success, message = PlotManager.cutPlant(player, plotId)
     if success then
         RemoteManager.syncPlayerData(player)
+        
+        -- Explicitly update the plot visual to ensure icon is removed
+        local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+        local plot = WorldBuilder.getPlotById(plotId)
+        if plot then
+            WorldBuilder.updatePlotState(plot, "empty", "", "normal")
+        end
     end
     NotificationManager.sendNotification(player, message)
 end
@@ -385,12 +424,14 @@ function RemoteManager.onSellCrop(player, cropType, amount)
         local baseCropType = cropType
         local variationMultiplier = 1
         
-        -- Check for variation prefixes
-        for variationName, variationData in pairs(GameConfig.CropVariations) do
-            if variationName ~= "normal" and cropType:find(variationData.prefix) then
-                baseCropType = cropType:gsub(variationData.prefix, "")
-                variationMultiplier = variationData.multiplier
-                break
+        -- Check for variation prefixes (if variations exist)
+        if GameConfig.CropVariations then
+            for variationName, variationData in pairs(GameConfig.CropVariations) do
+                if variationName ~= "normal" and cropType:find(variationData.prefix) then
+                    baseCropType = cropType:gsub(variationData.prefix, "")
+                    variationMultiplier = variationData.multiplier
+                    break
+                end
             end
         end
         
@@ -442,6 +483,25 @@ function RemoteManager.onPerformRebirth(player)
             log.info("🔄 Refreshing all plots after rebirth for", player.Name)
             -- Call onFarmAssigned to refresh all plot visuals with new ownership
             FarmManager.onFarmAssigned(farmId, player)
+            
+            -- Explicitly clear all plot visuals to remove any lingering text/displays
+            local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+            local playerData = PlayerDataManager.getPlayerData(player)
+            if playerData and playerData.plots then
+                for plotId, plotData in pairs(playerData.plots) do
+                    local plot = WorldBuilder.getPlotById(plotId)
+                    if plot then
+                        -- Force plot to empty state to clear all visual elements
+                        WorldBuilder.updatePlotState(plot, "empty", "", "normal")
+                    end
+                end
+            end
+            
+            -- Send client-side clear command to reset countdown displays
+            local clearPlotsRemote = remotes.clearAllPlotDisplays
+            if clearPlotsRemote then
+                clearPlotsRemote:FireClient(player)
+            end
         end
         
         -- Play special rebirth sound immediately
@@ -636,6 +696,11 @@ function RemoteManager.sendPlotUpdate(plotId, plotState, additionalData)
     if not remotes.plotUpdate then
         log.warn("PlotUpdate remote not available")
         return
+    end
+    
+    -- Update crop accumulation before sending data to ensure it's current
+    if plotState and plotState.state == "ready" then
+        PlotManager.updateCropAccumulation(plotId, plotState)
     end
     
     -- Get plot ownership info via FarmManager
@@ -1000,11 +1065,39 @@ function RemoteManager.onDebugAction(player, action, data)
         local RunService = game:GetService("RunService")
         if RunService:IsStudio() then
             -- Simulate gamepass purchase completion
-            GamepassService.onPurchaseFinished(player, 1277613878, true)
+            GamepassService.onPurchaseFinished(player, 1285355447, true)
             log.info("Debug: Simulated 2x Money gamepass purchase for", player.Name)
             NotificationManager.sendSuccess(player, "🐛 Debug: Simulated gamepass purchase!")
         else
             NotificationManager.sendError(player, "❌ Debug commands only work in Studio")
+        end
+        
+    elseif action == "addProductionBoost" then
+        local boostPercent = data or 100
+        local playerData = PlayerDataManager.getPlayerData(player)
+        if playerData then
+            -- Add debug boost to player data
+            playerData.debugProductionBoost = (playerData.debugProductionBoost or 0) + boostPercent
+            -- Data is automatically saved by ProfileService
+            NotificationManager.sendSuccess(player, "🚀 Debug: +" .. boostPercent .. "% production boost added!")
+            RemoteManager.syncPlayerData(player)
+            log.info("Added " .. boostPercent .. "% production boost to", player.Name, "Total boost:", playerData.debugProductionBoost)
+        else
+            NotificationManager.sendError(player, "❌ Debug: Failed to add production boost")
+        end
+        
+    elseif action == "removeProductionBoost" then
+        local boostPercent = data or 100
+        local playerData = PlayerDataManager.getPlayerData(player)
+        if playerData then
+            -- Remove debug boost from player data
+            playerData.debugProductionBoost = math.max(0, (playerData.debugProductionBoost or 0) - boostPercent)
+            -- Data is automatically saved by ProfileService
+            NotificationManager.sendSuccess(player, "🚀 Debug: -" .. boostPercent .. "% production boost removed!")
+            RemoteManager.syncPlayerData(player)
+            log.info("Removed " .. boostPercent .. "% production boost from", player.Name, "Total boost:", playerData.debugProductionBoost)
+        else
+            NotificationManager.sendError(player, "❌ Debug: Failed to remove production boost")
         end
         
     else

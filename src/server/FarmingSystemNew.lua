@@ -22,6 +22,7 @@ local FarmEnvironment = require(script.Parent.modules.FarmEnvironment)
 local SoundManager = require(script.Parent.modules.SoundManager)
 local RankDisplayManager = require(script.Parent.modules.RankDisplayManager)
 local ChatManager = require(script.Parent.modules.ChatManager)
+local CodesManager = require(script.Parent.modules.CodesManager)
 
 -- Disable auto-spawning so we can control when players spawn
 Players.CharacterAutoLoads = false
@@ -75,6 +76,9 @@ function FarmingSystem.initialize()
             ChatManager.initializePlayer(existingPlayer)
         end)
     end
+    
+    -- Initialize codes system
+    CodesManager.initialize()
     
     -- Build the farm world
     local success, farm = pcall(function()

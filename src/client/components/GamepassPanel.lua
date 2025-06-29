@@ -104,10 +104,10 @@ local function GamepassPanel(props)
     local cardWidth = math.floor((availableWidth / cardsPerRow) - 15)
     local cardHeight = ScreenUtils.getProportionalSize(screenSize, 200) -- Fixed proportional height
     
-    -- Enhanced gamepass data - real gamepasses first, then placeholders
+    -- Real gamepasses only - placeholders removed
     local gamepasses = {
         {
-            id = 1277613878,
+            id = 1285355447,
             key = "moneyMultiplier",
             name = "💰 2x Money Boost",
             description = "Double the money you earn from all crop sales! Stack with other multipliers for massive profits.",
@@ -117,7 +117,17 @@ local function GamepassPanel(props)
             category = "💰 Economy"
         },
         {
-            id = 1276253029,
+            id = 1283605505,
+            key = "productionBoost",
+            name = "⚡ 2x Production",
+            description = "Double the speed of all crop production! All plants grow twice as fast for maximum efficiency.",
+            icon = gamepassData.productionBoost and gamepassData.productionBoost.iconUrl or "rbxassetid://6031068426",
+            price = gamepassData.productionBoost and gamepassData.productionBoost.robux or "R$ 199",
+            gradientColors = {Color3.fromRGB(50, 255, 150), Color3.fromRGB(0, 200, 100)},
+            category = "⚡ Production"
+        },
+        {
+            id = 1286467321,
             key = "flyMode",
             name = "🚁 Fly Mode",
             description = "Soar above your farm with unlimited flight! Fast navigation and perfect farm overview.",
@@ -125,107 +135,6 @@ local function GamepassPanel(props)
             price = gamepassData.flyMode and gamepassData.flyMode.robux or "R$ 149",
             gradientColors = {Color3.fromRGB(100, 255, 255), Color3.fromRGB(50, 200, 255)},
             category = "🚁 Movement"
-        },
-        {
-            id = 123456790,
-            key = "autoHarvest",
-            name = "🤖 Auto Harvest",
-            description = "Automatically harvest ready crops on all your plots. Never miss a harvest again!",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 149",
-            gradientColors = {Color3.fromRGB(50, 200, 255), Color3.fromRGB(0, 150, 255)},
-            category = "🤖 Automation"
-        },
-        {
-            id = 123456791,
-            key = "instantGrowth",
-            name = "⚡ Instant Growth",
-            description = "Skip all growing time and harvest crops immediately. Perfect for quick farming sessions.",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 199",
-            gradientColors = {Color3.fromRGB(255, 100, 200), Color3.fromRGB(255, 50, 150)},
-            category = "⚡ Speed"
-        },
-        {
-            id = 123456792,
-            key = "plotMultiplier",
-            name = "🏡 Extra Plots",
-            description = "Unlock 10 additional plots to expand your farming empire and increase profits.",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 249",
-            gradientColors = {Color3.fromRGB(100, 255, 150), Color3.fromRGB(50, 255, 100)},
-            category = "🏡 Expansion"
-        },
-        {
-            id = 123456793,
-            key = "vipAccess",
-            name = "👑 VIP Access",
-            description = "Exclusive VIP areas, special seeds, priority support, and unique cosmetic items.",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 399",
-            gradientColors = {Color3.fromRGB(200, 100, 255), Color3.fromRGB(150, 50, 255)},
-            category = "👑 Premium"
-        },
-        {
-            id = 123456794,
-            key = "weatherControl",
-            name = "🌦️ Weather Control",
-            description = "Control the weather on your farm! Create perfect growing conditions anytime.",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 179",
-            gradientColors = {Color3.fromRGB(150, 220, 255), Color3.fromRGB(100, 180, 255)},
-            category = "🌦️ Environment"
-        },
-        -- 6 NEW GAMEPASSES
-        {
-            id = 123456795,
-            key = "megaSeeds",
-            name = "🌟 Mega Seeds",
-            description = "Unlock exclusive mega seeds that give 5x more crops and grow in rainbow colors!",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 299",
-            gradientColors = {Color3.fromRGB(255, 255, 100), Color3.fromRGB(255, 200, 50)},
-            category = "🌟 Special"
-        },
-        {
-            id = 123456796,
-            key = "timeWarp",
-            name = "⏰ Time Warp",
-            description = "Speed up time on your entire farm by 3x! Everything grows faster permanently.",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 349",
-            gradientColors = {Color3.fromRGB(255, 150, 255), Color3.fromRGB(200, 100, 255)},
-            category = "⏰ Time"
-        },
-        {
-            id = 123456797,
-            key = "goldTouch",
-            name = "✨ Golden Touch",
-            description = "Everything you touch turns to gold! 10x money from all activities and golden effects.",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 499",
-            gradientColors = {Color3.fromRGB(255, 215, 0), Color3.fromRGB(255, 165, 0)},
-            category = "✨ Legendary"
-        },
-        {
-            id = 123456798,
-            key = "petCompanion",
-            name = "🐱 Pet Companion",
-            description = "Get an adorable pet that follows you around and helps with farming tasks!",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 199",
-            gradientColors = {Color3.fromRGB(255, 150, 200), Color3.fromRGB(255, 100, 150)},
-            category = "🐱 Pets"
-        },
-        {
-            id = 123456800,
-            key = "masterFarmer",
-            name = "🎓 Master Farmer",
-            description = "Unlock all farming techniques, exclusive areas, and become the ultimate farmer!",
-            icon = "rbxassetid://6031068426",
-            price = "R$ 799",
-            gradientColors = {Color3.fromRGB(255, 100, 100), Color3.fromRGB(255, 50, 50)},
-            category = "🎓 Ultimate"
         }
     }
     

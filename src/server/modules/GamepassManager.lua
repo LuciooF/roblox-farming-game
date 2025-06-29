@@ -1,75 +1,41 @@
--- Gamepass Management Module
--- Handles all gamepass/premium functionality and automation features
-
-local GameConfig = require(script.Parent.GameConfig)
+-- Gamepass Management Module (DEPRECATED)
+-- This module was used for testing automation features that are no longer available
+-- Real gamepass functionality is now handled by GamepassService.lua
 
 local GamepassManager = {}
 
--- Storage for testing gamepasses
-local testingGamepasses = {} -- [userId] = {autoPlant, autoWater, autoHarvest, autoSell}
+-- Legacy testing storage (kept for backward compatibility)
+local testingGamepasses = {} -- [userId] = deprecated automation gamepasses
 
--- Check if player has specific gamepass
+-- DEPRECATED: Check if player has specific gamepass 
+-- This functionality has been moved to GamepassService
 function GamepassManager.hasGamepass(player, gamepassType)
-    local userId = tostring(player.UserId)
-    local playerPasses = testingGamepasses[userId] or {}
-    return playerPasses[gamepassType] or false
+    -- All automation gamepasses have been removed
+    -- Return false for any automation gamepass checks
+    return false
 end
 
--- Toggle specific gamepass for testing
+-- DEPRECATED: Toggle specific gamepass for testing
 function GamepassManager.toggleGamepass(player, gamepassType)
-    local userId = tostring(player.UserId)
-    if not testingGamepasses[userId] then
-        testingGamepasses[userId] = {}
-    end
-    
-    testingGamepasses[userId][gamepassType] = not (testingGamepasses[userId][gamepassType] or false)
-    
-    local status = testingGamepasses[userId][gamepassType] and "enabled" or "disabled"
-    local passName = GameConfig.Gamepasses[gamepassType].name
-    
-    return testingGamepasses[userId][gamepassType], passName .. " " .. status .. " for testing!"
+    -- Automation gamepasses no longer exist
+    return false, "Automation gamepasses are no longer available"
 end
 
--- Get all gamepass statuses for player
+-- DEPRECATED: Get all gamepass statuses for player
 function GamepassManager.getGamepassStatuses(player)
-    local userId = tostring(player.UserId)
-    return testingGamepasses[userId] or {}
+    -- Return empty table since automation gamepasses are removed
+    return {}
 end
 
--- Show automation menu to player
+-- DEPRECATED: Show automation menu to player
 function GamepassManager.getAutomationMenuText(player)
-    local statuses = GamepassManager.getGamepassStatuses(player)
-    
-    local message = "AUTOMATION MENU:\n"
-    for passType, config in pairs(GameConfig.Gamepasses) do
-        local status = statuses[passType] and "ON" or "OFF"
-        message = message .. "\n" .. config.name .. ": " .. status
-    end
-    message = message .. "\n\nUse Premium Panel to toggle!"
-    
-    return message
+    return "AUTOMATION MENU:\n\nNo automation gamepasses available.\n\nReal gamepasses: 2x Money Boost & Fly Mode\nAvailable in the Gamepass Panel!"
 end
 
--- Validate gamepass for automation action
+-- DEPRECATED: Validate gamepass for automation action
 function GamepassManager.validateAutomation(player, actionType)
-    local gamepassMap = {
-        plant = "autoPlant",
-        water = "autoWater", 
-        harvest = "autoHarvest",
-        sell = "autoSell"
-    }
-    
-    local requiredPass = gamepassMap[actionType]
-    if not requiredPass then
-        return false, "Invalid automation type"
-    end
-    
-    if not GamepassManager.hasGamepass(player, requiredPass) then
-        local passName = GameConfig.Gamepasses[requiredPass].name
-        return false, passName .. " gamepass required!"
-    end
-    
-    return true, "Automation authorized"
+    -- All automation features have been removed
+    return false, "Automation features are no longer available"
 end
 
 return GamepassManager

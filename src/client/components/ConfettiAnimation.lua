@@ -50,7 +50,6 @@ local function ConfettiAnimation(props)
     React.useEffect(function()
         if visible then
             -- Auto-hide after animation completes
-            local timer = task.wait(3) -- Animation duration
             task.spawn(function()
                 task.wait(3)
                 if onComplete then
@@ -80,25 +79,27 @@ local function ConfettiAnimation(props)
             -- Animate the particle
             [React.Event.AncestryChanged] = function(gui)
                 if gui.Parent then
-                    task.wait(particle.delay)
-                    
-                    -- Fall animation
-                    local fallTween = TweenService:Create(gui, 
-                        TweenInfo.new(2.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-                        {
-                            Position = UDim2.new(0, particle.endX, 0, particle.endY),
-                            Rotation = particle.rotation + 720, -- Two full rotations
-                            Transparency = 1
-                        }
-                    )
-                    
-                    fallTween:Play()
-                    
-                    -- Clean up after animation
-                    fallTween.Completed:Connect(function()
-                        if gui and gui.Parent then
-                            gui:Destroy()
-                        end
+                    task.spawn(function()
+                        task.wait(particle.delay)
+                        
+                        -- Fall animation
+                        local fallTween = TweenService:Create(gui, 
+                            TweenInfo.new(2.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                            {
+                                Position = UDim2.new(0, particle.endX, 0, particle.endY),
+                                Rotation = particle.rotation + 720, -- Two full rotations
+                                Transparency = 1
+                            }
+                        )
+                        
+                        fallTween:Play()
+                        
+                        -- Clean up after animation
+                        fallTween.Completed:Connect(function()
+                            if gui and gui.Parent then
+                                gui:Destroy()
+                            end
+                        end)
                     end)
                 end
             end
@@ -128,7 +129,7 @@ local function ConfettiAnimation(props)
             Name = "CelebrationText",
             Size = UDim2.new(0, 400, 0, 80),
             Position = UDim2.new(0.5, -200, 0.3, -40),
-            Text = "🎉 GAMEPASS PURCHASED! 🎉",
+            Text = "🎉 GAMEPASS\nPURCHASED! 🎉",
             TextColor3 = Color3.fromRGB(255, 215, 0),
             TextScaled = true,
             BackgroundTransparency = 1,
@@ -140,27 +141,29 @@ local function ConfettiAnimation(props)
             -- Animate celebration text
             [React.Event.AncestryChanged] = function(gui)
                 if gui.Parent then
-                    -- Pulse animation
-                    local pulseTween = TweenService:Create(gui,
-                        TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
-                        {
-                            Size = UDim2.new(0, 450, 0, 90)
-                        }
-                    )
-                    
-                    pulseTween:Play()
-                    
-                    -- Fade out after 2 seconds
-                    task.wait(2)
-                    local fadeOutTween = TweenService:Create(gui,
-                        TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                        {
-                            TextTransparency = 1,
-                            TextStrokeTransparency = 1
-                        }
-                    )
-                    
-                    fadeOutTween:Play()
+                    task.spawn(function()
+                        -- Pulse animation
+                        local pulseTween = TweenService:Create(gui,
+                            TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+                            {
+                                Size = UDim2.new(0, 450, 0, 90)
+                            }
+                        )
+                        
+                        pulseTween:Play()
+                        
+                        -- Fade out after 2 seconds
+                        task.wait(2)
+                        local fadeOutTween = TweenService:Create(gui,
+                            TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                            {
+                                TextTransparency = 1,
+                                TextStrokeTransparency = 1
+                            }
+                        )
+                        
+                        fadeOutTween:Play()
+                    end)
                 end
             end
         })

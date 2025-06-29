@@ -36,36 +36,30 @@ local function SeedDetailModal(props)
         corn = "A single corn plant can produce 1-2 ears, and each ear has about 800 kernels!"
     }
     
-    -- Function to format weather effects based on multipliers
-    local function getWeatherEffects(weatherMultipliers)
-        local effects = {}
-        for weather, multiplier in pairs(weatherMultipliers) do
-            local growthText, profitText
-            
-            if multiplier > 1.3 then
-                growthText = string.format("%.1fx faster", multiplier)
-                profitText = string.format("+%d%%", math.floor((multiplier - 1) * 100))
-            elseif multiplier >= 1.1 then
-                growthText = string.format("%.1fx faster", multiplier)
-                profitText = string.format("+%d%%", math.floor((multiplier - 1) * 100))
-            elseif multiplier >= 0.9 then
-                growthText = "Normal speed"
-                profitText = "Normal"
-            else
-                growthText = string.format("%.1fx slower", 2 - multiplier)
-                profitText = string.format("-%d%%", math.floor((1 - multiplier) * 100))
-            end
-            
-            local waterText = (weather == "Rainy" or weather == "Thunderstorm") and "Auto-watered" or 
-                             (weather == "Sunny" and "Needs more water") or "Normal"
-            
-            effects[weather] = {
-                growth = growthText,
-                water = waterText,
-                profit = profitText
+    -- Function to get global weather effects (same for all crops)
+    local function getGlobalWeatherEffects()
+        return {
+            Sunny = {
+                growth = "Normal speed",
+                water = "Needs more water", 
+                profit = "Normal"
+            },
+            Rainy = {
+                growth = "90% speed",
+                water = "Auto-watered",
+                profit = "-10%"
+            },
+            Cloudy = {
+                growth = "Normal speed", 
+                water = "Normal",
+                profit = "Normal"
+            },
+            Thunderstorm = {
+                growth = "70% speed",
+                water = "Auto-watered", 
+                profit = "-30%"
             }
-        end
-        return effects
+        }
     end
     
     -- Function to determine difficulty based on unlock level and rarity
@@ -90,7 +84,7 @@ local function SeedDetailModal(props)
         sellPrice = cropData.basePrice,
         difficulty = getDifficulty(cropData.unlockLevel, cropData.rarity),
         color = cropData.color,
-        weatherEffects = getWeatherEffects(cropData.weatherMultipliers),
+        weatherEffects = getGlobalWeatherEffects(),
         waterNeeded = cropData.waterNeeded,
         rarity = cropData.rarity,
         unlockLevel = cropData.unlockLevel

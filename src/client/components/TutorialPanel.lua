@@ -144,7 +144,7 @@ local function TutorialPanel(props)
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         Visible = visible,
-        ZIndex = 60,
+        ZIndex = 20, -- Lowered from 60 to 20 so other panels can appear on top
         ref = shakeRef
     }, {
         -- Floating Title (positioned on top left, half in/half out like GP UI)
@@ -154,7 +154,7 @@ local function TutorialPanel(props)
             Position = UDim2.new(0, -10, 0, 10), -- Top left, half in/half out of main panel
             BackgroundColor3 = Color3.fromRGB(100, 150, 255),
             BorderSizePixel = 0,
-            ZIndex = 62
+            ZIndex = 22
         }, {
             Corner = e("UICorner", {
                 CornerRadius = UDim.new(0, 12)
@@ -178,7 +178,7 @@ local function TutorialPanel(props)
                 TextScaled = true,
                 BackgroundTransparency = 1,
                 Font = Enum.Font.GothamBold,
-                ZIndex = 63
+                ZIndex = 23
             }, {
                 TextStroke = e("UIStroke", {
                     Color = Color3.fromRGB(0, 0, 0),
@@ -196,7 +196,7 @@ local function TutorialPanel(props)
             BackgroundColor3 = Color3.fromRGB(245, 250, 255),
             BackgroundTransparency = 0.05,
             BorderSizePixel = 0,
-            ZIndex = 61
+            ZIndex = 21
         }, {
             Corner = e("UICorner", {
                 CornerRadius = UDim.new(0, 15)
@@ -222,7 +222,7 @@ local function TutorialPanel(props)
                 Size = UDim2.new(1, -20, 1, -50), -- Leave space for progress bar
                 Position = UDim2.new(0, 10, 0, 10),
                 BackgroundTransparency = 1,
-                ZIndex = 62
+                ZIndex = 22
             }, {
                 -- Step Title
                 StepTitle = e("TextLabel", {
@@ -235,7 +235,7 @@ local function TutorialPanel(props)
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
                     TextXAlignment = Enum.TextXAlignment.Left,
-                    ZIndex = 62
+                    ZIndex = 22
                 }),
                 
                 -- Step Counter with Percentage
@@ -249,13 +249,13 @@ local function TutorialPanel(props)
                     BackgroundTransparency = 1,
                     Font = Enum.Font.Gotham,
                     TextXAlignment = Enum.TextXAlignment.Right,
-                    ZIndex = 62
+                    ZIndex = 22
                 }),
                 
                 -- Description
                 Description = e("TextLabel", {
                     Name = "Description",
-                    Size = UDim2.new(1, 0, 0, step.instruction and 25 or 35),
+                    Size = UDim2.new(1, 0, 0, step.instruction and 35 or 45), -- Reduced height to make room for instruction
                     Position = UDim2.new(0, 0, 0, 25),
                     Text = stepNumber == 1 and (step.description .. "\n\nClick 'Start Tutorial' to begin.") or step.description,
                     TextColor3 = Color3.fromRGB(70, 80, 120),
@@ -265,14 +265,14 @@ local function TutorialPanel(props)
                     TextXAlignment = Enum.TextXAlignment.Left,
                     TextYAlignment = Enum.TextYAlignment.Top,
                     TextWrapped = true,
-                    ZIndex = 62
+                    ZIndex = 22
                 }),
                 
                 -- Instruction (how to complete the step) - Allow text wrapping with padding
                 Instruction = step.instruction and e("TextLabel", {
                     Name = "Instruction",
-                    Size = UDim2.new(1, 0, 0, 25), -- Height for instruction
-                    Position = UDim2.new(0, 0, 0, 50),
+                    Size = UDim2.new(1, 0, 0, 30), -- Height for text wrapping
+                    Position = UDim2.new(0, 0, 0, 65), -- Moved down to avoid overlap with description
                     Text = "📍 " .. (step.instruction and step.instruction:gsub("Click on any gray plot", "Follow the yellow trail to the FREE plot and click on it") or step.instruction),
                     TextColor3 = Color3.fromRGB(100, 150, 255),
                     TextSize = isMobile and 11 or 13,
@@ -281,18 +281,18 @@ local function TutorialPanel(props)
                     TextXAlignment = Enum.TextXAlignment.Left,
                     TextYAlignment = Enum.TextYAlignment.Top,
                     TextWrapped = true, -- Allow text wrapping
-                    ZIndex = 62
+                    ZIndex = 22
                 }) or nil,
                 
-                -- Reward Display (green rectangle in bottom right, half outside UI)
+                -- Reward Display (green rectangle aligned with skip button, fully inside UI)
                 RewardDisplay = step.reward and step.reward.money > 0 and e("Frame", {
                     Name = "RewardDisplay",
-                    Size = UDim2.new(0, 100, 0, 25),
-                    Position = UDim2.new(1, -50, 1, -12), -- Half outside the UI, similar to floating title
+                    Size = UDim2.new(0, 80, 0, 28), -- Same height as buttons
+                    Position = UDim2.new(1, -90, 1, -35), -- Right side of card, same line as buttons
                     BackgroundColor3 = Color3.fromRGB(50, 180, 50),
                     BackgroundTransparency = 0.05,
                     BorderSizePixel = 0,
-                    ZIndex = 63
+                    ZIndex = 23
                 }, {
                     Corner = e("UICorner", {
                         CornerRadius = UDim.new(0, 10)
@@ -314,13 +314,13 @@ local function TutorialPanel(props)
                         Size = UDim2.new(1, 0, 1, 0),
                         Text = "🎁 $" .. step.reward.money,
                         TextColor3 = Color3.fromRGB(255, 255, 255),
-                        TextSize = 11,
+                        TextSize = 12,
                         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
                         TextStrokeTransparency = 0.3,
                         BackgroundTransparency = 1,
                         Font = Enum.Font.GothamBold,
                         TextXAlignment = Enum.TextXAlignment.Center,
-                        ZIndex = 64
+                        ZIndex = 24
                     })
                 }) or nil,
                 
@@ -328,12 +328,12 @@ local function TutorialPanel(props)
                 SkipButton = e("TextButton", {
                     Name = "SkipButton",
                     Size = UDim2.new(0, 60, 0, 28),
-                    Position = UDim2.new(0, 0, 1, -40), -- More padding from bottom and instruction
+                    Position = UDim2.new(0, 0, 1, -35), -- Moved down to avoid covering text
                     Text = "",
                     BackgroundColor3 = Color3.fromRGB(150, 150, 150),
                     BorderSizePixel = 0,
                     AutoButtonColor = false,
-                    ZIndex = 63,
+                    ZIndex = 23,
                     [React.Event.Activated] = handleSkipRequest
                 }, {
                     Corner = e("UICorner", {
@@ -363,7 +363,7 @@ local function TutorialPanel(props)
                         TextStrokeTransparency = 0,
                         BackgroundTransparency = 1,
                         Font = Enum.Font.GothamBold,
-                        ZIndex = 64
+                        ZIndex = 24
                     })
                 }),
                 
@@ -371,12 +371,12 @@ local function TutorialPanel(props)
                 NextButton = step.action == "continue" and e("TextButton", {
                     Name = "NextButton",
                     Size = UDim2.new(0, nextButtonWidth, 0, 28),
-                    Position = UDim2.new(1, -nextButtonWidth, 1, -40), -- More padding from bottom and instruction
+                    Position = UDim2.new(1, -nextButtonWidth, 1, -35), -- Moved down to avoid covering text
                     Text = "",
                     BackgroundColor3 = Color3.fromRGB(50, 150, 50),
                     BorderSizePixel = 0,
                     AutoButtonColor = false,
-                    ZIndex = 63,
+                    ZIndex = 23,
                     [React.Event.Activated] = onNext
                 }, {
                     Corner = e("UICorner", {
@@ -406,7 +406,7 @@ local function TutorialPanel(props)
                         TextStrokeTransparency = 0,
                         BackgroundTransparency = 1,
                         Font = Enum.Font.GothamBold,
-                        ZIndex = 64
+                        ZIndex = 24
                     })
                 }) or nil
             }),
@@ -417,7 +417,7 @@ local function TutorialPanel(props)
                 Size = UDim2.new(1, -20, 0, 20),
                 Position = UDim2.new(0, 10, 1, -25),
                 BackgroundTransparency = 1,
-                ZIndex = 62
+                ZIndex = 22
             }, {
                 ProgressBG = e("Frame", {
                     Name = "ProgressBackground",
@@ -425,7 +425,7 @@ local function TutorialPanel(props)
                     Position = UDim2.new(0, 0, 0, 7),
                     BackgroundColor3 = Color3.fromRGB(200, 210, 230),
                     BorderSizePixel = 0,
-                    ZIndex = 62
+                    ZIndex = 22
                 }, {
                     Corner = e("UICorner", {
                         CornerRadius = UDim.new(0, 3)
@@ -436,7 +436,7 @@ local function TutorialPanel(props)
                         Position = UDim2.new(0, 0, 0, 0),
                         BackgroundColor3 = Color3.fromRGB(100, 150, 255),
                         BorderSizePixel = 0,
-                        ZIndex = 63
+                        ZIndex = 23
                     }, {
                         Corner = e("UICorner", {
                             CornerRadius = UDim.new(0, 3)
@@ -458,7 +458,7 @@ local function TutorialPanel(props)
                 Position = UDim2.new(0.5, -140, 0.5, -60),
                 BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                 BorderSizePixel = 0,
-                ZIndex = 70
+                ZIndex = 30
             }, {
                 Corner = e("UICorner", {
                     CornerRadius = UDim.new(0, 12)
@@ -486,7 +486,7 @@ local function TutorialPanel(props)
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
                     TextXAlignment = Enum.TextXAlignment.Center,
-                    ZIndex = 71
+                    ZIndex = 31
                 }),
                 
                 -- Warning Message
@@ -501,7 +501,7 @@ local function TutorialPanel(props)
                     TextXAlignment = Enum.TextXAlignment.Center,
                     TextYAlignment = Enum.TextYAlignment.Top,
                     TextWrapped = true,
-                    ZIndex = 71
+                    ZIndex = 31
                 }),
                 
                 -- Cancel Button
@@ -512,7 +512,7 @@ local function TutorialPanel(props)
                     BackgroundColor3 = Color3.fromRGB(150, 150, 150),
                     BorderSizePixel = 0,
                     AutoButtonColor = false,
-                    ZIndex = 72,
+                    ZIndex = 32,
                     [React.Event.Activated] = handleSkipCancel
                 }, {
                     Corner = e("UICorner", {
@@ -527,7 +527,7 @@ local function TutorialPanel(props)
                         TextStrokeTransparency = 0,
                         BackgroundTransparency = 1,
                         Font = Enum.Font.GothamBold,
-                        ZIndex = 73
+                        ZIndex = 33
                     })
                 }),
                 
@@ -539,7 +539,7 @@ local function TutorialPanel(props)
                     BackgroundColor3 = Color3.fromRGB(200, 50, 50),
                     BorderSizePixel = 0,
                     AutoButtonColor = false,
-                    ZIndex = 72,
+                    ZIndex = 32,
                     [React.Event.Activated] = handleSkipConfirm
                 }, {
                     Corner = e("UICorner", {
@@ -554,7 +554,7 @@ local function TutorialPanel(props)
                         TextStrokeTransparency = 0,
                         BackgroundTransparency = 1,
                         Font = Enum.Font.GothamBold,
-                        ZIndex = 73
+                        ZIndex = 33
                     })
                 })
             }) or nil

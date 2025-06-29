@@ -19,7 +19,7 @@ local TUTORIAL_STEPS = {
         title = "🌱 Welcome to the Farm!",
         description = "Welcome to your new farming adventure! Let's learn the basics.",
         instruction = "Click 'Start Tutorial' to begin or 'Skip' to skip the tutorial (you'll miss rewards!)",
-        reward = {money = 25},
+        reward = {money = 5},
         action = "continue",
         arrowTarget = nil -- No arrow for welcome screen
     },
@@ -28,7 +28,7 @@ local TUTORIAL_STEPS = {
         title = "🏡 Your First Plot",
         description = "You start with no plots! Let's get your first plot for FREE.",
         instruction = "Follow the yellow trail to the FREE plot and press E to claim it!",
-        reward = {money = 25},
+        reward = {money = 5},
         action = "buy_plot",
         arrowTarget = {type = "plot", plotId = nil} -- Points to closest unowned plot
     },
@@ -37,7 +37,7 @@ local TUTORIAL_STEPS = {
         title = "🌱 Plant Your First Crop",
         description = "Perfect! You own a plot. Now plant one of your starter crops.",
         instruction = "Walk to your brown plot and press E to plant a crop",
-        reward = {money = 30},
+        reward = {money = 10},
         action = "plant_seed",
         arrowTarget = {type = "plot", plotId = 1} -- Points to first owned plot
     },
@@ -46,7 +46,7 @@ local TUTORIAL_STEPS = {
         title = "💧 Water Your Plant",
         description = "Excellent! Your seed is planted. Now it needs water to grow.",
         instruction = "Open the Plot UI (press E on the plot) and click Water Crops",
-        reward = {money = 30},
+        reward = {money = 10},
         action = "water_plant",
         arrowTarget = {type = "plot", plotId = 1} -- Points to planted plot
     },
@@ -55,7 +55,7 @@ local TUTORIAL_STEPS = {
         title = "🌾 Harvest Your Crop",
         description = "When your plant sparkles with particles, it's ready to harvest!",
         instruction = "Wait for your crop to grow and harvest it!",
-        reward = {money = 40},
+        reward = {money = 15},
         action = "harvest_crop",
         arrowTarget = {type = "plot", plotId = 1} -- Points to ready plot
     },
@@ -64,37 +64,37 @@ local TUTORIAL_STEPS = {
         title = "💰 Sell Your Crops",
         description = "Great harvest! Now let's turn those crops into money.",
         instruction = "Click the inventory button (🎒) then click 'Sell All'",
-        reward = {money = 50},
+        reward = {money = 20},
         action = "sell_crops",
         arrowTarget = nil -- No arrow, just shiny effect
     },
     {
-        id = "buy_corn",
-        title = "🌽 The Corn Challenge",
-        description = "Now for the real test! Corn costs $120 but sells for much more.",
-        instruction = "Farm and sell crops until you can buy corn from the shop!",
-        reward = {money = 100},
+        id = "stack_plants",
+        title = "📚 Learn to Stack Plants",
+        description = "Pro tip: You can plant multiple of the same crop on one plot to double your production!",
+        instruction = "Plant another wheat seed on the same plot you just harvested to stack it!",
+        reward = {money = 15},
+        action = "plant_seed",
+        arrowTarget = {type = "plot", plotId = 1} -- Points to the plot they just harvested
+    },
+    {
+        id = "buy_potato",
+        title = "🥔 The Potato Challenge",
+        description = "Now for the real test! Potato is unlocked at 1 rebirth and sells for much more than starter crops.",
+        instruction = "Farm and sell crops until you can buy potato from the shop!",
+        reward = {money = 25},
         action = "buy_crop",
-        target = "corn",
+        target = "potato",
         arrowTarget = nil -- No arrow, just shiny effect
     },
     {
-        id = "plant_corn",
-        title = "🌽 Plant Your Corn",
-        description = "Excellent work saving up! Corn takes longer to grow but it's worth it.",
-        instruction = "Plant your corn seed in an empty plot",
-        reward = {money = 50},
-        action = "plant_corn",
+        id = "plant_potato",
+        title = "🥔 Plant Your Potato",
+        description = "Excellent work saving up! Potato takes longer to grow but it's worth it.",
+        instruction = "Plant your potato seed in an empty plot",
+        reward = {money = 30},
+        action = "plant_potato",
         arrowTarget = {type = "plot", plotId = nil} -- Points to any empty plot
-    },
-    {
-        id = "first_rebirth",
-        title = "🔄 Get Your First Rebirth!",
-        description = "Time for the ultimate test! Rebirths unlock new content and multipliers.",
-        instruction = "Farm until you have $10,000, then click the Rebirth button!",
-        reward = {money = 500},
-        action = "perform_rebirth",
-        arrowTarget = nil -- No arrow, step 9 should clean up previous arrows
     }
 }
 
@@ -138,8 +138,100 @@ function TutorialManager.initializePlayer(player)
         log.info("Starting new tutorial for player", player.Name)
     end
     
+    -- Validate and skip completed steps before sending tutorial
+    TutorialManager.validateAndSkipCompletedSteps(player)
+    
     -- Send current tutorial step to client
     TutorialManager.sendTutorialStep(player)
+end
+
+-- Validate and skip already completed steps
+function TutorialManager.validateAndSkipCompletedSteps(player)
+    local tutorialProgress = PlayerDataManager.getTutorialProgress(player)
+    if not tutorialProgress or tutorialProgress.completed then return end
+    
+    local playerData = PlayerDataManager.getPlayerData(player)
+    if not playerData then return end
+    
+    local currentStep = tutorialProgress.currentStep
+    local skippedSteps = false
+    
+    -- Check each step to see if it's already completed
+    while currentStep <= #TUTORIAL_STEPS do
+        local step = TUTORIAL_STEPS[currentStep]
+        if not step then break end
+        
+        local shouldSkip = false
+        
+        -- Check if step prerequisites are already met
+        if step.id == "first_plot" then
+            -- Skip if player already owns any plots
+            local ownedPlots = PlayerDataManager.getUnlockedPlots(player)
+            if ownedPlots > 0 then
+                shouldSkip = true
+                log.info("Skipping plot tutorial step - player already owns", ownedPlots, "plots")
+            end
+        elseif step.id == "plant_seed" then
+            -- Skip if player has any planted crops or accumulated crops
+            if playerData.plots then
+                for _, plotState in pairs(playerData.plots) do
+                    if plotState.state == "planted" or plotState.state == "growing" or plotState.state == "ready" or (plotState.accumulatedCrops and plotState.accumulatedCrops > 0) then
+                        shouldSkip = true
+                        log.info("Skipping plant tutorial step - player already has planted crops")
+                        break
+                    end
+                end
+            end
+        elseif step.id == "water_plant" then
+            -- Skip if player has watered plants
+            if playerData.plots then
+                for _, plotState in pairs(playerData.plots) do
+                    if plotState.wateredCount and plotState.wateredCount > 0 then
+                        shouldSkip = true
+                        log.info("Skipping water tutorial step - player already has watered plants")
+                        break
+                    end
+                end
+            end
+        elseif step.id == "harvest_crop" then
+            -- Skip if player has money from selling or has crops in inventory
+            if playerData.money > 25 or (playerData.inventory and playerData.inventory.crops) then
+                local hasCrops = false
+                for cropType, count in pairs(playerData.inventory.crops or {}) do
+                    if count > 1 then -- More than starting wheat
+                        hasCrops = true
+                        break
+                    end
+                end
+                if hasCrops then
+                    shouldSkip = true
+                    log.info("Skipping harvest tutorial step - player already has harvested crops")
+                end
+            end
+        end
+        
+        if shouldSkip then
+            -- Mark step as completed and move to next
+            PlayerDataManager.markTutorialStepCompleted(player, step.id, 0) -- No reward for skipped steps
+            currentStep = currentStep + 1
+            skippedSteps = true
+        else
+            -- Found a step that's not completed yet
+            break
+        end
+    end
+    
+    if skippedSteps then
+        -- Update the current step
+        PlayerDataManager.setTutorialStep(player, currentStep)
+        log.info("Skipped tutorial steps for", player.Name, "- now at step", currentStep)
+        
+        -- Check if we've completed all steps
+        if currentStep > #TUTORIAL_STEPS then
+            TutorialManager.completeTutorial(player)
+            return
+        end
+    end
 end
 
 -- Send current tutorial step to client
@@ -148,6 +240,15 @@ function TutorialManager.sendTutorialStep(player)
     if not tutorialProgress then return end
     
     if tutorialProgress.completed then
+        return
+    end
+    
+    -- Check if current step is already completed, and skip if needed
+    TutorialManager.validateAndSkipCompletedSteps(player)
+    
+    -- Re-get tutorial progress in case it was updated by validation
+    tutorialProgress = PlayerDataManager.getTutorialProgress(player)
+    if not tutorialProgress or tutorialProgress.completed then
         return
     end
     
@@ -190,8 +291,8 @@ function TutorialManager.progressTutorial(player, action, data)
     
     -- Check if action matches expected action OR if sending "continue" to a step that allows it
     if currentStep.action ~= action and not (currentStep.action == "continue" and action == "continue") then
-        -- Special override for plant_corn
-        if not (currentStep.action == "plant_corn" and action == "plant_seed") then
+        -- Special override for plant_potato
+        if not (currentStep.action == "plant_potato" and action == "plant_seed") then
             log.debug("Tutorial action mismatch: expected", currentStep.action, "got", action)
             return
         end
@@ -207,15 +308,15 @@ function TutorialManager.progressTutorial(player, action, data)
         log.debug("Buy crop passed target check")
     end
     
-    -- Check for plant_corn action (when planting corn specifically)
-    if action == "plant_seed" and currentStep.action == "plant_corn" then
-        if not data or data.seedType ~= "corn" then
-            log.debug("Plant corn check failed - expected corn, got", data and data.seedType or "nil")
+    -- Check for plant_potato action (when planting potato specifically)
+    if action == "plant_seed" and currentStep.action == "plant_potato" then
+        if not data or data.seedType ~= "potato" then
+            log.debug("Plant potato check failed - expected potato, got", data and data.seedType or "nil")
             return
         end
-        log.debug("Plant corn check passed")
+        log.debug("Plant potato check passed")
         -- Override the action to match the expected action
-        action = "plant_corn"
+        action = "plant_potato"
     end
     
     -- Mark current step as completed and give reward
@@ -223,8 +324,10 @@ function TutorialManager.progressTutorial(player, action, data)
     if currentStep.reward and currentStep.reward.money > 0 then
         rewardAmount = currentStep.reward.money
         PlayerDataManager.addMoney(player, rewardAmount)
-        NotificationManager.sendMoney(player, 
-            "🎉 Tutorial Reward: +" .. rewardAmount .. " coins!")
+        
+        -- Use the rewards system for nice animations
+        local rewardDescription = "🎉 Tutorial Step Complete!\n" .. currentStep.title
+        RemoteManager.sendMoneyReward(player, rewardAmount, rewardDescription)
     end
     
     -- Mark step as completed in persistent storage
@@ -329,10 +432,10 @@ function TutorialManager.checkGameAction(player, action, data)
         return
     end
     
-    -- Special case: Check if this is a plant_corn step and we're planting corn
-    if currentStep.action == "plant_corn" and action == "plant_seed" then
-        if data and data.seedType == "corn" then
-            log.warn("🌽 Special case: Planting corn detected for plant_corn step!")
+    -- Special case: Check if this is a plant_potato step and we're planting potato
+    if currentStep.action == "plant_potato" and action == "plant_seed" then
+        if data and data.seedType == "potato" then
+            log.warn("🥔 Special case: Planting potato detected for plant_potato step!")
             TutorialManager.progressTutorial(player, action, data)
             return
         end

@@ -12,6 +12,7 @@ local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 local Modal = require(script.Parent.Modal)
+local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 
 local player = Players.LocalPlayer
 
@@ -82,6 +83,7 @@ end
 
 local function BoostPanel(props)
     local playerData = props.playerData
+    local gamepassData = props.gamepassData or {}
     local weatherData = props.weatherData or {}
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
@@ -116,18 +118,58 @@ local function BoostPanel(props)
     -- Gamepass 2x Money Boost
     if playerData.gamepasses and playerData.gamepasses.moneyMultiplier then
         table.insert(boosts, {
-            icon = "💰",
+            icon = gamepassData.moneyMultiplier and gamepassData.moneyMultiplier.iconUrl or "rbxassetid://1277613878",
             name = "2x Money Boost",
             effect = "+100%",
             effects = {
                 "Double money from all crop sales",
                 "Permanent gamepass benefit",
-                "Stacks with other boosts"
+                "Stacks with other boosts",
+                "Rainbow money popup effects",
+                "Bouncing 2x indicator on money display"
             },
-            description = "Your 2x Money Boost gamepass doubles all money earned from selling crops!",
+            description = "Your 2x Money Boost gamepass doubles all money earned from selling crops and adds special visual effects!",
             duration = "Permanent",
             color = Color3.fromRGB(255, 215, 0), -- Gold color
             category = "💎 Premium"
+        })
+    end
+    
+    -- Gamepass 2x Production Boost
+    if playerData.gamepasses and playerData.gamepasses.productionBoost then
+        table.insert(boosts, {
+            icon = gamepassData.productionBoost and gamepassData.productionBoost.iconUrl or "rbxassetid://1283605505",
+            name = "2x Production",
+            effect = "+100%",
+            effects = {
+                "Double speed of all crop production",
+                "All plants grow twice as fast",
+                "More crops per hour",
+                "Permanent gamepass benefit",
+                "Stacks with other production boosts"
+            },
+            description = "Your 2x Production gamepass doubles the speed of all crop growth, meaning faster harvests and more profits!",
+            duration = "Permanent",
+            color = Color3.fromRGB(0, 255, 127), -- Spring green color
+            category = "💎 Premium"
+        })
+    end
+    
+    -- Debug Production Boost (if active)
+    if playerData.debugProductionBoost and playerData.debugProductionBoost > 0 then
+        table.insert(boosts, {
+            icon = "🐛",
+            name = "Debug Production Boost",
+            effect = "+" .. playerData.debugProductionBoost .. "%",
+            effects = {
+                "+" .. playerData.debugProductionBoost .. "% faster crop growth",
+                "Debug boost for testing",
+                "Stacks with online boost"
+            },
+            description = "DEBUG: This is a temporary boost for testing production rates!",
+            duration = "Until removed",
+            color = Color3.fromRGB(255, 0, 255), -- Magenta for debug
+            category = "🐛 Debug"
         })
     end
     
@@ -135,32 +177,33 @@ local function BoostPanel(props)
     table.insert(boosts, {
         icon = "⏰",
         name = "Online Time",
-        effect = "+5%",
+        effect = "+100%",
         effects = {
-            "+5% money from selling crops",
-            "+10% chance for bonus crops when harvesting",
-            "+3% faster crop growth timers"
+            "+100% faster crop growth (2x speed)",
+            "Crops grow twice as fast while online",
+            "Essential for efficient farming"
         },
-        description = "Being online gives you multiple farming advantages! You earn more money, get bonus crops, and crops grow faster.",
+        description = "Being online doubles your crop growth speed! This is the most important boost for active farmers.",
         duration = "While online",
         color = Color3.fromRGB(100, 255, 100),
         category = "🌟 Activity"
     })
     
-    -- Weather-based boosts
+    -- Weather-based boosts (affects all crops equally)
     if weatherData.current then
         local weatherName = weatherData.current.name
         if weatherName == "Rainy" or weatherName == "Thunderstorm" then
+            local multiplier = weatherName == "Rainy" and "90%" or "70%"
             table.insert(boosts, {
                 icon = "💧",
-                name = "Rainy Weather",
-                effect = "AUTO",
+                name = weatherName .. " Weather",
+                effect = multiplier,
                 effects = {
                     "Free automatic watering of all crops",
-                    "Root vegetables (carrot, potato) grow 20% faster",
+                    "All plants grow at " .. multiplier .. " speed",
                     "No water evaporation during rain"
                 },
-                description = "Rainy weather provides multiple benefits for your farm! Perfect for growing root vegetables.",
+                description = "Rainy weather provides automatic watering but slightly slower growth for all crops.",
                 duration = "While " .. weatherName:lower(),
                 color = Color3.fromRGB(100, 150, 255),
                 category = "🌦️ Weather"
@@ -169,15 +212,28 @@ local function BoostPanel(props)
             table.insert(boosts, {
                 icon = "☀️",
                 name = "Sunny Weather",
-                effect = "+15%",
+                effect = "+50%",
                 effects = {
-                    "Wheat, corn & tomato grow 20% faster",
-                    "+15% chance for golden crops (worth 2x)",
+                    "All plants grow 50% faster",
                     "Plants require 30% more watering"
                 },
-                description = "Sunny weather accelerates growth for sun-loving crops and increases chances of premium harvests!",
+                description = "Sunny weather boosts growth speed for all crops!",
                 duration = "While sunny",
                 color = Color3.fromRGB(255, 255, 100),
+                category = "🌦️ Weather"
+            })
+        elseif weatherName == "Cloudy" then
+            table.insert(boosts, {
+                icon = "☁️",
+                name = "Cloudy Weather", 
+                effect = "100%",
+                effects = {
+                    "All plants grow at normal speed",
+                    "Normal water requirements"
+                },
+                description = "Cloudy weather provides neutral conditions for all crops.",
+                duration = "While cloudy",
+                color = Color3.fromRGB(200, 200, 200),
                 category = "🌦️ Weather"
             })
         end
@@ -329,20 +385,23 @@ local function BoostPanel(props)
             -- Effect Badge (bottom right)
             EffectBadge = e("Frame", {
                 Name = "EffectBadge",
-                Size = UDim2.new(0, 35, 0, 14),
-                Position = UDim2.new(1, -29, 1, -18), -- Bottom right, slightly inside circle
+                Size = UDim2.new(0, 65, 0, 18), -- Made even wider and taller to fit larger numbers
+                Position = UDim2.new(1, -60, 1, -10), -- Moved further down to avoid blocking icon
                 BackgroundColor3 = Color3.fromRGB(80, 255, 80),
                 BorderSizePixel = 0,
                 ZIndex = 17
             }, {
                 Corner = e("UICorner", {
-                    CornerRadius = UDim.new(0, 7)
+                    CornerRadius = UDim.new(0, 9)
                 }),
                 EffectText = e("TextLabel", {
                     Size = UDim2.new(1, 0, 1, 0),
-                    Text = string.format("+%.0f%%", (totalMoneyMultiplier - 1) * 100),
+                    Text = (function()
+                        local percentValue = (totalMoneyMultiplier - 1) * 100
+                        return "+" .. NumberFormatter.format(percentValue) .. "%"
+                    end)(),
                     TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextSize = normalTextSize,
+                    TextSize = math.max(normalTextSize - 1, 10), -- Slightly smaller text to ensure it fits
             TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
@@ -523,7 +582,7 @@ local function BoostPanel(props)
                         SummaryText = e("TextLabel", {
                             Size = UDim2.new(1, -20, 1, 0),
                             Position = UDim2.new(0, 10, 0, 0),
-                            Text = string.format("💰 Total Money Boost: +%.0f%% | 🎯 Active Boosts: %d", (totalMoneyMultiplier - 1) * 100, totalBoosts),
+                            Text = string.format("🚀 Total Boost: +%.0f%% | 🎯 Active Boosts: %d", (totalMoneyMultiplier - 1) * 100, totalBoosts),
                             TextColor3 = Color3.fromRGB(80, 60, 0),
                             TextSize = normalTextSize,
             TextWrapped = true,
@@ -637,39 +696,59 @@ local function BoostPanel(props)
                                         })
                                     }),
                                     
-                                    -- Boost Icon
-                                    BoostIcon = e("TextLabel", {
-                                        Name = "BoostIcon",
-                                        Size = UDim2.new(0, 50, 0, 50),
-                                        Position = UDim2.new(0.5, -25, 0, 40),
-                                        Text = boost.icon,
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
-                                        BackgroundTransparency = 1,
-                                        Font = Enum.Font.SourceSansBold,
-                                        ZIndex = 33
-                                    }),
+                                    -- Boost Icon (handle both emoji and image assets)
+                                    BoostIcon = (function()
+                                        local isImageAsset = type(boost.icon) == "string" and boost.icon:find("rbxassetid://")
+                                        if isImageAsset then
+                                            return e("ImageLabel", {
+                                                Name = "BoostIcon",
+                                                Size = UDim2.new(0.2, 0, 0.22, 0), -- 20% width, 22% height of card
+                                                Position = UDim2.new(0.5, 0, 0.25, 0), -- Centered horizontally, 25% from top
+                                                AnchorPoint = Vector2.new(0.5, 0.5),
+                                                Image = boost.icon,
+                                                BackgroundTransparency = 1,
+                                                ScaleType = Enum.ScaleType.Fit,
+                                                ImageColor3 = Color3.fromRGB(255, 255, 255), -- Keep original colors for gamepass icons
+                                                ZIndex = 33
+                                            })
+                                        else
+                                            return e("TextLabel", {
+                                                Name = "BoostIcon",
+                                                Size = UDim2.new(0.25, 0, 0.28, 0), -- 25% width, 28% height of card
+                                                Position = UDim2.new(0.5, 0, 0.25, 0), -- Centered horizontally, 25% from top
+                                                AnchorPoint = Vector2.new(0.5, 0.5),
+                                                Text = boost.icon,
+                                                TextSize = normalTextSize * 1.5, -- Make emojis 50% bigger
+                                                TextWrapped = true,
+                                                BackgroundTransparency = 1,
+                                                Font = Enum.Font.SourceSansBold,
+                                                ZIndex = 33
+                                            })
+                                        end
+                                    end)(),
                                     
                                     -- Boost Name
                                     BoostName = e("TextLabel", {
                                         Name = "BoostName",
-                                        Size = UDim2.new(1, -10, 0, 20),
-                                        Position = UDim2.new(0, 5, 0, 95),
+                                        Size = UDim2.new(0.9, 0, 0.15, 0), -- 90% width, 15% height of card
+                                        Position = UDim2.new(0.05, 0, 0.5, 0), -- 5% from left, 50% from top
                                         Text = boost.name,
                                         TextColor3 = Color3.fromRGB(40, 40, 40),
                                         TextSize = normalTextSize,
-            TextWrapped = true,
+                                        TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
                                         TextXAlignment = Enum.TextXAlignment.Center,
+                                        TextYAlignment = Enum.TextYAlignment.Center,
                                         ZIndex = 33
                                     }),
                                     
-                                    -- Effect Badge
+                                    -- Effect Badge (positioned below name, above description)
                                     EffectBadge = e("Frame", {
                                         Name = "EffectBadge",
-                                        Size = UDim2.new(0, 60, 0, 20),
-                                        Position = UDim2.new(0.5, -30, 0, ScreenUtils.getProportionalSize(screenSize, 155)),
+                                        Size = UDim2.new(0.35, 0, 0.12, 0), -- 35% width, 12% height of card
+                                        Position = UDim2.new(0.5, 0, 0.68, 0), -- Centered horizontally, 68% from top
+                                        AnchorPoint = Vector2.new(0.5, 0.5),
                                         BackgroundColor3 = boost.color,
                                         BorderSizePixel = 0,
                                         ZIndex = 33
@@ -695,31 +774,31 @@ local function BoostPanel(props)
                                         })
                                     }),
                                     
-                                    -- Description
+                                    -- Description (positioned below effect badge)
                                     Description = e("TextLabel", {
                                         Name = "Description",
-                                        Size = UDim2.new(1, -10, 0, ScreenUtils.getProportionalSize(screenSize, 40)),
-                                        Position = UDim2.new(0, 5, 0, 120),
+                                        Size = UDim2.new(0.9, 0, 0.18, 0), -- 90% width, 18% height of card
+                                        Position = UDim2.new(0.05, 0, 0.76, 0), -- 5% from left, 76% from top
                                         Text = boost.description,
                                         TextColor3 = Color3.fromRGB(70, 80, 120),
-                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 11),
                                         BackgroundTransparency = 1,
-                                        Font = Enum.Font.GothamBold, -- Changed to bold
+                                        Font = Enum.Font.Gotham, -- Regular weight for readability
                                         TextXAlignment = Enum.TextXAlignment.Center,
                                         TextYAlignment = Enum.TextYAlignment.Top,
                                         TextWrapped = true,
                                         ZIndex = 33
                                     }),
                                     
-                                    -- Duration
+                                    -- Duration (fixed positioning to stay within card)
                                     Duration = e("TextLabel", {
                                         Name = "Duration",
                                         Size = UDim2.new(1, -10, 0, 15),
-                                        Position = UDim2.new(0, 5, 0, ScreenUtils.getProportionalSize(screenSize, 180)),
+                                        Position = UDim2.new(0, 5, 1, -20), -- Bottom of card with 20px margin
                                         Text = "⏱️ " .. boost.duration,
                                         TextColor3 = Color3.fromRGB(120, 120, 120),
                                         TextSize = normalTextSize,
-            TextWrapped = true,
+                                        TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamMedium,
                                         TextXAlignment = Enum.TextXAlignment.Center,

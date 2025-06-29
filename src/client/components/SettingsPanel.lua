@@ -8,9 +8,8 @@ local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 local Players = game:GetService("Players")
 
 local ScreenUtils = require(ReplicatedStorage.Shared.ScreenUtils)
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
-
-local log = ClientLogger.getModuleLogger("SettingsPanel")
+-- Simple logging functions for SettingsPanel
+local function logInfo(...) print("[INFO] SettingsPanel:", ...) end
 local player = Players.LocalPlayer
 
 local function SettingsPanel(props)

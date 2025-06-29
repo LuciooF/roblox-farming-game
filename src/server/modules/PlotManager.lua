@@ -378,13 +378,25 @@ function PlotManager.waterPlant(player, plotId)
         return false, "This plot is locked! Purchase more plots to unlock it."
     end
     
+    -- Calculate if maintenance watering is needed (same logic as client)
+    local needsMaintenanceWater = false
+    if plotState.wateredCount >= plotState.waterNeeded and plotState.seedType ~= "" then
+        local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+        local cropInfo = CropRegistry.getCrop(plotState.seedType)
+        if cropInfo and cropInfo.maintenanceWaterInterval then
+            local maintenanceStartTime = plotState.lastMaintenanceWater > 0 and plotState.lastMaintenanceWater or plotState.lastWateredTime
+            local timeSinceLastMaintenance = tick() - maintenanceStartTime
+            needsMaintenanceWater = timeSinceLastMaintenance >= cropInfo.maintenanceWaterInterval
+        end
+    end
+    
     -- Validate plot has planted seed and needs water OR needs maintenance watering
-    if plotState.state ~= "planted" and plotState.state ~= "growing" and not plotState.needsMaintenanceWater then
+    if plotState.state ~= "planted" and plotState.state ~= "growing" and not needsMaintenanceWater then
         return false, "Nothing to water here!"
     end
     
     -- Handle maintenance watering for ready/harvestable crops
-    if plotState.needsMaintenanceWater then
+    if needsMaintenanceWater then
         local currentTime = tick()
         plotState.lastMaintenanceWater = currentTime
         plotState.needsMaintenanceWater = false
@@ -533,23 +545,18 @@ function PlotManager.harvestCrop(player, plotId)
     
     -- Reset accumulation after harvesting all ready crops
     plotState.accumulatedCrops = 0
-    plotState.lastReadyTime = 0 -- Reset for next cycle
     
     -- Reset harvest cooldown
     plotState.harvestCooldown = tick()
     
-    -- Plants continue producing indefinitely - don't track harvest count anymore
-    -- Just reset the plot to keep growing more crops
-    local currentTime = tick()
+    -- Plants continue producing - DON'T reset timing, just continue from where they were
     plotState.state = "watered"  -- Back to growing state
-    plotState.wateredTime = currentTime
-    plotState.lastWateredTime = currentTime
+    -- DON'T reset wateredTime, lastWateredTime, or lastReadyTime - keep current progress!
     plotState.wateredCount = plotState.waterNeeded -- Keep plants watered
-    plotState.lastReadyTime = currentTime -- Reset accumulation timer
     
-    -- Schedule next crop production cycle (event-driven)
-    log.info("Watering complete for plot", plotId, "- scheduling first production cycle")
-    PlotManager.scheduleCropProduction(plotId, plotState)
+    -- Continue production cycle if not already running (don't restart timing)
+    -- The existing scheduleCropProduction will handle the timing correctly
+    log.info("🔄 Harvest complete - continuing production without resetting timing")
     
     -- Keep the plant visual (all plants remain active)
     local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
@@ -559,10 +566,10 @@ function PlotManager.harvestCrop(player, plotId)
         WorldBuilder.updatePlotState(plot, "watered", plotState.seedType, plotState.variation or "normal", plotState.harvestCount, plotState.wateredCount, plotState.waterNeeded, 0)
     end
     
-    sendPlotUpdate(plotId, {lastWateredTime = plotState.wateredTime})
+    sendPlotUpdate(plotId, {cropHarvested = true})
     
     local activePlants = plotState.maxHarvests - plotState.harvestCount
-    log.info("🔄 Harvest complete - plot reset to watered state, new cycle starts at", plotState.wateredTime)
+    log.info("🔄 Harvest complete - plot continues growing from current timing")
     local message = "Harvested " .. totalYield .. " " .. cropName .. "! " .. activePlants .. " plants continue producing."
     if variation ~= "normal" then
         message = message .. " (" .. (variationMultiplier) .. "x bonus!)"
@@ -604,12 +611,15 @@ function PlotManager.harvestAllCrops(player, plotId)
     
     -- Harvest ALL accumulated crops
     local totalYield = math.max(harvestsLeft, plotState.accumulatedCrops or harvestsLeft)
-    local variationMultiplier = GameConfig.CropVariations[variation].multiplier or 1
+    local variationMultiplier = 1
+    if GameConfig.CropVariations and GameConfig.CropVariations[variation] then
+        variationMultiplier = GameConfig.CropVariations[variation].multiplier or 1
+    end
     totalYield = math.floor(totalYield * variationMultiplier)
     
     -- Add crops to inventory with variation prefix
     local cropName = seedType
-    if variation ~= "normal" then
+    if variation ~= "normal" and GameConfig.CropVariations and GameConfig.CropVariations[variation] then
         cropName = GameConfig.CropVariations[variation].prefix .. seedType
     end
     
@@ -828,8 +838,28 @@ function PlotManager.updateCropAccumulation(plotId, plotState)
     -- Calculate number of active plants (total planted minus harvested)
     local activePlants = plotState.maxHarvests - plotState.harvestCount
     
-    -- Use production rate to calculate accumulation interval (e.g., 450 seconds for wheat at 8/hour)
-    local accumulationInterval = 3600 / productionRate -- Each plant produces 1 crop per production cycle
+    -- Use production rate to calculate accumulation interval with boosts (e.g., 450 seconds for wheat at 8/hour)
+    local baseAccumulationInterval = 3600 / productionRate -- Each plant produces 1 crop per production cycle
+    
+    -- Apply same boosts as scheduleCropProduction for consistency
+    local Players = game:GetService("Players")
+    local player = Players:GetPlayerByUserId(plotState.ownerId)
+    local boostMultiplier = PlotManager.getOnlineBoostMultiplier(player)
+    
+    -- Apply weather effects
+    local weatherMultiplier = 1.0
+    if player then
+        local WeatherSystem = require(script.Parent.WeatherSystem)
+        local currentWeather = WeatherSystem.getCurrentWeather()
+        
+        if currentWeather and currentWeather.name then
+            -- Use centralized weather configuration
+            weatherMultiplier = ConfigManager.getGlobalWeatherMultiplier(currentWeather.name)
+        end
+    end
+    
+    -- Apply all boosts to interval (higher boosts = shorter intervals = faster production)
+    local accumulationInterval = baseAccumulationInterval / (boostMultiplier * weatherMultiplier)
     local accumulationCycles = math.floor(timeSinceReady / accumulationInterval)
     
     if accumulationCycles > 0 and activePlants > 0 then
@@ -837,8 +867,22 @@ function PlotManager.updateCropAccumulation(plotId, plotState)
         -- So with 10 plants, you get 10 crops every growth cycle
         local newCrops = accumulationCycles * activePlants
         
-        -- Update accumulated crops (each plant produces exactly 1 crop per cycle)
-        plotState.accumulatedCrops = (plotState.accumulatedCrops or 0) + newCrops
+        -- Update accumulated crops with limit enforcement
+        local oldCrops = plotState.accumulatedCrops or 0
+        local plotCropLimit = PlotManager.getMaxAllowedInPlot(player)
+        local maxCanAccumulate = plotCropLimit - oldCrops
+        local cropsToAdd = math.min(newCrops, maxCanAccumulate)
+        
+        if cropsToAdd > 0 then
+            plotState.accumulatedCrops = oldCrops + cropsToAdd
+            
+            if cropsToAdd < newCrops then
+                local wastedCrops = newCrops - cropsToAdd
+                log.debug("Plot", plotId, "hit", plotCropLimit, "crop limit -", wastedCrops, "crops not accumulated")
+            end
+        else
+            log.debug("Plot", plotId, "at", plotCropLimit, "crop limit - no additional accumulation")
+        end
         
         -- Update the last ready time to prevent double-counting
         plotState.lastReadyTime = currentTime
@@ -846,7 +890,8 @@ function PlotManager.updateCropAccumulation(plotId, plotState)
         -- Save to player data
         savePlotToPlayerData(plotId)
         
-        log.debug("Plot", plotId, "accumulated", newCrops, "crops over", timeSinceReady, "seconds, total:", plotState.accumulatedCrops)
+        log.debug("Plot", plotId, "accumulated", cropsToAdd, "crops over", timeSinceReady, "seconds, total:", plotState.accumulatedCrops, 
+                 "| Base interval:", math.floor(baseAccumulationInterval), "s, Boosted interval:", math.floor(accumulationInterval), "s, Boost:", boostMultiplier, "x, Weather:", weatherMultiplier, "x")
     end
 end
 
@@ -1102,19 +1147,32 @@ end
 function PlotManager.calculateOfflineHarvests(plotState, timeOffline)
     if not plotState or plotState.state ~= "ready" then return 0 end
     
-    -- Base harvest rate: 1 harvest per growth time (offline rate)
-    local growthTime = GameConfig.Plants[plotState.seedType].growthTime
-    local maxOfflineHarvests = math.floor(timeOffline / growthTime)
+    -- Use base production rate WITHOUT boosts for offline production
+    local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
+    local crop = CropRegistry.getCrop(plotState.seedType)
+    local productionRate = (crop and crop.productionRate) or 1 -- fallback to 1/hour if not found
+    local baseProductionInterval = 3600 / productionRate -- Convert crops/hour to seconds/crop
     
-    -- Limit by remaining harvest count
-    local remainingHarvests = plotState.maxHarvests - plotState.harvestCount
-    local offlineHarvests = math.min(maxOfflineHarvests, remainingHarvests)
+    -- NO BOOSTS for offline production - use base rate only
+    local effectiveProductionInterval = baseProductionInterval
     
-    -- Cap offline harvests to prevent exploitation (max 24 hours worth)
-    local maxDailyHarvests = math.floor(86400 / growthTime) -- 24 hours worth
-    offlineHarvests = math.min(offlineHarvests, maxDailyHarvests)
+    -- Calculate number of active plants
+    local activePlants = plotState.maxHarvests - plotState.harvestCount
     
-    return math.max(0, offlineHarvests)
+    -- Calculate how many production cycles completed during offline time
+    local completedCycles = math.floor(timeOffline / effectiveProductionInterval)
+    
+    -- Each cycle produces crops equal to number of active plants
+    local totalOfflineCrops = completedCycles * activePlants
+    
+    -- Cap offline crops to prevent exploitation (max 24 hours worth at base rate)
+    local maxDailyCycles = math.floor(86400 / effectiveProductionInterval) -- 24 hours worth
+    local maxDailyCrops = maxDailyCycles * activePlants
+    totalOfflineCrops = math.min(totalOfflineCrops, maxDailyCrops)
+    
+    log.debug("Offline calculation (unboosted) - Time:", math.floor(timeOffline), "s, Base interval:", math.floor(baseProductionInterval), "s, Cycles:", completedCycles, "Plants:", activePlants, "Total crops:", totalOfflineCrops)
+    
+    return math.max(0, totalOfflineCrops)
 end
 
 -- Calculate effective growth time with online speed boost and weather effects
@@ -1130,8 +1188,9 @@ function PlotManager.calculateEffectiveGrowthTime(plotState, baseGrowthTime)
     local owner = Players:GetPlayerByUserId(plotState.ownerId)
     
     if owner then
-        -- Player is online: 2x speed boost (half the time)
-        effectiveTime = effectiveTime / 2
+        -- Player is online: apply boost multiplier
+        local boostMultiplier = PlotManager.getOnlineBoostMultiplier(owner)
+        effectiveTime = effectiveTime / boostMultiplier
     end
     
     -- Apply weather effects
@@ -1140,11 +1199,8 @@ function PlotManager.calculateEffectiveGrowthTime(plotState, baseGrowthTime)
     local weatherMultiplier = 1.0
     
     if currentWeather and currentWeather.name then
-        -- Get global weather multiplier
-        local globalMultiplier = ConfigManager.getGlobalWeatherMultiplier(currentWeather.name)
-        -- Get crop-specific weather boost
-        local cropMultiplier = ConfigManager.getCropWeatherBoost(plotState.seedType, currentWeather.name)
-        weatherMultiplier = globalMultiplier * cropMultiplier
+        -- Use only global weather multiplier (affects all crops equally)
+        weatherMultiplier = ConfigManager.getGlobalWeatherMultiplier(currentWeather.name)
     end
     
     -- Weather multiplier affects growth rate (higher = faster = less time)
@@ -1156,7 +1212,24 @@ end
 -- Get online boost multiplier for a player
 function PlotManager.getOnlineBoostMultiplier(player)
     if player and player.Parent then
-        return 2.0 -- 2x speed when online
+        local baseBoost = 2.0 -- 2x speed when online
+        
+        -- Add debug production boost if present
+        local PlayerDataManager = require(script.Parent.PlayerDataManager)
+        local playerData = PlayerDataManager.getPlayerData(player)
+        local finalMultiplier = baseBoost
+        
+        if playerData and playerData.debugProductionBoost then
+            local debugMultiplier = 1 + (playerData.debugProductionBoost / 100)
+            finalMultiplier = finalMultiplier * debugMultiplier
+        end
+        
+        -- Add production gamepass boost if player owns it
+        if playerData and playerData.gamepasses and playerData.gamepasses.productionBoost then
+            finalMultiplier = finalMultiplier * 2.0 -- 2x for production gamepass
+        end
+        
+        return finalMultiplier
     else
         return 1.0 -- Normal speed when offline
     end
@@ -1178,18 +1251,31 @@ function PlotManager.scheduleCropProduction(plotId, plotState)
     
     if activePlants <= 0 then return end
     
-    -- Apply same bonuses as client: online bonus, weather effects, etc.
+    -- Apply same bonuses as client: online bonus, debug boost, gamepass boost, weather effects, etc.
     local effectiveProductionInterval = baseProductionInterval
     
-    -- Online bonus (2x speed when player is online)
+    -- Get comprehensive boost multiplier (includes online, debug, gamepass, etc.)
     local Players = game:GetService("Players")
     local player = Players:GetPlayerByUserId(plotState.ownerId)
-    if player and player.Parent then
-        effectiveProductionInterval = effectiveProductionInterval * 0.5 -- 2x speed when online
-    end
+    local boostMultiplier = PlotManager.getOnlineBoostMultiplier(player)
     
-    -- Weather effects (if any) - simplified for now
-    -- TODO: Apply weather multipliers here if needed
+    -- Apply boost multiplier to production interval (higher boost = faster = shorter interval)
+    effectiveProductionInterval = effectiveProductionInterval / boostMultiplier
+    
+    -- Weather effects - Apply same logic as client
+    local weatherMultiplier = 1.0
+    if player then
+        local WeatherSystem = require(script.Parent.WeatherSystem)
+        local currentWeather = WeatherSystem.getCurrentWeather()
+        
+        if currentWeather and currentWeather.name then
+            -- Use centralized weather configuration
+            weatherMultiplier = ConfigManager.getGlobalWeatherMultiplier(currentWeather.name)
+        end
+        
+        -- Apply weather multiplier (higher = faster = shorter interval)
+        effectiveProductionInterval = effectiveProductionInterval / weatherMultiplier
+    end
     
     
     -- Calculate elapsed time since last watering to adjust production timer
@@ -1198,7 +1284,10 @@ function PlotManager.scheduleCropProduction(plotId, plotState)
     local remainingTime = math.max(0, effectiveProductionInterval - timeSinceWatered)
     
     print("⏰ SCHEDULING PRODUCTION for plot", plotId)
-    print("   📊 Full interval:", math.floor(effectiveProductionInterval), "seconds")
+    print("   📊 Base interval:", math.floor(baseProductionInterval), "seconds")
+    print("   🚀 Boost multiplier:", boostMultiplier, "x")
+    print("   🌤️ Weather multiplier:", weatherMultiplier, "x")
+    print("   ⚡ Final interval:", math.floor(effectiveProductionInterval), "seconds")
     print("   ⏱️ Time since watered:", math.floor(timeSinceWatered), "seconds") 
     print("   ⏳ Remaining time:", math.floor(remainingTime), "seconds")
     
@@ -1229,10 +1318,29 @@ function PlotManager.scheduleCropProduction(plotId, plotState)
                 return
             end
             
-            -- Produce crops equal to number of active plants
+            -- Produce crops equal to number of active plants (with limit enforcement)
             local currentActivePlants = currentState.maxHarvests - currentState.harvestCount
             local oldCrops = currentState.accumulatedCrops or 0
-            currentState.accumulatedCrops = oldCrops + currentActivePlants
+            
+            -- Get crop limit and enforce it
+            local Players = game:GetService("Players")
+            local player = Players:GetPlayerByUserId(currentState.ownerId)
+            local plotCropLimit = PlotManager.getMaxAllowedInPlot(player)
+            local maxCanAccumulate = plotCropLimit - oldCrops
+            local cropsToAdd = math.min(currentActivePlants, maxCanAccumulate)
+            
+            if cropsToAdd > 0 then
+                currentState.accumulatedCrops = oldCrops + cropsToAdd
+                print("🌾 PRODUCED", cropsToAdd, "crops for plot", plotId, "- total accumulated:", currentState.accumulatedCrops)
+                
+                if cropsToAdd < currentActivePlants then
+                    local wastedCrops = currentActivePlants - cropsToAdd
+                    print("⚠️ Plot", plotId, "hit", plotCropLimit, "crop limit -", wastedCrops, "crops not produced")
+                end
+            else
+                print("📈 Plot", plotId, "at", plotCropLimit, "crop limit - no additional production")
+            end
+            
             currentState.state = "ready"
             currentState.lastReadyTime = currentTime
             

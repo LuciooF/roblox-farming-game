@@ -19,6 +19,9 @@ local function TopStats(props)
     local canRebirth = money >= moneyRequired
     local multiplier = 1 + (rebirths * 0.5)
     
+    -- Check if player has 2x money gamepass
+    local has2xMoney = playerData.gamepasses and playerData.gamepasses.moneyMultiplier == true
+    
     -- Responsive sizing based on screen size with proportional scaling
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     local scale = ScreenUtils.getProportionalScale(screenSize, Vector2.new(1920, 1080), 0.7, 1.5)
@@ -48,6 +51,7 @@ local function TopStats(props)
     local rebirthIconRef = React.useRef()
     local moneyPopupRef = React.useRef()
     local rebirthPopupRef = React.useRef()
+    local money2xRef = React.useRef()
     
     -- Previous values to detect changes
     local prevMoney = React.useRef(money)
@@ -97,10 +101,10 @@ local function TopStats(props)
             setMoneyPopupText("+$" .. NumberFormatter.format(difference))
             setShowMoneyPopup(true)
             
-            -- Use RunService to wait for next frame and then start animation
-            local connection
-            connection = game:GetService("RunService").Heartbeat:Connect(function()
-                connection:Disconnect()
+            -- Start animation immediately without RunService delay
+            task.spawn(function()
+                -- Small delay to ensure React has rendered the popup
+                task.wait(0.1)
                 
                 if moneyPopupRef.current and moneyAnimationId.current == currentAnimationId then
                     -- Reset position - centered under the money container
@@ -129,7 +133,7 @@ local function TopStats(props)
         end
         
         prevMoney.current = currentMoney
-    end, {money})
+    end, {money, has2xMoney})
     
     -- Rebirth spin animation when rebirths change
     React.useEffect(function()
@@ -198,6 +202,34 @@ local function TopStats(props)
         
         prevRebirths.current = currentRebirths
     end, {rebirths})
+    
+    -- Bouncing animation for 2x money indicator
+    React.useEffect(function()
+        if not has2xMoney or not money2xRef.current then return end
+        
+        local function createBounceAnimation()
+            local bounceUp = TweenService:Create(money2xRef.current,
+                TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                {Position = UDim2.new(1, -15, 0, -5)}
+            )
+            
+            local bounceDown = TweenService:Create(money2xRef.current,
+                TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                {Position = UDim2.new(1, -15, 0, 5)}
+            )
+            
+            bounceUp:Play()
+            bounceUp.Completed:Connect(function()
+                bounceDown:Play()
+                bounceDown.Completed:Connect(function()
+                    task.wait(0.5) -- Pause between bounces
+                    createBounceAnimation() -- Loop the animation
+                end)
+            end)
+        end
+        
+        createBounceAnimation()
+    end, {has2xMoney})
     
     return e("Frame", {
         Name = "TopStatsFrame",
@@ -268,13 +300,47 @@ local function TopStats(props)
                 })
             }),
             
+            -- 2x Money Indicator (rainbow bouncing when has gamepass)
+            Money2xIndicator = has2xMoney and e("TextLabel", {
+                Name = "Money2xIndicator",
+                Size = UDim2.new(0, 30, 0, 18),
+                Position = UDim2.new(1, -15, 0, 0), -- Top right diagonal position
+                Text = "2x!",
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
+                Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Center,
+                TextYAlignment = Enum.TextYAlignment.Center,
+                BackgroundTransparency = 1,
+                ZIndex = 18,
+                Rotation = 25, -- Diagonal rotation like "\" (northwest facing)
+                ref = money2xRef
+            }, {
+                TextStroke = e("UIStroke", {
+                    Color = Color3.fromRGB(0, 0, 0),
+                    Thickness = 2,
+                    Transparency = 0.3
+                }),
+                RainbowGradient = e("UIGradient", {
+                    Color = ColorSequence.new{
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),    -- Red
+                        ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 165, 0)), -- Orange
+                        ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 255, 0)), -- Yellow
+                        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 0)),   -- Green
+                        ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),  -- Blue
+                        ColorSequenceKeypoint.new(0.83, Color3.fromRGB(75, 0, 130)), -- Indigo
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(238, 130, 238))  -- Violet
+                    }
+                })
+            }) or nil,
+            
             -- Money popup text
             MoneyPopup = showMoneyPopup and e("TextLabel", {
                 Name = "MoneyPopup",
                 Size = UDim2.new(0, 200, 0, 30),
                 Position = UDim2.new(0, moneyWidth/2 - 100, 1, 10),
                 Text = moneyPopupText,
-                TextColor3 = Color3.fromRGB(0, 200, 0),
+                TextColor3 = has2xMoney and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 200, 0), -- Pure white for rainbow gradient, green for normal
                 TextSize = popupTextSize,
                 TextWrapped = true,
                 BackgroundTransparency = 1,
@@ -287,7 +353,21 @@ local function TopStats(props)
                 TextSizeConstraint = e("UITextSizeConstraint", {
                     MaxTextSize = ScreenUtils.getProportionalTextSize(screenSize, 20),
                     MinTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
-                })
+                }),
+                -- Add rainbow gradient for money popup when has 2x money gamepass
+                PopupGradient = has2xMoney and e("UIGradient", {
+                    Name = "PopupGradient",
+                    Color = ColorSequence.new{
+                        ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 0, 0)),    -- Bright Red
+                        ColorSequenceKeypoint.new(0.16, Color3.fromRGB(255, 127, 0)), -- Bright Orange  
+                        ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 255, 0)), -- Bright Yellow
+                        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 0)),    -- Bright Green
+                        ColorSequenceKeypoint.new(0.66, Color3.fromRGB(0, 127, 255)), -- Bright Blue
+                        ColorSequenceKeypoint.new(0.83, Color3.fromRGB(148, 0, 211)), -- Bright Violet
+                        ColorSequenceKeypoint.new(1.0, Color3.fromRGB(255, 0, 255))   -- Bright Magenta
+                    },
+                    Rotation = 45 -- Diagonal rainbow for better visibility
+                }) or nil
             }) or nil
         }),
         

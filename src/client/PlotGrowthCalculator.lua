@@ -3,10 +3,9 @@
 -- This replaces server-side growth polling with efficient client calculations
 
 local RunService = game:GetService("RunService")
-local ClientLogger = require(script.Parent.ClientLogger)
+-- Simple logging removed ClientLogger
 local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 
-local log = ClientLogger.getModuleLogger("PlotGrowthCalculator")
 
 local PlotGrowthCalculator = {}
 
@@ -32,7 +31,7 @@ end
 -- Helper function to safely get crop data
 local function getCropData(seedType)
     if not seedType or not CropRegistry.crops[seedType] then
-        log.warn("Invalid seed type for growth calculation:", seedType)
+        warn("[WARN]", "Invalid seed type for growth calculation:", seedType)
         return nil
     end
     return CropRegistry.crops[seedType]
@@ -90,7 +89,7 @@ function PlotGrowthCalculator.calculateOfflineGrowth(plotData, lastOnlineAt, pla
     
     -- Validate input data
     if not plotData or not lastOnlineAt then
-        log.error("Invalid data for offline growth calculation")
+        error("[ERROR]", "Invalid data for offline growth calculation")
         return {
             totalCropsReady = 0,
             cropsFromOfflineGrowth = 0,
@@ -112,7 +111,7 @@ function PlotGrowthCalculator.calculateOfflineGrowth(plotData, lastOnlineAt, pla
     
     -- Safety check for unreasonable offline times
     if timeOffline > hoursToSeconds(MAX_REASONABLE_OFFLINE_HOURS) then
-        log.warn("Capping offline time from", secondsToHours(timeOffline), "to", MAX_REASONABLE_OFFLINE_HOURS, "hours")
+        warn("[WARN]", "Capping offline time from", secondsToHours(timeOffline), "to", MAX_REASONABLE_OFFLINE_HOURS, "hours")
         timeOffline = hoursToSeconds(MAX_REASONABLE_OFFLINE_HOURS)
     end
     
@@ -152,16 +151,16 @@ function PlotGrowthCalculator.calculateOfflineGrowth(plotData, lastOnlineAt, pla
     -- Determine if plot needs water now
     local waterNeeded = currentTime >= waterNeededAt
     
-    log.debug("Offline growth calculation:")
-    log.debug("  Time offline:", secondsToHours(timeOffline), "hours")
-    log.debug("  Actual growth time:", secondsToHours(actualGrowthTime), "hours")
-    log.debug("  Production rate:", productionRate, "crops/hour")
-    log.debug("  Existing crops:", existingCrops)
-    log.debug("  New crops:", cropsFromOfflineGrowth)
-    log.debug("  Total (before limit):", totalCropsBeforeLimit)
-    log.debug("  Plot limit:", plotLimit)
-    log.debug("  Final total:", totalCropsReady)
-    log.debug("  Water needed:", waterNeeded)
+    print("[DEBUG]", "Offline growth calculation:")
+    print("[DEBUG]", "  Time offline:", secondsToHours(timeOffline), "hours")
+    print("[DEBUG]", "  Actual growth time:", secondsToHours(actualGrowthTime), "hours")
+    print("[DEBUG]", "  Production rate:", productionRate, "crops/hour")
+    print("[DEBUG]", "  Existing crops:", existingCrops)
+    print("[DEBUG]", "  New crops:", cropsFromOfflineGrowth)
+    print("[DEBUG]", "  Total (before limit):", totalCropsBeforeLimit)
+    print("[DEBUG]", "  Plot limit:", plotLimit)
+    print("[DEBUG]", "  Final total:", totalCropsReady)
+    print("[DEBUG]", "  Water needed:", waterNeeded)
     
     return {
         totalCropsReady = totalCropsReady,
@@ -190,7 +189,7 @@ function PlotGrowthCalculator.calculateRealTimeGrowth(plotData, playerBoosts)
     
     -- Validate input data
     if not plotData then
-        log.error("Invalid plot data for real-time growth calculation")
+        error("[ERROR]", "Invalid plot data for real-time growth calculation")
         return {
             cropsReady = 0,
             nextCropIn = 0,

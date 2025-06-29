@@ -142,7 +142,84 @@ end
 
 -- Process receipt for developer products (future use)
 function GamepassService.processReceipt(receiptInfo)
-    -- This will be used for developer products later
+    local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
+    if not player then
+        log.warn("Player not found for receipt:", receiptInfo.PlayerId)
+        return Enum.ProductPurchaseDecision.NotProcessedYet
+    end
+    
+    local productId = receiptInfo.ProductId
+    log.info("Processing developer product purchase:", productId, "for player:", player.Name)
+    
+    -- Handle rebirth developer product
+    if productId == 3320263208 then
+        log.info("Rebirth product purchased by", player.Name)
+        
+        -- Give the player an instant rebirth (bypass money check for Robux purchase)
+        local success, result = PlayerDataManager.performRebirth(player, true)
+        if success then
+            log.info("Rebirth granted to", player.Name, "via Robux purchase")
+            
+            -- Sync player data to client (same as normal rebirth)
+            local RemoteManager = require(script.Parent.RemoteManager)
+            RemoteManager.syncPlayerData(player)
+            
+            -- Force a complete farm refresh to update all plot visuals after rebirth
+            local FarmManager = require(script.Parent.FarmManager)
+            local farmId = FarmManager.getPlayerFarm(player.UserId)
+            if farmId then
+                log.info("🔄 Refreshing all plots after Robux rebirth for", player.Name)
+                FarmManager.onFarmAssigned(farmId, player)
+                
+                -- Explicitly clear all plot visuals to remove any lingering text/displays  
+                local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+                local playerData = PlayerDataManager.getPlayerData(player)
+                if playerData and playerData.plots then
+                    for plotId, plotData in pairs(playerData.plots) do
+                        local plot = WorldBuilder.getPlotById(plotId)
+                        if plot then
+                            WorldBuilder.clearPlotDisplay(plot)
+                        end
+                    end
+                end
+            end
+            
+            -- Play special rebirth sound immediately
+            local SoundManager = require(script.Parent.SoundManager)
+            SoundManager.playRebirthSound()
+            
+            -- Send rebirth notification (same as normal rebirth)
+            local NotificationManager = require(script.Parent.NotificationManager)
+            NotificationManager.sendRebirthNotification(player, result)
+            
+            -- Make potentially slow operations async to prevent lag
+            spawn(function()
+                -- Update player's rank display (async)
+                local RankDisplayManager = require(script.Parent.RankDisplayManager)
+                RankDisplayManager.updatePlayerRank(player)
+                
+                -- Check for rank up and announce in chat (async)
+                local ChatManager = require(script.Parent.ChatManager)
+                ChatManager.checkRankUp(player)
+                
+                -- Update farm nameplate with new rank (async)
+                if farmId then
+                    log.info("🏠 Updating farm nameplate for", player.Name, "on farm", farmId)
+                    local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+                    WorldBuilder.updateFarmNameOnly(farmId, player.Name, player)
+                else
+                    log.warn("🏠 No farm found for", player.Name, "- cannot update nameplate")
+                end
+            end)
+            
+            return Enum.ProductPurchaseDecision.PurchaseGranted
+        else
+            log.error("Failed to grant rebirth to", player.Name, "even though they purchased it")
+            return Enum.ProductPurchaseDecision.NotProcessedYet
+        end
+    end
+    
+    log.warn("Unknown developer product purchased:", productId, "by", player.Name)
     return Enum.ProductPurchaseDecision.NotProcessedYet
 end
 
@@ -162,6 +239,9 @@ function GamepassService.applyGamepassEffects(player, gamepassKey, isNewPurchase
     elseif gamepassKey == "flyMode" then
         -- Fly mode is passive - handled by FlyController
         log.debug("Fly Mode is now active for", player.Name)
+    elseif gamepassKey == "productionBoost" then
+        -- Production boost is passive - handled by PlotManager production calculations
+        log.debug("2x Production Boost is now active for", player.Name)
     end
     
     -- Only send notification for new purchases, not existing ownership

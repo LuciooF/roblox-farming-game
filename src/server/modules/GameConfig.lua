@@ -41,18 +41,17 @@ GameConfig.Rebirth = {
     end
 }
 
--- Gamepass configurations
+-- Gamepass configurations (Legacy - using GamepassConfig.lua now)
+-- Kept for backward compatibility with GamepassManager testing system
 GameConfig.Gamepasses = {
-    autoPlant = {name = "Auto Plant", description = "Automatically plant seeds on empty plots"},
-    autoWater = {name = "Auto Water", description = "Automatically water growing plants"},
-    autoHarvest = {name = "Auto Harvest", description = "Automatically harvest ready crops"},
-    autoSell = {name = "Auto Sell", description = "Automatically sell harvested crops"}
+    -- Placeholder automation gamepasses removed
+    -- Real gamepasses are now in GamepassConfig.lua
 }
 
 -- System settings
 GameConfig.Settings = {
     waterCooldown = 30, -- 30 seconds between waterings for multi-water plants
-    startingMoney = 100,
+    startingMoney = 25,
     startingCrops = {
         wheat = 1,
         tomato = 0,

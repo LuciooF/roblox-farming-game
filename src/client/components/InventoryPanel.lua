@@ -7,12 +7,13 @@ local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local e = React.createElement
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
 local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
-local log = ClientLogger.getModuleLogger("InventoryPanel")
+-- Simple logging functions for InventoryPanel
+local function logInfo(...) print("[INFO] InventoryPanel:", ...) end
+local function logDebug(...) print("[DEBUG] InventoryPanel:", ...) end
 
 -- Sound IDs for button interactions
 local HOVER_SOUND_ID = "rbxassetid://15675059323"
@@ -70,7 +71,7 @@ local function InventoryPanel(props)
     
     -- Debug inventory visibility
     React.useEffect(function()
-        log.debug("InventoryPanel visibility changed to:", visible)
+        logDebug("InventoryPanel visibility changed to:", visible)
     end, {visible})
     
     -- Responsive sizing (same as shop)
@@ -139,6 +140,8 @@ local function InventoryPanel(props)
     -- Handle crop sale
     local function handleCropSale(cropType, sellPrice)
         if remotes.sell then
+            -- Update the global lastActionTime for sale detection
+            _G.lastActionTime = tick()
             remotes.sell:FireServer(cropType, 1) -- Sell 1 at a time
             playSound("click")
         end
@@ -147,6 +150,8 @@ local function InventoryPanel(props)
     -- Handle sell all of specific crop type
     local function handleCropSellAll(cropType, quantity)
         if remotes.sell then
+            -- Update the global lastActionTime for sale detection
+            _G.lastActionTime = tick()
             remotes.sell:FireServer(cropType, quantity) -- Sell all of this crop
             playSound("click")
         end

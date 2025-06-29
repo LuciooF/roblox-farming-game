@@ -5,9 +5,11 @@
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local ClientLogger = require(script.Parent.ClientLogger)
 local PlotUtils = require(script.Parent.PlotUtils)
-local log = ClientLogger.getModuleLogger("PlotCountdowns")
+
+-- Simple logging functions for PlotCountdownManager
+local function logInfo(...) print("[INFO] PlotCountdownManager:", ...) end
+local function logDebug(...) print("[DEBUG] PlotCountdownManager:", ...) end
 
 local PlotCountdownManager = {}
 
@@ -25,6 +27,61 @@ function PlotCountdownManager.initialize()
     
     -- Initialize existing plots in the world
     PlotCountdownManager.scanExistingPlots()
+    
+    -- Set up remote event listener for clearing all plot displays (used during rebirth)
+    PlotCountdownManager.setupClearDisplaysRemote()
+end
+
+-- Set up remote event listener for clearing all plot displays
+function PlotCountdownManager.setupClearDisplaysRemote()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local farmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
+    local clearPlotsRemote = farmingRemotes:WaitForChild("ClearAllPlotDisplays")
+    
+    clearPlotsRemote.OnClientEvent:Connect(function()
+        logInfo("Clearing all plot displays after rebirth")
+        PlotCountdownManager.clearAllDisplays()
+    end)
+    logDebug("Set up ClearAllPlotDisplays remote listener")
+end
+
+-- Clear all plot countdown displays and reset data
+function PlotCountdownManager.clearAllDisplays()
+    -- Clear all plot timer data
+    plotTimers = {}
+    
+    -- Clear all countdown connections
+    for plotId, connection in pairs(countdownConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    countdownConnections = {}
+    
+    -- Clear plots needing update
+    plotsNeedingUpdate = {}
+    
+    -- Find and clear all countdown displays in the world
+    local farmsContainer = Workspace:FindFirstChild("PlayerFarms")
+    if farmsContainer then
+        for _, farmFolder in pairs(farmsContainer:GetChildren()) do
+            if farmFolder.Name:match("^Farm_") then
+                for _, child in pairs(farmFolder:GetDescendants()) do
+                    local countdownGui = child:FindFirstChild("CountdownDisplay")
+                    if countdownGui then
+                        countdownGui.Enabled = false
+                        local textLabel = countdownGui:FindFirstChild("TextLabel")
+                        if textLabel then
+                            textLabel.Text = ""
+                            textLabel.Visible = false
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    logInfo("Cleared all plot displays and reset countdown manager")
 end
 
 -- Scan for existing plots and set them to empty state
@@ -64,16 +121,16 @@ function PlotCountdownManager.scanExistingPlots()
             end
             
             if farmPlotCount > 0 then
-                log.info("Found", farmPlotCount, "plots in", farmFolder.Name)
+                logInfo("Found", farmPlotCount, "plots in", farmFolder.Name)
                 totalPlotCount = totalPlotCount + farmPlotCount
             end
         end
     end
     
     if totalPlotCount > 0 then
-        log.info("Initialized", totalPlotCount, "total plots across all farms")
+        logInfo("Initialized", totalPlotCount, "total plots across all farms")
     else
-        log.debug("No existing plots found - will initialize when player is assigned a farm")
+        logDebug("No existing plots found - will initialize when player is assigned a farm")
     end
 end
 
@@ -100,7 +157,7 @@ function PlotCountdownManager.initializePlotsInContainer(container)
         end
     end
     
-    log.info("Initialized", plotCount, "plots in container")
+    logInfo("Initialized", plotCount, "plots in container")
 end
 
 -- Update plot timing data when server sends state changes
@@ -114,7 +171,7 @@ function PlotCountdownManager.updatePlotData(plotId, plotData)
     if previousData and previousData.harvestCount and plotData.harvestCount then
         if plotData.harvestCount > previousData.harvestCount then
             wasHarvested = true
-            log.debug("Plot", plotId, "was harvested - resetting firstReadyTime")
+            logDebug("Plot", plotId, "was harvested - resetting firstReadyTime")
         end
     end
     
@@ -144,7 +201,7 @@ function PlotCountdownManager.updatePlotData(plotId, plotData)
         firstReadyTime = existingFirstReadyTime -- Preserve client-side timing unless harvest occurred
     }
     
-    log.debug("Updated plot", plotId, "data:", plotData.state, plotData.seedType, "owner:", plotData.ownerName or "none")
+    logDebug("Updated plot", plotId, "data:", plotData.state, plotData.seedType, "owner:", plotData.ownerName or "none")
     
     -- Only start countdown for owned plots
     if plotData.isOwner then
@@ -165,7 +222,7 @@ function PlotCountdownManager.startMasterUpdateLoop()
         PlotCountdownManager.updateAllCountdowns()
     end)
     
-    log.debug("Started master countdown update loop")
+    logDebug("Started master countdown update loop")
 end
 
 -- Update all plot countdowns in a single loop
@@ -416,7 +473,7 @@ function PlotCountdownManager.onPlotStateUpdate(plotId, newState, additionalData
         plotTimers[plotId].firstReadyTime = nil -- Clear timer when plot becomes empty
     end
     
-    log.debug("Plot", plotId, "state updated to", newState)
+    logDebug("Plot", plotId, "state updated to", newState)
 end
 
 return PlotCountdownManager

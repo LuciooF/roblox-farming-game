@@ -5,8 +5,9 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
-local ClientLogger = require(script.Parent.ClientLogger)
-local log = ClientLogger.getModuleLogger("CharacterFaceTracker")
+-- Simple logging for CharacterFaceTracker
+local function logInfo(...) print("[INFO] CharacterFaceTracker:", ...) end
+
 
 local CharacterFaceTracker = {}
 
@@ -41,7 +42,7 @@ function CharacterFaceTracker.setupServerCommunication()
         end
     end)
     
-    log.debug("Set up server communication for character tracking")
+    print("[DEBUG] CharacterFaceTracker:", "Set up server communication for character tracking")
 end
 
 -- Start tracking character displays
@@ -58,7 +59,7 @@ function CharacterFaceTracker.startTracking()
         end
     end)
     
-    log.debug("Character face tracking started")
+    print("[DEBUG] CharacterFaceTracker:", "Character face tracking started")
 end
 
 -- Stop tracking character displays
@@ -68,7 +69,7 @@ function CharacterFaceTracker.stopTracking()
         trackingConnection = nil
     end
     
-    log.debug("Character face tracking stopped")
+    print("[DEBUG] CharacterFaceTracker:", "Character face tracking stopped")
 end
 
 -- Update all character displays to face the player

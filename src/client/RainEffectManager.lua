@@ -3,20 +3,19 @@
 
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
-local ClientLogger = require(script.Parent.ClientLogger)
+-- Simple logging removed ClientLogger
 
-local log = ClientLogger.getModuleLogger("RainEffect")
 
 local RainEffectManager = {}
 
 -- Create rain particle effect over a plot
 function RainEffectManager.createRainEffect(plot)
     if not plot then
-        log.warn("No plot provided for rain effect")
+        warn("[WARN]", "No plot provided for rain effect")
         return
     end
     
-    log.debug("Creating rain effect for plot")
+    print("[DEBUG]", "Creating rain effect for plot")
     
     -- Create a part to attach the particle emitter to
     local rainPart = Instance.new("Part")
@@ -102,7 +101,7 @@ function RainEffectManager.createRainEffect(plot)
     -- Optional: Add sound effect (commented out as sounds aren't loaded yet)
     -- SoundManager.playWaterSound(plot.Position)
     
-    log.debug("Rain effect created successfully")
+    print("[DEBUG]", "Rain effect created successfully")
 end
 
 

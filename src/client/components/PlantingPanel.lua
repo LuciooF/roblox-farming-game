@@ -7,12 +7,13 @@ local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local e = React.createElement
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
 local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
-local log = ClientLogger.getModuleLogger("PlantingPanel")
+-- Simple logging functions for PlantingPanel
+local function logInfo(...) print("[INFO] PlantingPanel:", ...) end
+local function logDebug(...) print("[DEBUG] PlantingPanel:", ...) end
 local Modal = require(script.Parent.Modal)
 
 -- Sound IDs for button interactions
@@ -72,6 +73,7 @@ local function PlantingPanel(props)
     local visible = props.visible or false
     local onClose = props.onClose or function() end
     local onPlant = props.onPlant or function() end -- function(seedType, quantity)
+    local onOpenShop = props.onOpenShop or function() end -- function to open shop
     local plotData = props.plotData or {}
     local plantingMode = props.plantingMode or "single" -- "single" or "all"
     local screenSize = props.screenSize or Vector2.new(1024, 768)
@@ -86,7 +88,7 @@ local function PlantingPanel(props)
     
     -- Debug planting panel visibility
     React.useEffect(function()
-        log.debug("PlantingPanel visibility changed to:", visible)
+        logDebug("PlantingPanel visibility changed to:", visible)
     end, {visible})
     
     -- Responsive sizing
@@ -108,23 +110,23 @@ local function PlantingPanel(props)
     -- Debug logging to see what's in the inventory
     React.useEffect(function()
         if visible then
-            log.info("PlantingPanel opened - debugging inventory:")
-            log.info("playerData exists:", playerData ~= nil)
+            logInfo("PlantingPanel opened - debugging inventory:")
+            logInfo("playerData exists:", playerData ~= nil)
             if playerData then
-                log.info("playerData.inventory exists:", playerData.inventory ~= nil)
+                logInfo("playerData.inventory exists:", playerData.inventory ~= nil)
                 if playerData.inventory then
-                    log.info("inventory.seeds exists:", playerData.inventory.seeds ~= nil)
-                    log.info("inventory.crops exists:", playerData.inventory.crops ~= nil)
+                    logInfo("inventory.seeds exists:", playerData.inventory.seeds ~= nil)
+                    logInfo("inventory.crops exists:", playerData.inventory.crops ~= nil)
                     if playerData.inventory.seeds then
-                        log.info("Seeds in inventory:", playerData.inventory.seeds)
+                        logInfo("Seeds in inventory:", playerData.inventory.seeds)
                         for k, v in pairs(playerData.inventory.seeds) do
-                            log.info("  Seed:", k, "Quantity:", v)
+                            logInfo("  Seed:", k, "Quantity:", v)
                         end
                     end
                     if playerData.inventory.crops then
-                        log.info("Crops in inventory:", playerData.inventory.crops)
+                        logInfo("Crops in inventory:", playerData.inventory.crops)
                         for k, v in pairs(playerData.inventory.crops) do
-                            log.info("  Crop:", k, "Quantity:", v)
+                            logInfo("  Crop:", k, "Quantity:", v)
                         end
                     end
                 end
@@ -853,9 +855,9 @@ local function PlantingPanel(props)
                         CornerRadius = UDim.new(0, 15)
                     }),
                     EmptyText = e("TextLabel", {
-                        Size = UDim2.new(1, -40, 0, 100),
-                        Position = UDim2.new(0, 20, 0.5, -50),
-                        Text = "🌱\n\nNo seeds available!\nVisit the shop to buy seeds.",
+                        Size = UDim2.new(1, -40, 0, 80),
+                        Position = UDim2.new(0, 20, 0.5, -70),
+                        Text = "🌱\n\nNo seeds available!",
                         TextColor3 = Color3.fromRGB(120, 120, 120),
                         TextSize = 18,
                         BackgroundTransparency = 1,
@@ -863,6 +865,48 @@ local function PlantingPanel(props)
                         TextXAlignment = Enum.TextXAlignment.Center,
                         TextYAlignment = Enum.TextYAlignment.Center,
                         ZIndex = 32
+                    }),
+                    
+                    GoToShopButton = e("TextButton", {
+                        Name = "GoToShopButton",
+                        Size = UDim2.new(0, 200, 0, 50),
+                        Position = UDim2.new(0.5, -100, 0.5, 20),
+                        Text = "🛒 Go To Shop",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 18,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(100, 150, 255),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            playSound("click")
+                            onOpenShop()
+                        end,
+                        [React.Event.MouseEnter] = function()
+                            playSound("hover")
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 12)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 170, 255)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 130, 255))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.2
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 1,
+                            Transparency = 0.7
+                        })
                     })
                 })
             })

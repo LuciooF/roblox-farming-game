@@ -3,13 +3,15 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local TweenService = game:GetService("TweenService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local e = React.createElement
 local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
-local log = ClientLogger.getModuleLogger("RebirthPanel")
+-- Simple logging functions for RebirthPanel
+local function logInfo(...) print("[INFO] RebirthPanel:", ...) end
+local function logWarn(...) warn("[WARN] RebirthPanel:", ...) end
 
 local function RebirthPanel(props)
     local playerData = props.playerData
@@ -80,6 +82,35 @@ local function RebirthPanel(props)
             onClose()
         end
     end
+    
+    -- Handle Robux rebirth purchase
+    local function handleRobuxRebirth()
+        local REBIRTH_PRODUCT_ID = 3320263208
+        
+        -- Prompt the purchase
+        local success, error = pcall(function()
+            MarketplaceService:PromptProductPurchase(game.Players.LocalPlayer, REBIRTH_PRODUCT_ID)
+        end)
+        
+        if not success then
+            warn("Failed to prompt Robux rebirth purchase:", error)
+        end
+    end
+    
+    -- Get Robux price for the developer product
+    local robuxPrice, setRobuxPrice = React.useState("...")
+    
+    React.useEffect(function()
+        local success, productInfo = pcall(function()
+            return MarketplaceService:GetProductInfo(3320263208, Enum.InfoType.Product)
+        end)
+        
+        if success and productInfo then
+            setRobuxPrice(productInfo.PriceInRobux or "?")
+        else
+            setRobuxPrice("?")
+        end
+    end, {})
     
     return e("Frame", {
         Name = "RebirthContainer",
@@ -639,10 +670,10 @@ local function RebirthPanel(props)
                         ZIndex = 32
                     }),
                     
-                    -- Rebirth Button (responsive width)
+                    -- Rebirth Button (responsive width) - now smaller to make room for Robux button
                     RebirthButton = e("TextButton", {
-                        Size = UDim2.new(0.8, 0, 0, 50),
-                        Position = UDim2.new(0.1, 0, 0, 100),
+                        Size = UDim2.new(0.48, -5, 0, 50),
+                        Position = UDim2.new(0.02, 0, 0, 100),
                         Text = "",
                         BackgroundColor3 = canAfford and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(180, 80, 80),
                         BackgroundTransparency = canAfford and 0 or 0.3,
@@ -723,6 +754,107 @@ local function RebirthPanel(props)
                                 Font = Enum.Font.GothamBold,
                                 ZIndex = 34,
                                 LayoutOrder = 3
+                            }, {
+                                TextStroke = e("UIStroke", {
+                                    Color = Color3.fromRGB(0, 0, 0),
+                                    Thickness = 2,
+                                    Transparency = 0
+                                })
+                            })
+                        })
+                    }),
+                    
+                    -- Robux Rebirth Button (instant rebirth for Robux)
+                    RobuxRebirthButton = e("TextButton", {
+                        Size = UDim2.new(0.48, -5, 0, 50),
+                        Position = UDim2.new(0.52, 5, 0, 100),
+                        Text = "",
+                        BackgroundColor3 = Color3.fromRGB(100, 200, 100), -- Green color
+                        BackgroundTransparency = 0,
+                        BorderSizePixel = 0,
+                        AutoButtonColor = true,
+                        ZIndex = 32,
+                        [React.Event.Activated] = handleRobuxRebirth
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 10)
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(80, 160, 80),
+                            Thickness = 3,
+                            Transparency = 0.2
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 120)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 180, 80))
+                            },
+                            Rotation = 90
+                        }),
+                        
+                        ButtonContent = e("Frame", {
+                            Size = UDim2.new(1, 0, 1, 0),
+                            BackgroundTransparency = 1,
+                            ZIndex = 33
+                        }, {
+                            Layout = e("UIListLayout", {
+                                FillDirection = Enum.FillDirection.Horizontal,
+                                HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                                VerticalAlignment = Enum.VerticalAlignment.Center,
+                                Padding = UDim.new(0, 3),
+                                SortOrder = Enum.SortOrder.LayoutOrder
+                            }),
+                            
+                            RebirthIcon = e("ImageLabel", {
+                                Size = UDim2.new(0, 18, 0, 18),
+                                Image = assets["General/Rebirth/Rebirth Outline 256.png"],
+                                BackgroundTransparency = 1,
+                                ScaleType = Enum.ScaleType.Fit,
+                                ImageColor3 = Color3.fromRGB(255, 255, 255),
+                                ZIndex = 34,
+                                LayoutOrder = 1
+                            }),
+                            
+                            RobuxIcon = e("ImageLabel", {
+                                Size = UDim2.new(0, 16, 0, 16),
+                                Image = "rbxasset://textures/ui/common/robux.png",
+                                BackgroundTransparency = 1,
+                                ScaleType = Enum.ScaleType.Fit,
+                                ImageColor3 = Color3.fromRGB(255, 255, 255),
+                                ZIndex = 34,
+                                LayoutOrder = 2
+                            }),
+                            
+                            PriceText = e("TextLabel", {
+                                Size = UDim2.new(0, 0, 0.7, 0),
+                                AutomaticSize = Enum.AutomaticSize.X,
+                                Text = robuxPrice,
+                                TextColor3 = Color3.fromRGB(255, 255, 255),
+                                TextSize = buttonTextSize * 0.8,
+                                TextWrapped = true,
+                                BackgroundTransparency = 1,
+                                Font = Enum.Font.GothamBold,
+                                ZIndex = 34,
+                                LayoutOrder = 3
+                            }, {
+                                TextStroke = e("UIStroke", {
+                                    Color = Color3.fromRGB(0, 0, 0),
+                                    Thickness = 2,
+                                    Transparency = 0
+                                })
+                            }),
+                            
+                            ButtonText = e("TextLabel", {
+                                Size = UDim2.new(0, 0, 0.7, 0),
+                                AutomaticSize = Enum.AutomaticSize.X,
+                                Text = " Rebirth!",
+                                TextColor3 = Color3.fromRGB(255, 255, 255),
+                                TextSize = buttonTextSize * 0.8,
+                                TextWrapped = true,
+                                BackgroundTransparency = 1,
+                                Font = Enum.Font.GothamBold,
+                                ZIndex = 34,
+                                LayoutOrder = 4
                             }, {
                                 TextStroke = e("UIStroke", {
                                     Color = Color3.fromRGB(0, 0, 0),

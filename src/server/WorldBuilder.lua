@@ -719,6 +719,12 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         end
         
     elseif state == "planted" then
+        -- Light brown dirt for planted crops
+        plot.BrickColor = BrickColor.new("Nougat")
+        if plantPosition then
+            plantPosition.BrickColor = BrickColor.new("Nougat")
+        end
+        
         -- Show small plant with variation
         WorldBuilder.createPlant(plot, seedType, 1, variation)
         
@@ -727,6 +733,12 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         actionPrompt.Enabled = true
         
     elseif state == "growing" then
+        -- Light brown dirt for growing crops
+        plot.BrickColor = BrickColor.new("Nougat")
+        if plantPosition then
+            plantPosition.BrickColor = BrickColor.new("Nougat")
+        end
+        
         -- Show partially grown plant (needs more water) with variation
         WorldBuilder.createPlant(plot, seedType, 1, variation)
         
@@ -789,16 +801,36 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
         local FarmManager = require(script.Parent.modules.FarmManager)
         local farmId, plotIndex = FarmManager.getFarmAndPlotFromGlobalId(globalPlotId)
         
-        -- Use the same pricing formula as PlayerDataManager
+        -- Use the EXACT same pricing formula as PlayerDataManager with rebirth scaling
         local plotPrice = 0
         if plotIndex == 1 then
             plotPrice = 0 -- First plot is free
-        elseif plotIndex <= 10 then
-            local basePrice = 50
-            plotPrice = math.floor(basePrice * math.pow(1.3, plotIndex - 2))
         else
-            local basePrice = 500
-            plotPrice = math.floor(basePrice * math.pow(1.5, plotIndex - 11))
+            local basePrice
+            local priceMultiplier
+            
+            -- Plots 2-10 have increasing prices
+            if plotIndex <= 10 then
+                basePrice = 50
+                priceMultiplier = math.pow(1.3, plotIndex - 2)
+            else
+                -- Plots beyond 10 cost more
+                basePrice = 500
+                priceMultiplier = math.pow(1.5, plotIndex - 11)
+            end
+            
+            local baseTotal = basePrice * priceMultiplier
+            
+            -- Apply rebirth scaling: +0.5x per rebirth (so 10 rebirths = 5x price)
+            local rebirths = 0
+            if viewingPlayer then
+                local PlayerDataManager = require(script.Parent.modules.PlayerDataManager)
+                local playerData = PlayerDataManager.getPlayerData(viewingPlayer)
+                rebirths = playerData and playerData.rebirths or 0
+            end
+            local rebirthMultiplier = 1 + (0.5 * rebirths)
+            
+            plotPrice = math.floor(baseTotal * rebirthMultiplier)
         end
         -- Restore visibility first (in case it was invisible)
         plot.Transparency = 0
@@ -904,6 +936,7 @@ function WorldBuilder.updatePlotState(plot, state, seedType, variation, waterPro
             
             -- Price text label (positioned next to icon)
             local priceLabel = Instance.new("TextLabel")
+            priceLabel.Name = "PriceLabel"
             priceLabel.Size = UDim2.new(1, -35, 1, -10) -- Make room for icon
             priceLabel.Position = UDim2.new(0, 30, 0, 5) -- Start after icon
             priceLabel.BackgroundTransparency = 1

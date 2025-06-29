@@ -6,8 +6,8 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 
-local ClientLogger = require(script.Parent.ClientLogger)
-local log = ClientLogger.getModuleLogger("DoubleJumpController")
+-- Simple logging
+local function logInfo(...) print("[INFO] DoubleJumpController:", ...) end
 
 local DoubleJumpController = {}
 
@@ -55,7 +55,7 @@ local function performDoubleJump()
     local currentTime = tick()
     if currentTime - lastJumpTime < COOLDOWN_TIME then return end
     
-    log.debug("Performing double jump")
+    print("[DEBUG] DoubleJumpController: Performing double jump")
     
     -- Apply upward velocity for double jump
     local bodyVelocity = Instance.new("BodyVelocity")
@@ -77,7 +77,7 @@ local function performDoubleJump()
     -- end
     
     -- Visual effect (optional - could add particles here)
-    log.debug("Double jump performed successfully")
+    print("[DEBUG] DoubleJumpController: Double jump performed successfully")
 end
 
 -- Handle input for jumping
@@ -96,7 +96,7 @@ local function onInputBegan(input, gameProcessed)
             canDoubleJump = true
             hasDoubleJumped = false
             lastJumpTime = currentTime
-            log.debug("First jump detected, double jump enabled")
+            print("[DEBUG] DoubleJumpController: First jump detected, double jump enabled")
         elseif canDoubleJump and not hasDoubleJumped then
             -- Second jump in air - perform double jump
             performDoubleJump()
@@ -114,7 +114,7 @@ local function onHeartbeat()
         -- Just landed
         canDoubleJump = false
         hasDoubleJumped = false
-        log.debug("Character landed, double jump reset")
+        print("[DEBUG] DoubleJumpController: Character landed, double jump reset")
     end
     
     isGrounded = grounded
@@ -131,12 +131,12 @@ local function setupCharacter(newCharacter)
     hasDoubleJumped = false
     isGrounded = true
     
-    log.info("Double jump controller setup for character:", character.Name)
+    logInfo("Double jump controller setup for character:", character.Name)
 end
 
 -- Initialize the controller
 function DoubleJumpController.initialize()
-    log.info("Initializing double jump controller")
+    logInfo("Initializing double jump controller")
     
     -- Connect input handling
     UserInputService.InputBegan:Connect(onInputBegan)
@@ -152,12 +152,12 @@ function DoubleJumpController.initialize()
     -- Setup for future characters
     player.CharacterAdded:Connect(setupCharacter)
     
-    log.info("Double jump controller initialized successfully")
+    logInfo("Double jump controller initialized successfully")
 end
 
 -- Cleanup function
 function DoubleJumpController.cleanup()
-    log.info("Cleaning up double jump controller")
+    logInfo("Cleaning up double jump controller")
     -- Note: In a real implementation, you'd store connections and disconnect them here
 end
 

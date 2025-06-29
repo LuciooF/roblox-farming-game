@@ -3,6 +3,7 @@
 
 local GameConfig = require(script.Parent.GameConfig)
 local Logger = require(script.Parent.Logger)
+local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 
 -- ProfileStore requires - will be set up after packages are installed
 local ProfileStore = nil
@@ -267,18 +268,19 @@ function PlayerDataManager.canRebirth(playerData)
 end
 
 -- Perform rebirth
-function PlayerDataManager.performRebirth(player)
+function PlayerDataManager.performRebirth(player, bypassMoneyCheck)
     local playerData = PlayerDataManager.getPlayerData(player)
     if not playerData then return false end
     
-    if not PlayerDataManager.canRebirth(playerData) then
+    -- Allow bypassing money check for Robux purchases
+    if not bypassMoneyCheck and not PlayerDataManager.canRebirth(playerData) then
         return false, "Not enough money"
     end
     
     -- Perform rebirth
     local oldRebirths = playerData.rebirths
     playerData.rebirths = playerData.rebirths + 1
-    playerData.money = 500 -- Reset to 500 money as requested
+    playerData.money = 100 -- Reset to 100 money after rebirth
     -- Note: extraSlots is preserved through rebirth
     
     -- Reset plot ownership - clear all owned plots
@@ -381,16 +383,26 @@ function PlayerDataManager.getPlotPurchasePrice(player, plotIndex)
         return 0
     end
     
+    local basePrice
+    local priceMultiplier
+    
     -- Plots 2-10 have increasing prices
     if plotIndex <= 10 then
-        local basePrice = 50
-        return math.floor(basePrice * math.pow(1.3, plotIndex - 2))
+        basePrice = 50
+        priceMultiplier = math.pow(1.3, plotIndex - 2)
+    else
+        -- Plots beyond 10 cost more
+        basePrice = 500
+        priceMultiplier = math.pow(1.5, plotIndex - 11)
     end
     
-    -- Plots beyond 10 cost more
-    local basePrice = 500
-    local priceMultiplier = math.pow(1.5, plotIndex - 11)
-    return math.floor(basePrice * priceMultiplier)
+    local baseTotal = basePrice * priceMultiplier
+    
+    -- Apply rebirth scaling: +0.5x per rebirth (so 10 rebirths = 5x price)
+    local rebirths = playerData.rebirths or 0
+    local rebirthMultiplier = 1 + (0.5 * rebirths)
+    
+    return math.floor(baseTotal * rebirthMultiplier)
 end
 
 -- Purchase a new plot
@@ -896,6 +908,9 @@ function PlayerDataManager.debugResetDatastore(player)
         playerData.inventory.crops[cropType] = count
     end
     
+    -- Update leaderstats since money and rebirths changed
+    PlayerDataManager.updateLeaderstats(player)
+    
     log.info("Debug: Completely reset datastore for", player.Name)
     return true
 end
@@ -922,10 +937,10 @@ function PlayerDataManager.createLeaderstats(player, playerData)
     leaderstats.Name = "leaderstats"
     leaderstats.Parent = player
     
-    -- Create Money stat
-    local money = Instance.new("IntValue")
+    -- Create Money stat with formatted display
+    local money = Instance.new("StringValue")
     money.Name = "Money"
-    money.Value = playerData.money or 0
+    money.Value = NumberFormatter.format(playerData.money or 0)
     money.Parent = leaderstats
     
     -- Create Rebirths stat
@@ -947,10 +962,10 @@ function PlayerDataManager.updateLeaderstats(player)
     local playerData = PlayerDataManager.getPlayerData(player)
     if not playerData then return end
     
-    -- Update Money
+    -- Update Money with formatted display
     local money = leaderstats:FindFirstChild("Money")
     if money then
-        money.Value = playerData.money or 0
+        money.Value = NumberFormatter.format(playerData.money or 0)
     end
     
     -- Update Rebirths

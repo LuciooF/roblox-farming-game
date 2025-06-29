@@ -4,9 +4,10 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local ClientLogger = require(script.Parent.ClientLogger)
-
-local log = ClientLogger.getModuleLogger("RewardsService")
+-- Simple logging functions
+local function logInfo(...) print("[INFO] RewardsService:", ...) end
+local function logDebug(...) print("[DEBUG] RewardsService:", ...) end
+local function logWarn(...) warn("[WARN] RewardsService:", ...) end
 
 local RewardsService = {}
 
@@ -19,18 +20,18 @@ local rewardConnections = {}
 
 -- Initialize the service
 function RewardsService.initialize()
-    log.info("RewardsService initialized")
+    logInfo("RewardsService initialized")
 end
 
 -- Show a reward to the player
 function RewardsService.showReward(rewardData)
     -- Validate reward data
     if not rewardData or not rewardData.type then
-        log.error("Invalid reward data provided to showReward")
+        error("[ERROR] RewardsService: Invalid reward data provided to showReward")
         return
     end
     
-    log.info("Queueing reward:", rewardData.type, "amount:", rewardData.amount or "N/A")
+    logInfo("Queueing reward:", rewardData.type, "amount:", rewardData.amount or "N/A")
     
     -- Add to queue
     table.insert(rewardQueue, rewardData)
@@ -51,14 +52,14 @@ function RewardsService.processNextReward()
     isShowingReward = true
     local reward = table.remove(rewardQueue, 1)
     
-    log.debug("Showing reward:", reward.type)
+    logDebug("Showing reward:", reward.type)
     
     -- Fire event to show UI
     local event = RewardsService.getRewardShowEvent()
     if event then
         event:Fire(reward)
     else
-        log.warn("Reward show event not found - UI may not be initialized")
+        logWarn("Reward show event not found - UI may not be initialized")
         isShowingReward = false
     end
 end
@@ -75,7 +76,7 @@ end
 
 -- Called when a reward UI finishes showing
 function RewardsService.onRewardFinished()
-    log.debug("Reward display finished")
+    logDebug("Reward display finished")
     isShowingReward = false
     
     -- Process next reward after a short delay

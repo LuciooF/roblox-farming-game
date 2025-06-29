@@ -8,8 +8,9 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local Logger = require(script.Parent.Parent.ClientLogger)
-local log = Logger.getModuleLogger("DebugPanel")
+-- Simple logging functions for DebugPanel
+local function logInfo(...) print("[INFO] DebugPanel:", ...) end
+local function logError(...) error("[ERROR] DebugPanel: " .. table.concat({...}, " ")) end
 
 local DebugPanel = {}
 
@@ -42,7 +43,7 @@ function DebugPanel.create()
     debugFrame.ZIndex = 1000
     debugFrame.Parent = screenGui
     
-    log.info("Debug panel created with ScreenGui wrapper")
+    logInfo("Debug panel created with ScreenGui wrapper")
     
     -- Add modern corner styling
     local corner = Instance.new("UICorner")
@@ -207,15 +208,39 @@ function DebugPanel.create()
         DebugPanel.testRewards()
     end)
     
+    -- Add 100% Boost button
+    local addBoostBtn = DebugPanel.createButton("Add 100% Boost", Color3.fromRGB(255, 215, 0))
+    addBoostBtn.LayoutOrder = 8
+    addBoostBtn.Parent = buttonsFrame
+    addBoostBtn.MouseButton1Click:Connect(function()
+        DebugPanel.addProductionBoost()
+    end)
+    
+    -- Remove 100% Boost button
+    local removeBoostBtn = DebugPanel.createButton("Remove 100% Boost", Color3.fromRGB(150, 150, 150))
+    removeBoostBtn.LayoutOrder = 9
+    removeBoostBtn.Parent = buttonsFrame
+    removeBoostBtn.MouseButton1Click:Connect(function()
+        DebugPanel.removeProductionBoost()
+    end)
+    
+    -- Clear Codes button
+    local clearCodesBtn = DebugPanel.createButton("Clear Codes", Color3.fromRGB(255, 200, 0))
+    clearCodesBtn.LayoutOrder = 10
+    clearCodesBtn.Parent = buttonsFrame
+    clearCodesBtn.MouseButton1Click:Connect(function()
+        DebugPanel.clearCodes()
+    end)
+    
     -- Close button
     local closeBtn = DebugPanel.createButton("Close Panel", Color3.fromRGB(100, 100, 100))
-    closeBtn.LayoutOrder = 8
+    closeBtn.LayoutOrder = 9
     closeBtn.Parent = buttonsFrame
     closeBtn.MouseButton1Click:Connect(function()
         DebugPanel.hide()
     end)
     
-    log.info("Debug panel created")
+    logInfo("Debug panel created")
 end
 
 -- Create a button with modern styling matching other UI components
@@ -333,9 +358,9 @@ function DebugPanel.show()
     if debugFrame then
         debugFrame.Visible = true
         isVisible = true
-        log.info("Debug panel shown - frame exists and set to visible")
+        logInfo("Debug panel shown - frame exists and set to visible")
     else
-        log.error("Debug panel frame not found!")
+        logError("Debug panel frame not found!")
     end
 end
 
@@ -344,7 +369,7 @@ function DebugPanel.hide()
     if debugFrame then
         debugFrame.Visible = false
         isVisible = false
-        log.info("Debug panel hidden")
+        logInfo("Debug panel hidden")
     end
 end
 
@@ -363,7 +388,7 @@ function DebugPanel.addRebirth()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("addRebirth")
-    log.info("Requested +1 rebirth via debug")
+    logInfo("Requested +1 rebirth via debug")
 end
 
 -- Debug function: Reset rebirths
@@ -372,7 +397,7 @@ function DebugPanel.resetRebirths()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("resetRebirths")
-    log.info("Requested rebirth reset via debug")
+    logInfo("Requested rebirth reset via debug")
 end
 
 -- Debug function: Reset datastore
@@ -381,7 +406,7 @@ function DebugPanel.resetDatastore()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("resetDatastore")
-    log.info("Requested datastore reset via debug")
+    logInfo("Requested datastore reset via debug")
 end
 
 -- Debug function: Perform rebirth (normal system)
@@ -390,7 +415,7 @@ function DebugPanel.performRebirth()
     local rebirthRemote = remotes:WaitForChild("PerformRebirth")
     
     rebirthRemote:FireServer()
-    log.info("Requested normal rebirth")
+    logInfo("Requested normal rebirth")
 end
 
 -- Debug function: Add money
@@ -399,7 +424,7 @@ function DebugPanel.addMoney()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("addMoney", 10000)
-    log.info("Requested +$10,000 via debug")
+    logInfo("Requested +$10,000 via debug")
     
     -- Show reward animation
     local RewardsService = require(script.Parent.Parent.RewardsService)
@@ -412,7 +437,7 @@ function DebugPanel.checkGamepass()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("checkGamepass")
-    log.info("Requested gamepass ownership check")
+    logInfo("Requested gamepass ownership check")
 end
 
 -- Debug function: Test different reward types
@@ -428,7 +453,24 @@ function DebugPanel.testRewards()
     -- Test future boost reward (will queue after pet)
     RewardsService.showBoostReward("Growth Speed", 30, 2, "Your crops grow faster!")
     
-    log.info("Queued test rewards")
+    logInfo("Queued test rewards")
+end
+
+-- Debug function: Clear all redeemed codes
+function DebugPanel.clearCodes()
+    local CodesService = require(script.Parent.Parent.CodesService)
+    local remotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
+    
+    -- Use the CodesService clear function
+    local success = CodesService.clearCodes({
+        clearCodes = remotes:WaitForChild("ClearCodes")
+    })
+    
+    if success then
+        logInfo("Requested codes clear via debug")
+    else
+        logError("Failed to clear codes - remote not available")
+    end
 end
 
 
@@ -440,6 +482,24 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         DebugPanel.toggle()
     end
 end)
+
+-- Add 100% production boost
+function DebugPanel.addProductionBoost()
+    local FarmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
+    local debugRemote = FarmingRemotes:WaitForChild("DebugActions")
+    
+    print("[INFO] DebugPanel: Adding 100% debug production boost")
+    debugRemote:FireServer("addProductionBoost", 100)
+end
+
+-- Remove 100% production boost
+function DebugPanel.removeProductionBoost()
+    local FarmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
+    local debugRemote = FarmingRemotes:WaitForChild("DebugActions")
+    
+    print("[INFO] DebugPanel: Removing 100% debug production boost")
+    debugRemote:FireServer("removeProductionBoost", 100)
+end
 
 -- Initialize
 DebugPanel.create()

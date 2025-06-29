@@ -3,10 +3,7 @@
 
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
 local e = React.createElement
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
-
-local log = ClientLogger.getModuleLogger("MainUI")
 
 -- Import components
 local TopStats = require(script.Parent.TopStats)
@@ -19,14 +16,18 @@ local SeedDetailModal = require(script.Parent.SeedDetailModal)
 local WeatherPanel = require(script.Parent.WeatherPanel)
 local BoostPanel = require(script.Parent.BoostPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
-local PlotUI = require(script.Parent.PlotUI_Simple)
+local PlotUI = require(script.Parent.PlotUI)
 local DebugPanel = require(script.Parent.DebugPanel)
 local GamepassPanel = require(script.Parent.GamepassPanel)
 local ConfettiAnimation = require(script.Parent.ConfettiAnimation)
 local RebirthPanel = require(script.Parent.RebirthPanel)
 local PlantingPanel = require(script.Parent.PlantingPanel)
 local MusicButton = require(script.Parent.MusicButton)
+local FlyButton = require(script.Parent.FlyButton)
 local RewardsPanel = require(script.Parent.RewardsPanel)
+local CodesPanel = require(script.Parent.CodesPanel)
+local CodesButton = require(script.Parent.CodesButton)
+local LikeFavoritePopup = require(script.Parent.LikeFavoritePopup)
 
 local function MainUI(props)
     local playerData = props.playerData or {}
@@ -48,9 +49,12 @@ local function MainUI(props)
     local confettiVisible, setConfettiVisible = React.useState(false)
     local plantingVisible, setPlantingVisible = React.useState(false)
     local selectedPlotForPlanting, setSelectedPlotForPlanting = React.useState(nil)
+    local codesVisible, setCodesVisible = React.useState(false)
+    local likeFavoriteVisible, setLikeFavoriteVisible = React.useState(false)
+    local likeFavoriteData, setLikeFavoriteData = React.useState(nil)
     
     -- Track previous gamepass ownership to detect new purchases
-    local previousGamepasses, setPreviousGamepasses = React.useState({})
+    local previousGamepasses, setPreviousGamepasses = React.useState(nil) -- nil = not initialized yet
     
     -- Check if tutorial is completed (for showing reset button)
     local isTutorialCompleted = tutorialData and tutorialData.completed
@@ -82,9 +86,25 @@ local function MainUI(props)
         DebugPanel.create()
     end, {})
     
+    -- Set up global handler for like/favorite popup
+    React.useEffect(function()
+        -- Make this accessible globally for CodesService
+        _G.showLikeFavoritePopup = function(groupId, waitTimeSeconds)
+            setLikeFavoriteData({
+                groupId = groupId,
+                waitTimeSeconds = waitTimeSeconds
+            })
+            setLikeFavoriteVisible(true)
+        end
+        
+        return function()
+            _G.showLikeFavoritePopup = nil
+        end
+    end, {})
+    
     -- Event handlers
     local function handleShopClick()
-        log.debug("Shop button clicked! Current state:", shopVisible)
+        print("Shop button clicked! Current state:", shopVisible)
         setShopVisible(not shopVisible)
         setInventoryVisible(false)
         setWeatherVisible(false)
@@ -119,6 +139,7 @@ local function MainUI(props)
         setPlotUIVisible(false)
         setCropViewVisible(false)
         setPlantingVisible(false)
+        setCodesVisible(false)
     end
     
     -- Plot UI handlers
@@ -156,7 +177,7 @@ local function MainUI(props)
     -- Planting panel handlers
     local function handlePlantAllSameCrop(plotData)
         if not plotData or not plotData.seedType then
-            log.warn("Cannot plant all - no seed type in plot data")
+            warn("Cannot plant all - no seed type in plot data")
             return
         end
         
@@ -164,7 +185,7 @@ local function MainUI(props)
         local availableSeeds = (playerData.inventory and playerData.inventory.crops and playerData.inventory.crops[seedType]) or 0
         
         if availableSeeds <= 0 then
-            log.info("No", seedType, "seeds available to plant")
+            print("No", seedType, "seeds available to plant")
             return
         end
         
@@ -182,11 +203,11 @@ local function MainUI(props)
         local quantityToPlant = math.min(availableSeeds, canPlantMore)
         
         if quantityToPlant <= 0 then
-            log.info("Plot already at maximum capacity for", seedType)
+            print("Plot already at maximum capacity for", seedType)
             return
         end
         
-        log.info("Planting all available", seedType, "- quantity:", quantityToPlant, "on plot:", plotData.plotId)
+        print("Planting all available", seedType, "- quantity:", quantityToPlant, "on plot:", plotData.plotId)
         
         -- Plant the seeds directly without opening UI
         if remotes.farmAction then
@@ -196,7 +217,7 @@ local function MainUI(props)
             
             -- If there are more than 50, the user can click Plant All again
             if quantityToPlant > 50 then
-                log.info("Planted 50", seedType, "- click Plant All again to plant remaining", quantityToPlant - 50)
+                print("Planted 50", seedType, "- click Plant All again to plant remaining", quantityToPlant - 50)
             end
         end
         
@@ -222,7 +243,7 @@ local function MainUI(props)
     local function handlePlantSeed(seedType, quantity)
         quantity = quantity or 1 -- Default to 1 if no quantity specified
         local plotData = selectedPlotForPlanting and selectedPlotForPlanting.plotData
-        log.info("Planting seed:", seedType, "quantity:", quantity, "on plot:", plotData and plotData.plotId)
+        print("Planting seed:", seedType, "quantity:", quantity, "on plot:", plotData and plotData.plotId)
         
         if remotes.farmAction and plotData then
             remotes.farmAction:FireServer("plant", plotData.plotId, seedType, quantity)
@@ -253,7 +274,7 @@ local function MainUI(props)
         if props.onPlotUIHandler then
                 props.onPlotUIHandler(handlePlotInteraction)
         else
-            log.warn("❌ No onPlotUIHandler prop provided to MainUI")
+            warn("❌ No onPlotUIHandler prop provided to MainUI")
         end
         
         if props.onPlotUIUpdater then
@@ -279,6 +300,19 @@ local function MainUI(props)
         setPlotUIVisible(false)
     end
     
+    local function handleCodesClick()
+        setCodesVisible(not codesVisible)
+        -- Close other panels
+        setInventoryVisible(false)
+        setShopVisible(false)
+        setWeatherVisible(false)
+        setGamepassVisible(false)
+        setRebirthVisible(false)
+        setCropViewVisible(false)
+        setPlotUIVisible(false)
+        setPlantingVisible(false)
+    end
+    
     local function handlePurchase(itemType, item, price)
         if remotes.buyRemote then
             remotes.buyRemote:FireServer(itemType, item, price)
@@ -286,13 +320,13 @@ local function MainUI(props)
     end
     
     local function handleGamepassPurchase(gamepassKey)
-        log.info("Gamepass purchase requested:", gamepassKey)
+        print("Gamepass purchase requested:", gamepassKey)
         
         -- Send request to server to handle the purchase
         if remotes.gamepassPurchase then
             remotes.gamepassPurchase:FireServer(gamepassKey)
         else
-            log.warn("Gamepass purchase remote not available")
+            warn("Gamepass purchase remote not available")
         end
     end
     
@@ -322,29 +356,34 @@ local function MainUI(props)
     
     -- Watch for gamepass purchases and trigger confetti
     React.useEffect(function()
-        log.info("Player data gamepasses updated:", playerData.gamepasses)
+        print("Player data gamepasses updated:", playerData.gamepasses)
         if playerData.gamepasses then
-            log.info("Current gamepasses:", playerData.gamepasses)
-            log.info("Previous gamepasses:", previousGamepasses)
+            print("Current gamepasses:", playerData.gamepasses)
+            print("Previous gamepasses:", previousGamepasses)
             
-            -- Check if player acquired any new gamepasses
-            local gamepassCount = 0
-            for gamepassKey, owned in pairs(playerData.gamepasses) do
-                gamepassCount = gamepassCount + 1
-                log.info("Checking gamepass:", gamepassKey, "owned:", owned, "previously owned:", previousGamepasses[gamepassKey])
-                if owned and not previousGamepasses[gamepassKey] then
-                    -- Player just got a new gamepass! Show confetti
-                    log.info("Gamepass purchased detected:", gamepassKey, "- showing confetti!")
-                    setConfettiVisible(true)
-                    break -- Only show confetti once even if multiple gamepasses purchased
+            -- Only check for new purchases if we have previous state (not first initialization)
+            if previousGamepasses ~= nil then
+                -- Check if player acquired any new gamepasses
+                local gamepassCount = 0
+                for gamepassKey, owned in pairs(playerData.gamepasses) do
+                    gamepassCount = gamepassCount + 1
+                    print("Checking gamepass:", gamepassKey, "owned:", owned, "previously owned:", previousGamepasses[gamepassKey])
+                    if owned and not previousGamepasses[gamepassKey] then
+                        -- Player just got a new gamepass! Show confetti
+                        print("Gamepass purchased detected:", gamepassKey, "- showing confetti!")
+                        setConfettiVisible(true)
+                        break -- Only show confetti once even if multiple gamepasses purchased
+                    end
                 end
+                print("Total gamepasses found:", gamepassCount)
+            else
+                print("First gamepass initialization - not checking for new purchases")
             end
-            log.info("Total gamepasses found:", gamepassCount)
             
             -- Update previous gamepasses for next comparison
             setPreviousGamepasses(playerData.gamepasses)
         else
-            log.warn("No gamepasses in playerData")
+            warn("No gamepasses in playerData")
         end
     end, {playerData.gamepasses})
     
@@ -356,7 +395,7 @@ local function MainUI(props)
     }, {
         -- Background click detector to close panels (only when panels are visible)
         -- Proportional space at bottom for controls
-        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible or plantingVisible) and e("TextButton", {
+        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible or plantingVisible or codesVisible) and e("TextButton", {
             Name = "ClickDetector",
             Size = UDim2.new(1, 0, 1, -ScreenUtils.getProportionalSize(screenSize, 200)), -- Proportional space at bottom
             Position = UDim2.new(0, 0, 0, 0),
@@ -409,7 +448,8 @@ local function MainUI(props)
             screenSize = screenSize,
             visible = shopVisible,
             onClose = function() setShopVisible(false) end,
-            remotes = remotes
+            remotes = remotes,
+            tutorialData = tutorialData
         }),
         
         
@@ -436,6 +476,7 @@ local function MainUI(props)
         -- Boost Panel Component (bottom left)
         BoostPanel = e(BoostPanel, {
             playerData = playerData,
+            gamepassData = gamepassData,
             weatherData = props.weatherData or {},
             screenSize = screenSize
         }),
@@ -445,6 +486,13 @@ local function MainUI(props)
             screenSize = screenSize,
             playerData = playerData,
             remotes = remotes
+        }),
+        
+        -- Fly Button Component (above music button)
+        FlyButton = e(FlyButton, {
+            screenSize = screenSize,
+            playerData = playerData,
+            onGamepassToggle = handleGamepassClick
         }),
         
         -- Crop View Modal (rendered at top level for proper positioning)
@@ -494,6 +542,7 @@ local function MainUI(props)
         PlotUI = plotUIVisible and selectedPlotData and e(PlotUI, {
             plotData = selectedPlotData,
             playerData = playerData,
+            weatherData = props.weatherData or {},
             visible = plotUIVisible,
             onClose = function() 
                 setPlotUIVisible(false)
@@ -532,6 +581,19 @@ local function MainUI(props)
                 setSelectedPlotForPlanting(nil)
             end,
             onPlant = handlePlantSeed,
+            onOpenShop = function()
+                setShopVisible(true)
+                setPlantingVisible(false)
+                setSelectedPlotForPlanting(nil)
+            end,
+            screenSize = screenSize
+        }) or nil,
+        
+        -- Codes Panel Component
+        CodesPanel = codesVisible and e(CodesPanel, {
+            visible = codesVisible,
+            onClose = function() setCodesVisible(false) end,
+            remotes = remotes,
             screenSize = screenSize
         }) or nil,
         
@@ -547,7 +609,22 @@ local function MainUI(props)
         -- Rewards Panel (shows on top of everything)
         RewardsPanel = e(RewardsPanel, {
             screenSize = screenSize
-        })
+        }),
+        
+        -- Codes Button (always visible on right side)
+        CodesButton = e(CodesButton, {
+            onClick = handleCodesClick,
+            screenSize = screenSize
+        }),
+        
+        -- Like/Favorite Popup (shows on top of everything)
+        LikeFavoritePopup = likeFavoriteVisible and likeFavoriteData and e(LikeFavoritePopup, {
+            visible = likeFavoriteVisible,
+            onClose = function() setLikeFavoriteVisible(false) end,
+            groupId = likeFavoriteData.groupId,
+            waitTimeSeconds = likeFavoriteData.waitTimeSeconds,
+            screenSize = screenSize
+        }) or nil
     })
 end
 

@@ -200,6 +200,9 @@ function GamepassService.applyGamepassEffects(player, gamepassKey, isNewPurchase
     elseif gamepassKey == "flyMode" then
         -- Fly mode is passive - handled by FlyController
         log.debug("Fly Mode is now active for", player.Name)
+    elseif gamepassKey == "productionBoost" then
+        -- Production boost is passive - handled by PlotManager production calculations
+        log.debug("2x Production Boost is now active for", player.Name)
     end
     
     -- Only send notification for new purchases, not existing ownership

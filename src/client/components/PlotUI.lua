@@ -1,312 +1,320 @@
--- Modern Plot UI Component
--- Clean, informative UI for plot management with real-time updates
-
+-- Minimal PlotUI to test React createTextInstance issue
 local React = require(game:GetService("ReplicatedStorage").Packages.react)
-local TweenService = game:GetService("TweenService")
 local e = React.createElement
-local ClientLogger = require(script.Parent.Parent.ClientLogger)
-local RainEffectManager = require(script.Parent.Parent.RainEffectManager)
-local PlotUtils = require(script.Parent.Parent.PlotUtils)
-local PlotGrowthCalculator = require(script.Parent.Parent.PlotGrowthCalculator)
-local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
-local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
-local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
-local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
 local Modal = require(script.Parent.Modal)
+local assets = require(game:GetService("ReplicatedStorage").Shared.assets)
+local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropRegistry)
 
-local log = ClientLogger.getModuleLogger("PlotUI")
+-- Helper function to play sounds client-side
+local function playSound(soundId)
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://" .. soundId
+    sound.Volume = 0.5
+    sound.Parent = game:GetService("SoundService")
+    sound:Play()
+    
+    -- Clean up after sound finishes
+    sound.Ended:Connect(function()
+        sound:Destroy()
+    end)
+end
 
-local function PlotUI(props)
-    local plotData = props.plotData or {}
+-- Helper function to format time in h/m/s format
+local function formatTimeHMS(seconds)
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+    local secs = math.floor(seconds % 60)
+    
+    if hours > 0 then
+        return string.format("%dh %dm %ds", hours, minutes, secs)
+    elseif minutes > 0 then
+        return string.format("%dm %ds", minutes, secs)
+    else
+        return string.format("%ds", secs)
+    end
+end
+
+local function PlotUI_Simple(props)
     local visible = props.visible or false
     local onClose = props.onClose or function() end
-    local remotes = props.remotes or {}
-    local playerData = props.playerData
-    local onOpenShop = props.onOpenShop or function() end
-    local onOpenPlanting = props.onOpenPlanting or function() end
-    local screenSize = props.screenSize or Vector2.new(1024, 768)
-    
-    -- Responsive sizing
-    local scale = ScreenUtils.getProportionalScale(screenSize)
-    local panelWidth = math.min(screenSize.X * 0.9, ScreenUtils.getProportionalSize(screenSize, 700))
-    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 600))
-    
-    -- Proportional text sizes
-    local titleTextSize = ScreenUtils.getProportionalTextSize(screenSize, 32)
-    local normalTextSize = ScreenUtils.getProportionalTextSize(screenSize, 18)
-    local smallTextSize = ScreenUtils.getProportionalTextSize(screenSize, 14)
-    local buttonTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
-    local cardTitleSize = ScreenUtils.getProportionalTextSize(screenSize, 20)
-    local cardValueSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
+    local plotData = props.plotData or {}
     
     -- Extract plot state info
-    local plotId = plotData.plotId
     local state = plotData.state or "empty"
     local seedType = plotData.seedType or ""
     local plantName = seedType:gsub("^%l", string.upper)
     local harvestCount = plotData.harvestCount or 0
     local maxHarvests = plotData.maxHarvests or 0
     local accumulatedCrops = plotData.accumulatedCrops or 0
-    local wateredCount = plotData.wateredCount or 0
-    local waterNeeded = plotData.waterNeeded or 0
+    local plotId = plotData.plotId
     
-    -- Timing data
+    -- Get crop info from registry
+    local cropInfo = seedType ~= "" and CropRegistry.getCrop(seedType) or nil
+    local cropVisuals = cropInfo
+    
+    -- Extract additional plot timing data
     local plantedAt = plotData.plantedAt or 0
     local lastWateredAt = plotData.lastWateredAt or 0
     local growthTime = plotData.growthTime or 60
     local waterTime = plotData.waterTime or 30
-    
-    -- Water cooldown data
     local lastWaterActionTime = plotData.lastWaterActionTime or 0
     local waterCooldownSeconds = plotData.waterCooldownSeconds or 30
-    
-    -- Boost data
     local weatherEffects = plotData.weatherEffects or {}
     local onlineBonus = plotData.onlineBonus or false
-    
-    -- Maintenance watering data
-    local needsMaintenanceWater = plotData.needsMaintenanceWater or false
     local lastMaintenanceWater = plotData.lastMaintenanceWater or 0
-    local maintenanceWaterInterval = plotData.maintenanceWaterInterval or 43200 -- 12 hours
+    local wateredCount = plotData.wateredCount or 0
+    local waterNeeded = plotData.waterNeeded or 0
     
     -- Real-time countdown state
     local currentTime, setCurrentTime = React.useState(tick())
     
-    -- Hover state for production preview
-    local showProductionPreview, setShowProductionPreview = React.useState(false)
-    local plantAllHover, setPlantAllHover = React.useState(false)
+    -- Local water action tracking for UI feedback
+    local lastLocalWaterTime, setLastLocalWaterTime = React.useState(0)
     
-    -- Plot growth status from new calculator
-    local plotStatus, setPlotStatus = React.useState(nil)
+    -- Cut plant confirmation state
+    local showCutConfirmation, setShowCutConfirmation = React.useState(false)
     
-    -- Update timer every second for real-time countdown and growth calculations
+    -- Calculate water status and ability
+    local waterStatus = ""
+    local waterStatusColor = Color3.fromRGB(100, 200, 255)
+    local canWater = false
+    local waterButtonText = "💧 Water"
+    
+    if state == "empty" then
+        waterStatus = "Empty plot"
+    elseif state == "planted" or state == "growing" or state == "watered" or state == "ready" then
+        -- Show water count and status
+        local waterCountText = tostring(wateredCount) .. "/" .. tostring(waterNeeded)
+        
+        -- First check if we're on cooldown from last water action
+        local onCooldown = false
+        local cooldownRemaining = 0
+        
+        -- Use server time if available, otherwise use local tracking
+        local effectiveLastWaterTime = lastWaterActionTime > 0 and lastWaterActionTime or lastLocalWaterTime
+        
+        if effectiveLastWaterTime > 0 then
+            local timeSinceLastWater = currentTime - effectiveLastWaterTime
+            cooldownRemaining = waterCooldownSeconds - timeSinceLastWater
+            onCooldown = cooldownRemaining > 0
+        end
+        
+        if wateredCount >= waterNeeded then
+            -- Fully watered - calculate maintenance timing locally
+            if cropInfo and cropInfo.maintenanceWaterInterval then
+                -- Use lastMaintenanceWater if available, otherwise use lastWateredAt as start time
+                local maintenanceStartTime = lastMaintenanceWater > 0 and lastMaintenanceWater or lastWateredAt
+                local timeSinceLastMaintenance = currentTime - maintenanceStartTime
+                local maintenanceRemaining = cropInfo.maintenanceWaterInterval - timeSinceLastMaintenance
+                
+                if maintenanceRemaining > 0 then
+                    -- Still within maintenance period - show countdown
+                    waterStatus = "Water in " .. formatTimeHMS(maintenanceRemaining)
+                    waterStatusColor = Color3.fromRGB(100, 200, 100)
+                    canWater = false
+                    waterButtonText = "💧 Water"
+                else
+                    -- Maintenance watering needed
+                    waterStatus = "Maintenance needed!"
+                    waterStatusColor = Color3.fromRGB(255, 200, 100)
+                    canWater = true
+                    waterButtonText = "💧 Maintenance Water"
+                end
+            else
+                -- No maintenance system - just show watered
+                waterStatus = "Watered (" .. waterCountText .. ")"
+                waterStatusColor = Color3.fromRGB(100, 200, 100)
+                canWater = false
+                waterButtonText = "💧 Water"
+            end
+        elseif onCooldown then
+            -- On cooldown and still needs more water - show timer
+            canWater = false
+            local cooldownFormatted = formatTimeHMS(cooldownRemaining)
+            waterStatus = string.format("In %s (%s)", cooldownFormatted, waterCountText)
+            waterButtonText = string.format("💧 Water (In %s)", cooldownFormatted)
+            waterStatusColor = Color3.fromRGB(255, 200, 100)
+        elseif wateredCount < waterNeeded then
+            -- Needs water and not on cooldown
+            waterStatus = "Now! (" .. waterCountText .. ")"
+            waterStatusColor = Color3.fromRGB(255, 100, 100)
+            canWater = true
+            waterButtonText = "💧 Water"
+        end
+    elseif needsMaintenanceWater then
+        waterStatus = "Maintenance needed!"
+        waterStatusColor = Color3.fromRGB(255, 100, 100)
+        canWater = true
+        waterButtonText = "💧 Water"
+    end
+    
+    -- Calculate plot capacity and available planting space
+    local MAX_PLANTS_PER_PLOT = 50
+    local activePlants = maxHarvests - harvestCount
+    local currentPlantCount = state == "empty" and 0 or activePlants
+    local availableSpace = MAX_PLANTS_PER_PLOT - currentPlantCount
+    
+    -- Calculate available seeds/crops for current crop type
+    local currentCropCount = 0
+    if seedType ~= "" and props.playerData and props.playerData.inventory then
+        if props.playerData.inventory.seeds then
+            currentCropCount = currentCropCount + (props.playerData.inventory.seeds[seedType] or 0)
+        end
+        if props.playerData.inventory.crops then
+            currentCropCount = currentCropCount + (props.playerData.inventory.crops[seedType] or 0)
+        end
+    end
+    
+    -- Calculate total seeds in inventory (for empty plot shop button)
+    local totalSeeds = 0
+    if props.playerData and props.playerData.inventory and props.playerData.inventory.seeds then
+        for _, count in pairs(props.playerData.inventory.seeds) do
+            totalSeeds = totalSeeds + count
+        end
+    end
+    
+    -- Calculate how many we can actually plant (limited by space and inventory)
+    local plantAllQuantity = math.min(availableSpace, currentCropCount)
+    local canPlantOne = availableSpace > 0 and currentCropCount > 0
+    local canPlantAll = plantAllQuantity > 1
+    
+    -- Calculate growth progress and harvest status
+    local growthProgress = 0
+    local growthProgressText = "0% grown"
+    local canHarvest = false
+    local currentCropsReady = accumulatedCrops or 0
+    
+    -- Simple harvest logic: if we have crops accumulated, we can harvest
+    if currentCropsReady > 0 then
+        canHarvest = true
+    end
+    
+    if state ~= "empty" and cropInfo then
+        local productionRate = cropInfo.productionRate or 1
+        local productionInterval = 3600 / productionRate -- seconds per crop
+        
+        -- Calculate total boost multiplier (same logic as server)
+        local boostMultiplier = 2.0 -- Base online speed boost (2x)
+        
+        -- Apply debug boost (multiplicative)
+        if props.playerData and props.playerData.debugProductionBoost and props.playerData.debugProductionBoost > 0 then
+            local debugMultiplier = 1 + (props.playerData.debugProductionBoost / 100)
+            boostMultiplier = boostMultiplier * debugMultiplier
+        end
+        
+        -- Apply production gamepass boost (multiplicative)
+        if props.playerData and props.playerData.gamepasses and props.playerData.gamepasses.productionBoost then
+            boostMultiplier = boostMultiplier * 2.0 -- 2x for production gamepass
+        end
+        
+        -- Apply weather boost (multiplicative)
+        if props.weatherData and props.weatherData.current and props.weatherData.current.name then
+            local weatherName = props.weatherData.current.name
+            local weatherMultiplier = 1.0
+            if weatherName == "Rainy" then
+                weatherMultiplier = 1.2 -- 20% faster growth in rain
+            elseif weatherName == "Thunderstorm" then
+                weatherMultiplier = 0.8 -- 20% slower growth in thunderstorm
+            elseif weatherName == "Sunny" then
+                weatherMultiplier = 1.5 -- 50% faster growth in sun
+            -- Cloudy = 1.0 (neutral)
+            end
+            boostMultiplier = boostMultiplier * weatherMultiplier
+        end
+        
+        -- Apply boost multiplier to interval (higher multiplier = faster growth = shorter interval)
+        local effectiveInterval = productionInterval / boostMultiplier
+        
+        local activePlants = maxHarvests - harvestCount
+        local stackText = "Stack of " .. tostring(activePlants)
+        
+        -- Only calculate growth if the plant is FULLY watered AND doesn't need maintenance
+        if wateredCount >= waterNeeded then
+            -- Use lastWateredAt as the start time for growth calculation
+            local growthStartTime = lastWateredAt > 0 and lastWateredAt or plantedAt
+            local timeSinceWatered = currentTime - growthStartTime
+            
+            -- Calculate maintenance timing locally
+            local needsMaintenanceNow = false
+            if cropInfo and cropInfo.maintenanceWaterInterval then
+                local maintenanceStartTime = lastMaintenanceWater > 0 and lastMaintenanceWater or lastWateredAt
+                local timeSinceLastMaintenance = currentTime - maintenanceStartTime
+                needsMaintenanceNow = timeSinceLastMaintenance >= cropInfo.maintenanceWaterInterval
+            end
+            
+            if needsMaintenanceNow then
+                -- Stop growth progress - maintenance needed
+                growthProgress = 0
+                growthProgressText = tostring(stackText) .. " | No progress - needs watering!"
+            else
+                local cycleProgress = (timeSinceWatered % effectiveInterval) / effectiveInterval
+                growthProgress = math.min(cycleProgress, 1)
+                
+                local progressPercent = math.floor(growthProgress * 100)
+                growthProgressText = tostring(stackText) .. " | " .. tostring(progressPercent) .. "% grown"
+                
+                -- Calculate expected crops based on completed cycles
+                local completedCycles = math.floor(timeSinceWatered / effectiveInterval)
+                local expectedNewCrops = completedCycles * activePlants
+                
+                -- Update current crops ready (accumulated + new from completed cycles)
+                if growthProgress >= 1 then
+                    -- At least one cycle complete, calculate total crops
+                    currentCropsReady = math.max(currentCropsReady, (accumulatedCrops or 0) + expectedNewCrops)
+                end
+                
+                -- Update harvest status based on crops available
+                if currentCropsReady > 0 then
+                    canHarvest = true
+                    if growthProgress >= 1 then
+                        growthProgressText = tostring(stackText) .. " | Ready to harvest!"
+                    end
+                elseif growthProgress >= 1 then
+                    -- Cycle complete but no crops yet - still allow harvest attempt
+                    canHarvest = true
+                    growthProgressText = tostring(stackText) .. " | Ready!"
+                end
+            end
+        else
+            -- Plant is not watered yet, show waiting state
+            growthProgress = 0
+            growthProgressText = tostring(stackText) .. " | Waiting for water"
+            -- But still allow harvest if we have accumulated crops
+            if currentCropsReady > 0 then
+                canHarvest = true
+            end
+        end
+    end
+    
+    -- Update timer every second for real-time countdown
     React.useEffect(function()
         local connection = game:GetService("RunService").Heartbeat:Connect(function()
             setCurrentTime(tick())
-            
-            -- Temporarily disable new growth calculator to debug React issue
-            setPlotStatus(nil)
-            
-            -- TODO: Re-enable once React text issue is resolved
-            -- if plotData and plotData.seedType and plotData.seedType ~= "" then
-            --     local success, result = pcall(function()
-            --         local lastOnlineAt = playerData and playerData.lastOnlineAt or tick()
-            --         local playerBoosts = {
-            --             onlineBoost = onlineBonus and 2.0 or 1.0,
-            --             globalMultiplier = weatherEffects and weatherEffects.growthMultiplier or 1.0
-            --         }
-            --         return PlotGrowthCalculator.getPlotStatus(plotData, lastOnlineAt, playerBoosts)
-            --     end)
-            --     if success and result then
-            --         setPlotStatus(result)
-            --     else
-            --         setPlotStatus(nil)
-            --     end
-            -- else
-            --     setPlotStatus(nil)
-            -- end
         end)
         
         return function()
             connection:Disconnect()
         end
-    end, {plotData, playerData, onlineBonus, weatherEffects})
+    end, {})
     
-    -- Get crop info from registry
-    local cropInfo = seedType ~= "" and CropRegistry.getCrop(seedType) or nil
-    local cropVisuals = cropInfo -- Use crop data directly since it contains all visual info
-    
-    -- Check if player has more of the current crop type
-    local currentCropCount = 0
-    if seedType ~= "" then
-        if playerData.inventory and playerData.inventory.seeds then
-            currentCropCount = currentCropCount + (playerData.inventory.seeds[seedType] or 0)
-        end
-        if playerData.inventory and playerData.inventory.crops then
-            currentCropCount = currentCropCount + (playerData.inventory.crops[seedType] or 0)
-        end
-    end
-    
-    -- Calculate total seeds/crops available for Plant All display
-    local totalAvailableSeeds = 0
-    if playerData.inventory then
-        if playerData.inventory.seeds then
-            for _, quantity in pairs(playerData.inventory.seeds) do
-                totalAvailableSeeds = totalAvailableSeeds + (quantity or 0)
-            end
-        end
-        if playerData.inventory.crops then
-            for _, quantity in pairs(playerData.inventory.crops) do
-                totalAvailableSeeds = totalAvailableSeeds + (quantity or 0)
-            end
-        end
-    end
-    
-    -- Plot capacity calculation (max 50 plants per plot)
-    local MAX_PLANTS_PER_PLOT = 50
-    local activePlants = maxHarvests - harvestCount
-    local currentPlantCount = state == "empty" and 0 or activePlants
-    local availableSpace = MAX_PLANTS_PER_PLOT - currentPlantCount
-    local canPlantMore = availableSpace > 0
-    
-    -- Calculate how many we can actually plant (limited by space and inventory)
-    local plantAllQuantity = math.min(availableSpace or 0, totalAvailableSeeds or 0)
-    
-    -- Production rates (for preview) - actual calculations are in PlotGrowthCalculator
-    local baseProductionPerHour = (cropInfo and cropInfo.productionRate) or 0 -- crops per hour per plant
-    local totalProductionPerHour = baseProductionPerHour * activePlants
-    local productionWithOneMore = baseProductionPerHour * (activePlants + 1)
-    local actualPlantsAfterPlantAll = activePlants + plantAllQuantity
-    local productionWithPlantAll = baseProductionPerHour * actualPlantsAfterPlantAll
-    
-    -- Calculate water countdown or status
-    local waterStatus = ""
-    local waterStatusColor = Color3.fromRGB(100, 200, 255)
-    local canWater = false
-    
-    if state == "empty" then
-        waterStatus = "Empty plot"
-    elseif state == "planted" or state == "growing" then
-        if wateredCount < waterNeeded then
-            waterStatus = "Now!"
-            waterStatusColor = Color3.fromRGB(255, 100, 100)
-            canWater = true
-        else
-            waterStatus = "Watered"
-        end
-    elseif needsMaintenanceWater then
-        waterStatus = "Now!"
-        waterStatusColor = Color3.fromRGB(255, 100, 100)
-        canWater = true
-    else
-        -- Calculate time until next maintenance water
-        local timeSinceLastMaintenance = currentTime - lastMaintenanceWater
-        local timeUntilNextMaintenance = maintenanceWaterInterval - timeSinceLastMaintenance
-        
-        if timeUntilNextMaintenance > 0 then
-            local hours = math.floor(timeUntilNextMaintenance / 3600)
-            local minutes = math.floor((timeUntilNextMaintenance % 3600) / 60)
-            local seconds = math.floor(timeUntilNextMaintenance % 60)
-            
-            if hours > 0 then
-                waterStatus = string.format("%dh %dm", hours, minutes)
-            elseif minutes > 0 then
-                waterStatus = string.format("%dm %ds", minutes, seconds)
-            else
-                waterStatus = string.format("%ds", seconds)
-            end
-        else
-            waterStatus = "Now!"
-            waterStatusColor = Color3.fromRGB(255, 100, 100)
-            canWater = true
-        end
-    end
-    
-    -- Check water cooldown
-    if canWater and lastWaterActionTime > 0 then
-        local timeSinceLastWater = currentTime - lastWaterActionTime
-        local cooldownRemaining = waterCooldownSeconds - timeSinceLastWater
-        
-        if cooldownRemaining > 0 then
-            canWater = false
-            local cooldownMinutes = math.floor(cooldownRemaining / 60)
-            local cooldownSeconds = math.floor(cooldownRemaining % 60)
-            if cooldownMinutes > 0 then
-                waterStatus = string.format("Cooldown %dm %ds", cooldownMinutes, cooldownSeconds)
-            else
-                waterStatus = string.format("Cooldown %ds", cooldownSeconds)
-            end
-            waterStatusColor = Color3.fromRGB(255, 200, 100)
-        end
-    end
-    
-    -- Calculate growth progress using new PlotGrowthCalculator
-    local growthProgress = 0
-    local growthProgressText = "0% grown"
-    local currentCropsReady = accumulatedCrops or 0 -- Default to plot data
-    local effectiveProductionRate = baseProductionPerHour * activePlants
-    local nextCropTimeText = "Calculating..."
-    
-    -- Temporarily use old growth calculation logic
-    if state ~= "empty" and cropInfo then
-        local productionRate = cropInfo.productionRate or 1
-        local productionInterval = 3600 / productionRate -- seconds per crop
-        
-        -- Apply online bonus (2x speed when player is online)
-        local effectiveInterval = productionInterval * 0.5 -- Assume player is online for UI
-        
-        if state == "watered" or state == "ready" then
-            -- Calculate time since planting or last harvest
-            local timeSinceStart = currentTime - (plantedAt or 0)
-            local cycleProgress = (timeSinceStart % effectiveInterval) / effectiveInterval
-            growthProgress = math.min(cycleProgress, 1)
-            
-            -- Show stack info and growth progress
-            local stackText = "Stack of " .. tostring(activePlants)
-            local progressPercent = math.floor(growthProgress * 100)
-            growthProgressText = tostring(stackText) .. " | " .. tostring(progressPercent) .. "% grown"
-            
-            -- Only show "Ready to harvest!" when hitting 1k crop limit
-            local CROP_LIMIT = 1000
-            if accumulatedCrops >= CROP_LIMIT then
-                growthProgress = 1
-                growthProgressText = tostring(stackText) .. " | Ready to harvest!"
-            elseif growthProgress >= 1 then
-                -- Crop cycle complete but not at limit - keep producing
-                growthProgress = 1
-                growthProgressText = tostring(stackText) .. " | Producing..."
-            end
-        end
-    end
-    
-    -- Final safety check to ensure growthProgressText is always a valid string
-    growthProgressText = tostring(growthProgressText or "0% grown")
-    
-    -- Action handlers
-    local function handlePlant()
-        if remotes.farmAction then
-            log.info("Planting 1 more", seedType, "on plot", plotId)
-            remotes.farmAction:FireServer("plant", plotId, seedType, 1)
-        end
-    end
-    
-    local function handleWater()
-        if remotes.farmAction then
-            log.info("Watering plot", plotId)
-            remotes.farmAction:FireServer("water", plotId)
-            
-            -- Create rain effect
-            local plot = PlotUtils.findPlotById(plotId)
-            if plot then
-                RainEffectManager.createRainEffect(plot)
-            end
-        end
-    end
-    
-    local function handleHarvest()
-        if remotes.farmAction then
-            local harvestAmount = currentCropsReady > 0 and currentCropsReady or (accumulatedCrops or 0)
-            log.info("Harvesting plot", plotId, "- expected amount:", harvestAmount)
-            remotes.farmAction:FireServer("harvest", plotId, harvestAmount)
-        end
-    end
-    
-    return e(Modal, {
-        visible = visible,
-        onClose = onClose,
-        zIndex = 30
-    }, {
+    return e(React.Fragment, {}, {
+        -- Main Plot UI Modal
+        PlotModal = e(Modal, {
+            visible = visible,
+            onClose = onClose,
+            zIndex = 30
+        }, {
         PlotContainer = e("Frame", {
             Name = "PlotContainer",
-            Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale + 50),
-            Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -(panelHeight * scale + 50) / 2),
+            Size = UDim2.new(0, 700, 0, 650),
+            Position = UDim2.new(0.5, -350, 0.5, -325),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             ZIndex = 30
         }, {
             PlotPanel = e("Frame", {
                 Name = "PlotPanel",
-                Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
+                Size = UDim2.new(0, 700, 0, 600),
                 Position = UDim2.new(0, 0, 0, 50),
                 BackgroundColor3 = Color3.fromRGB(240, 245, 255),
                 BackgroundTransparency = 0.05,
@@ -338,14 +346,14 @@ local function PlotUI(props)
                         Transparency = 0.2
                     }),
                     TitleText = e("TextLabel", {
-                        Size = UDim2.new(1, -10, 1, 0),
-                        Position = UDim2.new(0, 5, 0, 0),
-                        Text = "PLOT UI",
+                        Size = UDim2.new(1, 0, 1, 0),
+                        Text = "PLOT",
                         TextColor3 = Color3.fromRGB(255, 255, 255),
-                        TextSize = normalTextSize,
-            TextWrapped = true,
+                        TextSize = 18,
+                        TextWrapped = true,
                         BackgroundTransparency = 1,
                         Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Center,
                         ZIndex = 33
                     }, {
                         TextStroke = e("UIStroke", {
@@ -359,19 +367,17 @@ local function PlotUI(props)
                 Corner = e("UICorner", {
                     CornerRadius = UDim.new(0, 20)
                 }),
-                
                 Stroke = e("UIStroke", {
                     Color = Color3.fromRGB(100, 200, 100),
                     Thickness = 3,
                     Transparency = 0.1
                 }),
-                
                 Gradient = e("UIGradient", {
                     Color = ColorSequence.new{
                         ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
                         ColorSequenceKeypoint.new(0.3, Color3.fromRGB(250, 255, 250)),
                         ColorSequenceKeypoint.new(0.7, Color3.fromRGB(245, 255, 245)),
-                        ColorSequenceKeypoint.new(1, Color3.fromRGB(240, 250, 240))
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(240, 255, 240))
                     },
                     Rotation = 135
                 }),
@@ -381,7 +387,7 @@ local function PlotUI(props)
                     Name = "CloseButton",
                     Size = UDim2.new(0, 32, 0, 32),
                     Position = UDim2.new(1, -16, 0, -16),
-                    Image = assets["X Button/X Button 64.png"],
+                    Image = assets["X Button/X Button 64.png"] or "",
                     ImageColor3 = Color3.fromRGB(255, 255, 255),
                     ScaleType = Enum.ScaleType.Fit,
                     BackgroundColor3 = Color3.fromRGB(255, 100, 100),
@@ -403,774 +409,857 @@ local function PlotUI(props)
                         Color = Color3.fromRGB(255, 255, 255),
                         Thickness = 2,
                         Transparency = 0.2
-                    }),
-                    Shadow = e("Frame", {
-                        Name = "Shadow",
-                        Size = UDim2.new(1, 2, 1, 2),
-                        Position = UDim2.new(0, 2, 0, 2),
-                        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-                        BackgroundTransparency = 0.7,
-                        BorderSizePixel = 0,
-                        ZIndex = 33
-                    }, {
-                        Corner = e("UICorner", {
-                            CornerRadius = UDim.new(0, 6)
-                        })
                     })
                 }),
                 
-                -- Main Content Container
-                ContentContainer = e("Frame", {
-                    Size = UDim2.new(1, -40, 1, -40),
+                -- Crop Card (only show if not empty)
+                CropCard = state ~= "empty" and e("Frame", {
+                    Name = "CropCard",
+                    Size = UDim2.new(1, -40, 0, 180),
                     Position = UDim2.new(0, 20, 0, 20),
+                    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                    BackgroundTransparency = 0.1,
+                    BorderSizePixel = 0,
+                    ZIndex = 31
+                }, {
+                    Corner = e("UICorner", {
+                        CornerRadius = UDim.new(0, 15)
+                    }),
+                    Stroke = e("UIStroke", {
+                        Color = Color3.fromRGB(200, 255, 200),
+                        Thickness = 2,
+                        Transparency = 0.3
+                    }),
+                    Gradient = e("UIGradient", {
+                        Color = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+                            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 255, 250)),
+                            ColorSequenceKeypoint.new(1, Color3.fromRGB(245, 255, 245))
+                        },
+                        Rotation = 45
+                    }),
+                    
+                    -- Crop Icon (centered)
+                    CropIcon = (function()
+                        if cropVisuals and cropVisuals.assetId then
+                            return e("ImageLabel", {
+                                Name = "CropIcon",
+                                Size = UDim2.new(0, 80, 0, 80),
+                                Position = UDim2.new(0.5, -40, 0, 20),
+                                Image = cropVisuals.assetId,
+                                BackgroundTransparency = 1,
+                                ScaleType = Enum.ScaleType.Fit,
+                                ZIndex = 33
+                            })
+                        else
+                            return e("TextLabel", {
+                                Name = "CropEmoji",
+                                Size = UDim2.new(0, 80, 0, 80),
+                                Position = UDim2.new(0.5, -40, 0, 20),
+                                Text = tostring(cropVisuals and cropVisuals.emoji or "🌱"),
+                                TextSize = 48,
+                                TextWrapped = true,
+                                BackgroundTransparency = 1,
+                                Font = Enum.Font.SourceSansBold,
+                                TextXAlignment = Enum.TextXAlignment.Center,
+                                ZIndex = 33
+                            })
+                        end
+                    end)(),
+                    
+                    -- Crop Info (centered)
+                    CropName = e("TextLabel", {
+                        Size = UDim2.new(1, -40, 0, 30),
+                        Position = UDim2.new(0, 20, 0, 110),
+                        Text = (function()
+                            local cropName = tostring(cropInfo and cropInfo.name or plantName or "Unknown")
+                            if state ~= "empty" then
+                                return cropName .. " (" .. currentPlantCount .. "/" .. MAX_PLANTS_PER_PLOT .. " planted)"
+                            end
+                            return cropName
+                        end)(),
+                        TextColor3 = Color3.fromRGB(60, 60, 60),
+                        TextSize = 20,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Center,
+                        ZIndex = 32
+                    }),
+                    
+                    CropDescription = e("TextLabel", {
+                        Size = UDim2.new(1, -40, 0, 40),
+                        Position = UDim2.new(0, 20, 0, 145),
+                        Text = tostring(cropInfo and cropInfo.description or "A wonderful crop to grow!"),
+                        TextColor3 = Color3.fromRGB(100, 100, 100),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.Gotham,
+                        TextXAlignment = Enum.TextXAlignment.Center,
+                        ZIndex = 32
+                    })
+                }) or e("TextLabel", {
+                    Size = UDim2.new(1, -40, 0, 100),
+                    Position = UDim2.new(0, 20, 0, 50),
+                    Text = "Empty Plot - Ready for planting!",
+                    TextColor3 = Color3.fromRGB(100, 100, 100),
+                    TextSize = 18,
+                    TextWrapped = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.GothamBold,
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    ZIndex = 31
+                }),
+                
+                -- Action Buttons Section (only for empty plots)
+                ActionButtons = state == "empty" and e("Frame", {
+                    Name = "ActionButtons",
+                    Size = UDim2.new(1, -40, 0, 60),
+                    Position = UDim2.new(0, 20, 1, -80),
                     BackgroundTransparency = 1,
                     ZIndex = 31
                 }, {
-                    -- Crop Card Section
-                    CropCard = state ~= "empty" and e("Frame", {
-                        Name = "CropCard",
-                        Size = UDim2.new(1, 0, 0, 180),
-                        Position = UDim2.new(0, 0, 0, 0),
-                        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                        BackgroundTransparency = 0.1,
+                    -- Show Plant Seeds button if player has seeds, otherwise show Go To Shop
+                    ActionButton = totalSeeds > 0 and e("TextButton", {
+                        Name = "PlantSeedsButton",
+                        Size = UDim2.new(0, 200, 0, 50),
+                        Position = UDim2.new(0.5, -100, 0, 0),
+                        Text = "Plant Seeds",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 18,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(100, 200, 100),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            if props.onOpenPlanting then
+                                props.onOpenPlanting("single")
+                            end
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 12)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 120)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 180, 80))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.2
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 1,
+                            Transparency = 0.7
+                        })
+                    }) or e("TextButton", {
+                        Name = "GoToShopButton",
+                        Size = UDim2.new(0, 200, 0, 50),
+                        Position = UDim2.new(0.5, -100, 0, 0),
+                        Text = "🛒 Go To Shop",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 18,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(100, 150, 255),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            if props.onOpenShop then
+                                props.onOpenShop()
+                            end
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 12)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 170, 255)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 130, 255))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.2
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 1,
+                            Transparency = 0.7
+                        })
+                    })
+                }) or nil,
+                
+                -- Progress Section (only for planted plots)
+                ProgressSection = state ~= "empty" and e("Frame", {
+                    Name = "ProgressSection",
+                    Size = UDim2.new(1, -40, 0, 140),
+                    Position = UDim2.new(0, 20, 0, 220),
+                    BackgroundColor3 = Color3.fromRGB(250, 255, 250),
+                    BackgroundTransparency = 0.3,
+                    BorderSizePixel = 0,
+                    ZIndex = 31
+                }, {
+                    Corner = e("UICorner", {
+                        CornerRadius = UDim.new(0, 12)
+                    }),
+                    Stroke = e("UIStroke", {
+                        Color = Color3.fromRGB(180, 220, 180),
+                        Thickness = 2,
+                        Transparency = 0.4
+                    }),
+                    
+                    -- Production Status Label
+                    ProductionLabel = e("TextLabel", {
+                        Size = UDim2.new(1, -30, 0, 20),
+                        Position = UDim2.new(0, 15, 0, 5),
+                        Text = tostring(growthProgressText),
+                        TextColor3 = Color3.fromRGB(80, 80, 80),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        ZIndex = 32
+                    }),
+                    
+                    -- Maintenance Warning (only show when maintenance needed)
+                    MaintenanceWarning = (function()
+                        local needsMaintenanceNow = false
+                        if cropInfo and cropInfo.maintenanceWaterInterval and wateredCount >= waterNeeded then
+                            local maintenanceStartTime = lastMaintenanceWater > 0 and lastMaintenanceWater or lastWateredAt
+                            local timeSinceLastMaintenance = currentTime - maintenanceStartTime
+                            needsMaintenanceNow = timeSinceLastMaintenance >= cropInfo.maintenanceWaterInterval
+                        end
+                        
+                        if needsMaintenanceNow then
+                            return e("TextLabel", {
+                                Size = UDim2.new(1, -30, 0, 15),
+                                Position = UDim2.new(0, 15, 0, 12),
+                                Text = "⚠️ No growth when maintenance water needed!",
+                                TextColor3 = Color3.fromRGB(255, 50, 50),
+                                TextSize = 12,
+                                TextWrapped = true,
+                                BackgroundTransparency = 1,
+                                Font = Enum.Font.GothamBold,
+                                TextXAlignment = Enum.TextXAlignment.Center,
+                                ZIndex = 32
+                            })
+                        else
+                            return nil
+                        end
+                    end)(),
+                    
+                    -- Growth Progress Bar
+                    GrowthLabel = e("TextLabel", {
+                        Size = UDim2.new(0, 100, 0, 20),
+                        Position = UDim2.new(0, 15, 0, 30),
+                        Text = "Progress:",
+                        TextColor3 = Color3.fromRGB(80, 80, 80),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        ZIndex = 32
+                    }),
+                    
+                    GrowthBar = e("Frame", {
+                        Name = "GrowthBar",
+                        Size = UDim2.new(1, -130, 0, 20),
+                        Position = UDim2.new(0, 115, 0, 30),
+                        BackgroundColor3 = Color3.fromRGB(200, 200, 200),
                         BorderSizePixel = 0,
                         ZIndex = 32
                     }, {
                         Corner = e("UICorner", {
-                            CornerRadius = UDim.new(0, 15)
+                            CornerRadius = UDim.new(0, 10)
                         }),
-                        
-                        Stroke = e("UIStroke", {
-                            Color = cropInfo and (CropRegistry.rarities[cropInfo.rarity] and CropRegistry.rarities[cropInfo.rarity].color or Color3.fromRGB(150, 150, 150)) or Color3.fromRGB(150, 150, 150),
-                            Thickness = 3,
-                            Transparency = 0.2
-                        }),
-                        
-                        CardGradient = e("UIGradient", {
-                            Color = ColorSequence.new{
-                                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-                                ColorSequenceKeypoint.new(1, Color3.fromRGB(248, 252, 255))
-                            },
-                            Rotation = 45
-                        }),
-                        
-                        -- Crop Icon
-                        CropIcon = (function()
-                            if cropVisuals and cropVisuals.assetId then
-                                return e("ImageLabel", {
-                                    Name = "CropIcon",
-                                    Size = UDim2.new(0, 80, 0, 80),
-                                    Position = UDim2.new(0, 20, 0.5, -40),
-                                    Image = cropVisuals.assetId,
-                                    BackgroundTransparency = 1,
-                                    ScaleType = Enum.ScaleType.Fit,
-                                    ZIndex = 33
-                                })
-                            else
-                                return e("TextLabel", {
-                                    Name = "CropEmoji",
-                                    Size = UDim2.new(0, 80, 0, 80),
-                                    Position = UDim2.new(0, 20, 0.5, -40),
-                                    Text = tostring(cropVisuals and cropVisuals.emoji or "🌱"),
-                                    TextSize = normalTextSize,
-                                    TextWrapped = true,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.SourceSansBold,
-                                    ZIndex = 33
-                                })
-                            end
-                        end)(),
-                        
-                        -- Crop Info
-                        CropName = e("TextLabel", {
-                            Size = UDim2.new(0, 200, 0, 30),
-                            Position = UDim2.new(0, 120, 0, 20),
-                            Text = plantName,
-                            TextColor3 = Color3.fromRGB(40, 40, 40),
-                            TextSize = normalTextSize,
-            TextWrapped = true,
-                            BackgroundTransparency = 1,
-                            Font = Enum.Font.GothamBold,
-                            TextXAlignment = Enum.TextXAlignment.Left,
-                            ZIndex = 33
-                        }),
-                        
-                        -- Rarity Badge
-                        RarityBadge = cropInfo and e("Frame", {
-                            Size = UDim2.new(0, 80, 0, 20),
-                            Position = UDim2.new(0, 120, 0, 55),
-                            BackgroundColor3 = CropRegistry.rarities[cropInfo.rarity] and CropRegistry.rarities[cropInfo.rarity].color or Color3.fromRGB(150, 150, 150),
+                        GrowthFill = e("Frame", {
+                            Name = "GrowthFill",
+                            Size = UDim2.new(growthProgress, 0, 1, 0),
+                            Position = UDim2.new(0, 0, 0, 0),
+                            BackgroundColor3 = (function()
+                                -- Calculate maintenance locally for progress bar color
+                                local needsMaintenanceNow = false
+                                if cropInfo and cropInfo.maintenanceWaterInterval and wateredCount >= waterNeeded then
+                                    local maintenanceStartTime = lastMaintenanceWater > 0 and lastMaintenanceWater or lastWateredAt
+                                    local timeSinceLastMaintenance = currentTime - maintenanceStartTime
+                                    needsMaintenanceNow = timeSinceLastMaintenance >= cropInfo.maintenanceWaterInterval
+                                end
+                                
+                                if needsMaintenanceNow then
+                                    return Color3.fromRGB(255, 100, 100) -- Red for maintenance needed
+                                elseif canHarvest then
+                                    return Color3.fromRGB(50, 255, 50) -- Bright green for ready
+                                else
+                                    return Color3.fromRGB(100, 200, 100) -- Normal green for growing
+                                end
+                            end)(),
                             BorderSizePixel = 0,
                             ZIndex = 33
                         }, {
                             Corner = e("UICorner", {
                                 CornerRadius = UDim.new(0, 10)
                             }),
-                            RarityText = e("TextLabel", {
-                                Size = UDim2.new(1, 0, 1, 0),
-                                Text = cropInfo.rarity:upper(),
-                                TextColor3 = Color3.fromRGB(255, 255, 255),
-                                TextSize = normalTextSize,
-            TextWrapped = true,
-                                BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamBold,
-                                ZIndex = 34
-                            })
-                        }) or nil,
-                        
-                        -- Stats Grid
-                        StatsGrid = e("Frame", {
-                            Size = UDim2.new(0.5, -20, 0, 60),
-                            Position = UDim2.new(0, 120, 0, 90),
-                            BackgroundTransparency = 1,
-                            ZIndex = 33
-                        }, {
-                            -- Water Status
-                            WaterFrame = e("Frame", {
-                                Size = UDim2.new(0.5, -5, 1, 0),
-                                Position = UDim2.new(0, 0, 0, 0),
-                                BackgroundTransparency = 1,
-                                ZIndex = 33
-                            }, {
-                                WaterLabel = e("TextLabel", {
-                                    Size = UDim2.new(1, 0, 0, 20),
-                                    Text = "Water in:",
-                                    TextColor3 = Color3.fromRGB(120, 120, 120),
-                                    TextSize = normalTextSize,
-            TextWrapped = true,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.Gotham,
-                                    TextXAlignment = Enum.TextXAlignment.Left,
-                                    ZIndex = 33
-                                }),
-                                WaterValue = e("TextLabel", {
-                                    Size = UDim2.new(1, 0, 0, 35),
-                                    Position = UDim2.new(0, 0, 0, 20),
-                                    Text = waterStatus,
-                                    TextColor3 = waterStatusColor,
-                                    TextSize = normalTextSize,
-            TextWrapped = true,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.GothamBold,
-                                    TextXAlignment = Enum.TextXAlignment.Left,
-                                    ZIndex = 33
-                                })
-                            }),
-                            
-                            -- Production Rate
-                            ProductionFrame = e("Frame", {
-                                Size = UDim2.new(0.5, -5, 1, 0),
-                                Position = UDim2.new(0.5, 5, 0, 0),
-                                BackgroundTransparency = 1,
-                                ZIndex = 33
-                            }, {
-                                ProductionLabel = e("TextLabel", {
-                                    Size = UDim2.new(1, 0, 0, 20),
-                                    Text = "Production:",
-                                    TextColor3 = Color3.fromRGB(120, 120, 120),
-                                    TextSize = normalTextSize,
-            TextWrapped = true,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.Gotham,
-                                    TextXAlignment = Enum.TextXAlignment.Left,
-                                    ZIndex = 33
-                                }),
-                                -- Production display with multi-color support for hover effects
-                                ProductionContainer = e("Frame", {
-                                    Size = UDim2.new(1, 0, 0, 25),
-                                    Position = UDim2.new(0, 0, 0, 20),
-                                    BackgroundTransparency = 1,
-                                    ZIndex = 33
-                                }, {
-                                    Layout = e("UIListLayout", {
-                                        FillDirection = Enum.FillDirection.Horizontal,
-                                        HorizontalAlignment = Enum.HorizontalAlignment.Left,
-                                        VerticalAlignment = Enum.VerticalAlignment.Center,
-                                        Padding = UDim.new(0, 0),
-                                        SortOrder = Enum.SortOrder.LayoutOrder
-                                    }),
+                            Gradient = e("UIGradient", {
+                                Color = (function()
+                                    -- Calculate maintenance locally for gradient color
+                                    local needsMaintenanceNow = false
+                                    if cropInfo and cropInfo.maintenanceWaterInterval and wateredCount >= waterNeeded then
+                                        local maintenanceStartTime = lastMaintenanceWater > 0 and lastMaintenanceWater or lastWateredAt
+                                        local timeSinceLastMaintenance = currentTime - maintenanceStartTime
+                                        needsMaintenanceNow = timeSinceLastMaintenance >= cropInfo.maintenanceWaterInterval
+                                    end
                                     
-                                    -- Current production (always green)
-                                    CurrentProduction = e("TextLabel", {
-                                        Size = UDim2.new(0, 0, 1, 0),
-                                        AutomaticSize = Enum.AutomaticSize.X,
-                                        Text = waterStatus == "Now!" and "0/h" or (tostring(NumberFormatter.format(totalProductionPerHour) or totalProductionPerHour or 0) .. "/h"),
-                                        TextColor3 = waterStatus == "Now!" and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 200, 100),
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
-                                        BackgroundTransparency = 1,
-                                        Font = Enum.Font.GothamBold,
-                                        TextXAlignment = Enum.TextXAlignment.Left,
-                                        ZIndex = 33,
-                                        LayoutOrder = 1
-                                    }, {
-                                        TextStroke = e("UIStroke", {
-                                            Color = Color3.fromRGB(0, 0, 0),
-                                            Thickness = 2,
-                                            Transparency = 0.3
-                                        })
-                                    }),
-                                    
-                                    -- Arrow and new production (darker green, only show on hover)
-                                    HoverProduction = (showProductionPreview or plantAllHover) and e("TextLabel", {
-                                        Size = UDim2.new(0, 0, 1, 0),
-                                        AutomaticSize = Enum.AutomaticSize.X,
-                                        Text = waterStatus == "Now!" and " → 0/h" or 
-                                            (plantAllHover and (" → " .. tostring(NumberFormatter.format(productionWithPlantAll) or productionWithPlantAll or 0) .. "/h") or (" → " .. tostring(NumberFormatter.format(productionWithOneMore) or productionWithOneMore or 0) .. "/h")),
-                                        TextColor3 = waterStatus == "Now!" and Color3.fromRGB(200, 80, 80) or Color3.fromRGB(60, 140, 60), -- Red if needs water, darker green otherwise
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
-                                        BackgroundTransparency = 1,
-                                        Font = Enum.Font.GothamBold,
-                                        TextXAlignment = Enum.TextXAlignment.Left,
-                                        ZIndex = 33,
-                                        LayoutOrder = 2
-                                    }, {
-                                        TextStroke = e("UIStroke", {
-                                            Color = Color3.fromRGB(0, 0, 0),
-                                            Thickness = 2,
-                                            Transparency = 0.3
-                                        })
-                                    }) or nil
-                                }),
-                                
-                                -- Water needed explanation text
-                                WaterNeededText = (waterStatus == "Now!") and e("TextLabel", {
-                                    Size = UDim2.new(1, 0, 0, 10),
-                                    Position = UDim2.new(0, 0, 0, 45),
-                                    Text = "(Because it needs water!)",
-                                    TextColor3 = Color3.fromRGB(200, 50, 50),
-                                    TextSize = smallTextSize,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.Gotham,
-                                    TextXAlignment = Enum.TextXAlignment.Left,
-                                    ZIndex = 33
-                                }) or nil
+                                    if needsMaintenanceNow then
+                                        -- Red gradient for maintenance needed
+                                        return ColorSequence.new{
+                                            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 140, 140)),
+                                            ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 80, 80))
+                                        }
+                                    else
+                                        -- Normal green gradient
+                                        return ColorSequence.new{
+                                            ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 120)),
+                                            ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 180, 80))
+                                        }
+                                    end
+                                end)()
                             })
                         }),
                         
-                        -- Active Plants & Crops Generated
-                        InfoRow = e("Frame", {
-                            Size = UDim2.new(1, -260, 0, 25),
-                            Position = UDim2.new(1, -240, 0, 20),
-                            BackgroundTransparency = 1,
-                            ZIndex = 33
-                        }, {
-                            PlantsInfo = e("TextLabel", {
-                                Size = UDim2.new(0.5, -5, 1, 0),
-                                Position = UDim2.new(0, 0, 0, 0),
-                                Text = "🌱 Plants: " .. tostring(activePlants) .. "/" .. tostring(MAX_PLANTS_PER_PLOT),
-                                TextColor3 = Color3.fromRGB(100, 100, 100),
-                                TextSize = normalTextSize,
-            TextWrapped = true,
-                                BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamMedium,
-                                TextXAlignment = Enum.TextXAlignment.Right,
-                                ZIndex = 33
-                            }),
-                            -- Removed CropsInfo - harvest amount now only shown on harvest button
-                        })
-                    }) or nil,
-                    
-                    -- Growth Progress Bar
-                    GrowthProgressContainer = (state ~= "empty") and e("Frame", {
-                        Size = UDim2.new(1, 0, 0, 25),
-                        Position = UDim2.new(0, 0, 1, -35),
-                        BackgroundTransparency = 1,
-                        ZIndex = 33
-                    }, {
-                        ProgressLabel = e("TextLabel", {
-                            Size = UDim2.new(1, 0, 0, 12),
-                            Position = UDim2.new(0, 0, 0, 5),
-                            Text = growthProgressText,
-                            TextColor3 = growthProgress >= 1 and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(100, 100, 100),
-                            TextSize = smallTextSize,
-                            BackgroundTransparency = 1,
-                            Font = Enum.Font.GothamMedium,
-                            TextXAlignment = Enum.TextXAlignment.Center,
-                            ZIndex = 33
-                        }),
-                        
-                        ProgressBarBG = e("Frame", {
-                            Size = UDim2.new(1, 0, 0, 6),
-                            Position = UDim2.new(0, 0, 0, 22),
-                            BackgroundColor3 = Color3.fromRGB(200, 200, 200),
-                            BorderSizePixel = 0,
-                            ZIndex = 33
-                        }, {
-                            Corner = e("UICorner", {
-                                CornerRadius = UDim.new(0, 4)
-                            }),
-                            
-                            ProgressBar = e("Frame", {
-                                Size = UDim2.new(growthProgress, 0, 1, 0),
-                                Position = UDim2.new(0, 0, 0, 0),
-                                BackgroundColor3 = growthProgress >= 1 and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(50, 150, 255),
-                                BorderSizePixel = 0,
-                                ZIndex = 34
-                            }, {
-                                Corner = e("UICorner", {
-                                    CornerRadius = UDim.new(0, 4)
-                                })
-                            })
-                        })
-                    }) or nil,
-                    
-                    -- Empty Plot Message
-                    EmptyPlotMessage = state == "empty" and e("Frame", {
-                        Name = "EmptyMessage",
-                        Size = UDim2.new(1, 0, 0, 180),
-                        Position = UDim2.new(0, 0, 0, 0),
-                        BackgroundColor3 = Color3.fromRGB(250, 250, 250),
-                        BackgroundTransparency = 0.1,
-                        BorderSizePixel = 0,
-                        ZIndex = 32
-                    }, {
-                        Corner = e("UICorner", {
-                            CornerRadius = UDim.new(0, 15)
-                        }),
-                        
-                        Stroke = e("UIStroke", {
-                            Color = Color3.fromRGB(200, 200, 200),
-                            Thickness = 2,
-                            Transparency = 0.3
-                        }),
-                        
-                        EmptyIcon = e("TextLabel", {
-                            Size = UDim2.new(0, 80, 0, 80),
-                            Position = UDim2.new(0.5, -40, 0, 20),
-                            Text = "🌱",
-                            TextSize = normalTextSize,
-            TextWrapped = true,
-                            BackgroundTransparency = 1,
-                            Font = Enum.Font.SourceSansBold,
-                            ZIndex = 33
-                        }),
-                        
-                        EmptyText = e("TextLabel", {
-                            Size = UDim2.new(1, -40, 0, 40),
-                            Position = UDim2.new(0, 20, 0, 110),
-                            Text = "Empty Plot - Ready for planting!",
-                            TextColor3 = Color3.fromRGB(100, 100, 100),
-                            TextSize = normalTextSize,
-            TextWrapped = true,
+                        -- Percentage Text (centered on the bar)
+                        PercentageText = e("TextLabel", {
+                            Name = "PercentageText",
+                            Size = UDim2.new(1, 0, 1, 0),
+                            Position = UDim2.new(0, 0, 0, 0),
+                            Text = string.format("%d%%", math.floor(growthProgress * 100)),
+                            TextColor3 = Color3.fromRGB(0, 0, 0),
+                            TextSize = 12,
+                            TextWrapped = true,
                             BackgroundTransparency = 1,
                             Font = Enum.Font.GothamBold,
                             TextXAlignment = Enum.TextXAlignment.Center,
+                            TextYAlignment = Enum.TextYAlignment.Center,
+                            ZIndex = 34
+                        }, {
+                            -- White text stroke for better visibility
+                            TextStroke = e("UIStroke", {
+                                Color = Color3.fromRGB(255, 255, 255),
+                                Thickness = 1,
+                                Transparency = 0.3
+                            })
+                        })
+                    }),
+                    
+                    -- Water Status
+                    WaterLabel = e("TextLabel", {
+                        Size = UDim2.new(0, 100, 0, 20),
+                        Position = UDim2.new(0, 15, 0, 60),
+                        Text = "Water:",
+                        TextColor3 = Color3.fromRGB(80, 80, 80),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        ZIndex = 32
+                    }),
+                    
+                    WaterStatus = e("TextLabel", {
+                        Size = UDim2.new(1, -130, 0, 20),
+                        Position = UDim2.new(0, 115, 0, 60),
+                        Text = tostring(waterStatus),
+                        TextColor3 = waterStatusColor,
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.Gotham,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        ZIndex = 32
+                    }),
+                    
+                    -- Production Rate
+                    ProductionLabel = e("TextLabel", {
+                        Size = UDim2.new(0, 100, 0, 20),
+                        Position = UDim2.new(0, 15, 0, 85),
+                        Text = "Production:",
+                        TextColor3 = Color3.fromRGB(80, 80, 80),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        ZIndex = 32
+                    }),
+                    
+                    ProductionRate = e("Frame", {
+                        Name = "ProductionRateContainer",
+                        Size = UDim2.new(1, -130, 0, 20),
+                        Position = UDim2.new(0, 115, 0, 85),
+                        BackgroundTransparency = 1,
+                        ZIndex = 32
+                    }, {
+                        -- Production rate with boost display
+                        ProductionDisplay = e("TextLabel", {
+                            Name = "ProductionDisplay",
+                            Size = UDim2.new(1, 0, 0, 20),
+                            Position = UDim2.new(0, 0, 0, 0),
+                            Text = (function()
+                                if cropInfo and cropInfo.productionRate then
+                                    local activePlants = maxHarvests - harvestCount
+                                    local baseProduction = cropInfo.productionRate * activePlants
+                                    
+                                    -- Calculate total boost percent (original additive system for display)
+                                    local totalBoostPercent = 0 -- Start with 0% boost
+                                    
+                                    -- Apply online bonus (always active if UI is visible)
+                                    totalBoostPercent = totalBoostPercent + 100 -- +100% for being online
+                                    
+                                    -- Apply debug boost (additive)
+                                    if props.playerData and props.playerData.debugProductionBoost and props.playerData.debugProductionBoost > 0 then
+                                        totalBoostPercent = totalBoostPercent + props.playerData.debugProductionBoost
+                                    end
+                                    
+                                    -- Apply production gamepass boost (additive)
+                                    if props.playerData and props.playerData.gamepasses and props.playerData.gamepasses.productionBoost then
+                                        totalBoostPercent = totalBoostPercent + 100 -- +100% for production gamepass
+                                    end
+                                    
+                                    -- Apply weather boost (additive)
+                                    if props.weatherData and props.weatherData.current and props.weatherData.current.name then
+                                        local weatherName = props.weatherData.current.name
+                                        if weatherName == "Rainy" then
+                                            totalBoostPercent = totalBoostPercent - 10 -- -10% for rain
+                                        elseif weatherName == "Thunderstorm" then
+                                            totalBoostPercent = totalBoostPercent - 30 -- -30% for thunderstorm
+                                        elseif weatherName == "Sunny" then
+                                            totalBoostPercent = totalBoostPercent + 50 -- +50% for sunny
+                                        -- Cloudy adds 0% (neutral)
+                                        end
+                                    end
+                                    
+                                    -- Calculate boosted production
+                                    local boostedProduction = baseProduction * (1 + totalBoostPercent / 100)
+                                    
+                                    return string.format("%d/h (%d%% boost!) → %d/h", 
+                                        baseProduction, 
+                                        math.floor(totalBoostPercent), 
+                                        math.floor(boostedProduction))
+                                else
+                                    return "N/A"
+                                end
+                            end)(),
+                            TextColor3 = Color3.fromRGB(255, 255, 255),
+                            TextSize = 14,
+                            TextWrapped = true,
+                            BackgroundTransparency = 1,
+                            Font = Enum.Font.GothamBold,
+                            TextXAlignment = Enum.TextXAlignment.Left,
                             ZIndex = 33
+                        }, {
+                            -- Rainbow gradient for the entire production text
+                            RainbowGradient = e("UIGradient", {
+                                Color = ColorSequence.new{
+                                    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 100)),    -- Light Red
+                                    ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 200, 100)),  -- Orange
+                                    ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 255, 100)),  -- Yellow  
+                                    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(100, 255, 100)),  -- Green
+                                    ColorSequenceKeypoint.new(0.8, Color3.fromRGB(100, 200, 255)),  -- Blue
+                                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 100, 255))     -- Magenta
+                                },
+                                Rotation = 45
+                            })
+                        })
+                    }),
+                    
+                    -- Crop Count Info
+                    CropCountLabel = e("TextLabel", {
+                        Size = UDim2.new(0, 100, 0, 20),
+                        Position = UDim2.new(0, 15, 0, 110),
+                        Text = "Crops Ready:",
+                        TextColor3 = Color3.fromRGB(80, 80, 80),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        ZIndex = 32
+                    }),
+                    
+                    CropCount = e("TextLabel", {
+                        Size = UDim2.new(1, -130, 0, 20),
+                        Position = UDim2.new(0, 115, 0, 110),
+                        Text = tostring(currentCropsReady),
+                        TextColor3 = canHarvest and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(100, 100, 100),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundTransparency = 1,
+                        Font = Enum.Font.GothamBold,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        ZIndex = 32
+                    })
+                }) or nil,
+                
+                -- Planted Plot Action Buttons (only for planted plots)
+                PlantedActionButtons = state ~= "empty" and e("Frame", {
+                    Name = "PlantedActionButtons",
+                    Size = UDim2.new(1, -40, 0, 120),
+                    Position = UDim2.new(0, 20, 0, 360),
+                    BackgroundTransparency = 1,
+                    ZIndex = 31
+                }, {
+                    -- Grid Layout for centered button arrangement
+                    UIGridLayout = e("UIGridLayout", {
+                        CellPadding = UDim2.new(0, 10, 0, 10),
+                        CellSize = UDim2.new(0, 210, 0, 45),
+                        FillDirection = Enum.FillDirection.Horizontal,
+                        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                        VerticalAlignment = Enum.VerticalAlignment.Top,
+                        SortOrder = Enum.SortOrder.LayoutOrder,
+                        StartCorner = Enum.StartCorner.TopLeft
+                    }),
+                    
+                    -- Only render buttons when they're usable
+                    -- Row 1, Column 1: Water (LayoutOrder 1)
+                    WaterButton = canWater and e("TextButton", {
+                        Name = "WaterButton",
+                        LayoutOrder = 1,
+                        Text = waterButtonText,
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 16,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(60, 150, 220),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            playSound("9118029218") -- Water sound
+                            setLastLocalWaterTime(tick())
+                            props.remotes.farmAction:FireServer("water", plotId)
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 10)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 170, 240)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 130, 200))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.3
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 3,
+                            Transparency = 0.2
                         })
                     }) or nil,
                     
-                    -- Action Buttons Container
-                    -- Calculate dynamic height based on visible buttons
-                    ButtonsContainerHeight = (function()
-                        local height = 0
-                        if state == "empty" then
-                            height = 50 -- Plant Seeds button only
-                        else
-                            -- Plant/Plant All buttons
-                            if activePlants < 50 and (currentCropCount > 0 or availableSpace > 1) then
-                                height = height + 60 + 10 -- button + spacing
-                            end
-                            -- Water button
-                            if state ~= "dead" then
-                                height = height + 60 + 10 -- button + spacing
-                            end
-                            -- Harvest button - use new calculator results
-                            if currentCropsReady > 0 or (growthProgress >= 1 and state == "watered") then
-                                height = height + 60 + 10 -- button + spacing
-                            end
-                            height = math.max(height - 10, 0) -- Remove last spacing
+                    -- Row 1, Column 2: Harvest (LayoutOrder 2)
+                    HarvestButton = canHarvest and e("TextButton", {
+                        Name = "HarvestButton",
+                        LayoutOrder = 2,
+                        Text = (currentCropsReady > 0) and ("🌾 Harvest (" .. tostring(currentCropsReady) .. ")") or "🌾 Harvest",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 16,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(255, 200, 50),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            playSound("8822729347") -- Harvest sound
+                            props.remotes.farmAction:FireServer("harvest", plotId)
                         end
-                        return height
-                    end)(),
-                    
-                    ButtonsContainer = e("Frame", {
-                        Size = UDim2.new(1, 0, 0, ButtonsContainerHeight),
-                        Position = UDim2.new(0, 0, 0, 200),
-                        BackgroundTransparency = 1,
-                        ZIndex = 31
                     }, {
-                        -- Plant Seeds Button (for empty plots)
-                        PlantSeedsButton = (state == "empty") and e("TextButton", {
-                            Name = "PlantSeedsButton",
-                            Size = UDim2.new(0, 220, 0, 50),
-                            Position = UDim2.new(0.5, -110, 0, 0),
-                            BackgroundColor3 = Color3.fromRGB(100, 200, 100),
-                            Text = "",
-                            BorderSizePixel = 0,
-                            ZIndex = 32,
-                            [React.Event.Activated] = onOpenPlanting
-                        }, {
-                            Corner = e("UICorner", {
-                                CornerRadius = UDim.new(0, 12)
-                            }),
-                            
-                            Gradient = e("UIGradient", {
-                                Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 120)),
-                                    ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 180, 80))
-                                },
-                                Rotation = 45
-                            }),
-                            
-                            Stroke = e("UIStroke", {
-                                Color = Color3.fromRGB(255, 255, 255),
-                                Thickness = 2,
-                                Transparency = 0.2
-                            }),
-                            
-                            ButtonText = e("TextLabel", {
-                                Size = UDim2.new(1, 0, 1, 0),
-                                Text = "Plant Crops!",
-                                TextColor3 = Color3.fromRGB(255, 255, 255),
-                                TextSize = normalTextSize,
-            TextWrapped = true,
-                                BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamBold,
-                                TextXAlignment = Enum.TextXAlignment.Center,
-                                ZIndex = 33
-                            }, {
-                                TextStroke = e("UIStroke", {
-                                    Color = Color3.fromRGB(0, 0, 0),
-                                    Thickness = 2,
-                                    Transparency = 0.3
-                                })
-                            })
-                        }) or nil,
-                        
-                        -- Plant More Button (for existing plots)
-                        PlantButton = (state ~= "empty" and state ~= "dead" and activePlants < 50 and currentCropCount > 0) and e("TextButton", {
-                            Name = "PlantButton",
-                            Size = UDim2.new(0.5, -5, 0, 60),
-                            Position = UDim2.new(0, 0, 0, 0),
-                            BackgroundColor3 = Color3.fromRGB(120, 200, 120),
-                            Text = "",
-                            BorderSizePixel = 0,
-                            ZIndex = 32,
-                            [React.Event.MouseEnter] = function()
-                                setShowProductionPreview(true)
-                            end,
-                            [React.Event.MouseLeave] = function()
-                                setShowProductionPreview(false)
-                            end,
-                            [React.Event.Activated] = handlePlant
-                        }, {
-                            Corner = e("UICorner", {
-                                CornerRadius = UDim.new(0, 12)
-                            }),
-                            
-                            Gradient = e("UIGradient", {
-                                Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 220, 140)),
-                                    ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 180, 100))
-                                },
-                                Rotation = 90
-                            }),
-                            
-                            Stroke = e("UIStroke", {
-                                Color = Color3.fromRGB(80, 160, 80),
-                                Thickness = 2,
-                                Transparency = 0.2
-                            }),
-                            
-                            PlantMoreText = e("TextLabel", {
-                                Size = UDim2.new(1, -20, 1, 0),
-                                Position = UDim2.new(0, 10, 0, 0),
-                                Text = "🌱 Plant (1)",
-                                TextColor3 = Color3.fromRGB(255, 255, 255),
-                                TextSize = normalTextSize,
-            TextWrapped = true,
-                                BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamBold,
-                                TextXAlignment = Enum.TextXAlignment.Center,
-                                ZIndex = 33
-                            }, {
-                                TextStroke = e("UIStroke", {
-                                    Color = Color3.fromRGB(0, 0, 0),
-                                    Thickness = 2,
-                                    Transparency = 0.7
-                                })
-                            })
-                        }) or nil,
-                        
-                        -- Plant All Button (for existing plots with space)
-                        PlantAllExistingButton = (state ~= "empty" and state ~= "dead" and availableSpace > 1 and currentCropCount > 0) and e("TextButton", {
-                            Name = "PlantAllExistingButton",
-                            Size = UDim2.new(0.5, -5, 0, 60),
-                            Position = UDim2.new(0.5, 5, 0, 0),
-                            BackgroundColor3 = Color3.fromRGB(80, 160, 200),
-                            Text = "",
-                            BorderSizePixel = 0,
-                            ZIndex = 32,
-                            [React.Event.MouseEnter] = function()
-                                setPlantAllHover(true)
-                            end,
-                            [React.Event.MouseLeave] = function()
-                                setPlantAllHover(false)
-                            end,
-                            [React.Event.Activated] = function()
-                                if onOpenPlanting then
-                                    onOpenPlanting("all") -- Pass "all" mode to indicate plant all
-                                end
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 10)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(240, 180, 80)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 140, 40))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.3
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 3,
+                            Transparency = 0.2
+                        })
+                    }) or nil,
+                    
+                    -- Row 2, Column 1: Plant (1) (LayoutOrder 3)
+                    Plant1Button = canPlantOne and e("TextButton", {
+                        Name = "Plant1Button",
+                        LayoutOrder = 3,
+                        Text = (function()
+                            local baseText = "🌱 Plant (1)"
+                            if cropInfo and cropInfo.productionRate then
+                                local additionalProduction = 1 * cropInfo.productionRate
+                                return baseText .. "\n+" .. additionalProduction .. "/h"
                             end
-                        }, {
-                            Corner = e("UICorner", {
-                                CornerRadius = UDim.new(0, 12)
-                            }),
-                            
-                            Gradient = e("UIGradient", {
-                                Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 180, 220)),
-                                    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 140, 180))
-                                },
-                                Rotation = 90
-                            }),
-                            
-                            Stroke = e("UIStroke", {
-                                Color = Color3.fromRGB(60, 140, 200),
-                                Thickness = 2,
-                                Transparency = 0.2
-                            }),
-                            
-                            ButtonContent = e("Frame", {
-                                Size = UDim2.new(1, -20, 1, 0),
-                                Position = UDim2.new(0, 10, 0, 0),
-                                BackgroundTransparency = 1,
-                                ZIndex = 33
-                            }, {
-                                MainText = e("TextLabel", {
-                                    Size = UDim2.new(1, 0, 0.6, 0),
-                                    Position = UDim2.new(0, 0, 0, 0),
-                                    Text = "🌱 Plant (" .. tostring(plantAllQuantity) .. ")",
-                                    TextColor3 = Color3.fromRGB(255, 255, 255),
-                                    TextSize = normalTextSize,
-            TextWrapped = true,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.GothamBold,
-                                    TextXAlignment = Enum.TextXAlignment.Center,
-                                    ZIndex = 33
-                                }, {
-                                    TextStroke = e("UIStroke", {
-                                        Color = Color3.fromRGB(0, 0, 0),
-                                        Thickness = 2,
-                                        Transparency = 0.7
-                                    })
-                                }),
-                                
-                                SubText = e("TextLabel", {
-                                    Size = UDim2.new(1, 0, 0.4, 0),
-                                    Position = UDim2.new(0, 0, 0.6, 0),
-                                    Text = "(All you have)",
-                                    TextColor3 = Color3.fromRGB(220, 220, 220),
-                                    TextSize = normalTextSize,
-            TextWrapped = true,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.Gotham,
-                                    TextXAlignment = Enum.TextXAlignment.Center,
-                                    ZIndex = 33
-                                }, {
-                                    TextStroke = e("UIStroke", {
-                                        Color = Color3.fromRGB(0, 0, 0),
-                                        Thickness = 2,
-                                        Transparency = 0.7
-                                    })
-                                })
-                            })
-                        }) or (state ~= "empty" and state ~= "dead" and activePlants < 50 and currentCropCount == 0) and e("TextButton", {
-                            Name = "PlantButton",
-                            Size = UDim2.new(1, 0, 0, 60),
-                            Position = UDim2.new(0, 0, 0, 0),
-                            BackgroundColor3 = Color3.fromRGB(100, 100, 100),
-                            Text = "",
-                            BorderSizePixel = 0,
-                            ZIndex = 32,
-                            Active = false,
-                            AutoButtonColor = false
-                        }, {
-                            Corner = e("UICorner", {
-                                CornerRadius = UDim.new(0, 12)
-                            }),
-                            
-                            Stroke = e("UIStroke", {
-                                Color = Color3.fromRGB(80, 80, 80),
-                                Thickness = 2,
-                                Transparency = 0.2
-                            }),
-                            
-                            ButtonContent = e("Frame", {
-                                Size = UDim2.new(1, -20, 1, 0),
-                                Position = UDim2.new(0, 10, 0, 0),
-                                BackgroundTransparency = 1,
-                                ZIndex = 33
-                            }, {
-                                MainText = e("TextLabel", {
-                                    Size = UDim2.new(1, 0, 1, 0),
-                                    Text = "🌱 Plant More (No " .. tostring(plantName) .. " available)",
-                                    TextColor3 = Color3.fromRGB(150, 150, 150),
-                                    TextSize = normalTextSize,
-            TextWrapped = true,
-                                    BackgroundTransparency = 1,
-                                    Font = Enum.Font.GothamBold,
-                                    TextXAlignment = Enum.TextXAlignment.Center,
-                                    ZIndex = 33
-                                })
-                            })
-                        }) or nil,
-                        
-                        -- Harvest Button (show if crops ready from calculator OR if progress shows ready)
-                        HarvestButton = (currentCropsReady > 0 or (growthProgress >= 1 and state == "watered")) and e("TextButton", {
-                            Name = "HarvestButton",
-                            Size = UDim2.new(1, 0, 0, 60),
-                            Position = UDim2.new(0, 0, 0, (function()
-                                local yPos = 0
-                                -- Add space for plant buttons if visible
-                                if activePlants < 50 and (currentCropCount > 0 or availableSpace > 1) then
-                                    yPos = yPos + 70
-                                end
-                                -- Add space for water button if visible
-                                if state ~= "dead" then
-                                    yPos = yPos + 70
-                                end
-                                return yPos
-                            end)()),
-                            BackgroundColor3 = Color3.fromRGB(255, 200, 0),
-                            Text = "",
-                            BorderSizePixel = 0,
-                            ZIndex = 32,
-                            [React.Event.Activated] = handleHarvest
-                        }, {
-                            Corner = e("UICorner", {
-                                CornerRadius = UDim.new(0, 12)
-                            }),
-                            
-                            Gradient = e("UIGradient", {
-                                Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 220, 50)),
-                                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 180, 0))
-                                },
-                                Rotation = 90
-                            }),
-                            
-                            Stroke = e("UIStroke", {
-                                Color = Color3.fromRGB(200, 150, 0),
-                                Thickness = 2,
-                                Transparency = 0.2
-                            }),
-                            
-                            -- Shine effect
-                            ShineEffect = e("Frame", {
-                                Size = UDim2.new(0.3, 0, 1, 0),
-                                Position = UDim2.new(-0.3, 0, 0, 0),
-                                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                                BackgroundTransparency = 0.7,
-                                BorderSizePixel = 0,
-                                ZIndex = 33
-                            }, {
-                                Corner = e("UICorner", {
-                                    CornerRadius = UDim.new(0, 12)
-                                }),
-                                ShineGradient = e("UIGradient", {
-                                    Transparency = NumberSequence.new{
-                                        NumberSequenceKeypoint.new(0, 1),
-                                        NumberSequenceKeypoint.new(0.5, 0.3),
-                                        NumberSequenceKeypoint.new(1, 1)
-                                    },
-                                    Rotation = 30
-                                })
-                            }),
-                            
-                            HarvestText = e("TextLabel", {
-                                Size = UDim2.new(1, -20, 1, 0),
-                                Position = UDim2.new(0, 10, 0, 0),
-                                Text = tostring(cropVisuals and cropVisuals.emoji or "🌾") .. " Harvest (" .. tostring(currentCropsReady > 0 and currentCropsReady or activePlants) .. ")",
-                                TextColor3 = Color3.fromRGB(50, 50, 50),
-                                TextSize = normalTextSize,
-                                TextWrapped = true,
-                                BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamBold,
-                                TextXAlignment = Enum.TextXAlignment.Center,
-                                ZIndex = 34
-                            })
-                        }) or nil,
-                        
-                        -- Water Button
-                        WaterButton = (state ~= "empty" and state ~= "dead") and e("TextButton", {
-                            Name = "WaterButton",
-                            Size = UDim2.new(1, 0, 0, 60),
-                            Position = UDim2.new(0, 0, 0, (activePlants < 50 and currentCropCount > 0) and 70 or 0),
-                            BackgroundColor3 = canWater and Color3.fromRGB(100, 180, 255) or Color3.fromRGB(120, 120, 120),
-                            Text = "",
-                            BorderSizePixel = 0,
-                            ZIndex = 32,
-                            Active = canWater,
-                            AutoButtonColor = canWater,
-                            [React.Event.Activated] = canWater and handleWater or nil
-                        }, {
-                            Corner = e("UICorner", {
-                                CornerRadius = UDim.new(0, 12)
-                            }),
-                            
-                            Gradient = canWater and e("UIGradient", {
-                                Color = ColorSequence.new{
-                                    ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 200, 255)),
-                                    ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 160, 255))
-                                },
-                                Rotation = 90
-                            }) or nil,
-                            
-                            Stroke = e("UIStroke", {
-                                Color = canWater and Color3.fromRGB(60, 140, 200) or Color3.fromRGB(80, 80, 80),
-                                Thickness = 2,
-                                Transparency = 0.2
-                            }),
-                            
-                            -- Shine effect for when water is needed
-                            ShineEffect = canWater and waterStatus == "Now!" and e("Frame", {
-                                Size = UDim2.new(0.3, 0, 1, 0),
-                                Position = UDim2.new(-0.3, 0, 0, 0),
-                                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                                BackgroundTransparency = 0.7,
-                                BorderSizePixel = 0,
-                                ZIndex = 33
-                            }, {
-                                Corner = e("UICorner", {
-                                    CornerRadius = UDim.new(0, 12)
-                                }),
-                                ShineGradient = e("UIGradient", {
-                                    Transparency = NumberSequence.new{
-                                        NumberSequenceKeypoint.new(0, 1),
-                                        NumberSequenceKeypoint.new(0.5, 0.3),
-                                        NumberSequenceKeypoint.new(1, 1)
-                                    },
-                                    Rotation = 30
-                                })
-                            }) or nil,
-                            
-                            WaterText = e("TextLabel", {
-                                Size = UDim2.new(1, -20, 1, 0),
-                                Position = UDim2.new(0, 10, 0, 0),
-                                Text = canWater and "💧 Water" or (tostring(waterStatus):find("Cooldown") and "💧 Water (" .. tostring(waterStatus):gsub("Cooldown ", "In ") .. ")" or "💧 Water"),
-                                TextColor3 = canWater and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150),
-                                TextSize = normalTextSize,
-                                TextWrapped = true,
-                                BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamBold,
-                                TextXAlignment = Enum.TextXAlignment.Center,
-                                ZIndex = 34
-                            }, {
-                                TextStroke = canWater and e("UIStroke", {
-                                    Color = Color3.fromRGB(0, 0, 0),
-                                    Thickness = 2,
-                                    Transparency = 0.7
-                                }) or nil
-                            })
-                        }) or nil
+                            return baseText
+                        end)(),
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(100, 200, 100),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            props.remotes.farmAction:FireServer("plant", plotId, seedType, 1)
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 10)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 120)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 180, 80))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.3
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 3,
+                            Transparency = 0.2
+                        })
+                    }) or nil,
+                    
+                    -- Row 2, Column 2: Plant All (LayoutOrder 4)
+                    PlantAllButton = canPlantAll and e("TextButton", {
+                        Name = "PlantAllButton",
+                        LayoutOrder = 4,
+                        Text = (function()
+                            local baseText = "🌱 Plant All (" .. tostring(plantAllQuantity) .. ")"
+                            if cropInfo and cropInfo.productionRate then
+                                local additionalProduction = plantAllQuantity * cropInfo.productionRate
+                                return baseText .. "\n+" .. additionalProduction .. "/h"
+                            end
+                            return baseText
+                        end)(),
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 14,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(100, 200, 100),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            props.remotes.farmAction:FireServer("plant", plotId, seedType, plantAllQuantity)
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 10)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 120)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 180, 80))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.3
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 3,
+                            Transparency = 0.2
+                        })
+                    }) or nil,
+                    
+                    -- Row 3, Column 1: Cut Plant (LayoutOrder 5) - always available for planted plots
+                    CutButton = e("TextButton", {
+                        Name = "CutButton",
+                        LayoutOrder = 5,
+                        Text = "✂️ Cut Plant",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 16,
+                        TextWrapped = true,
+                        BackgroundColor3 = Color3.fromRGB(200, 80, 80),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 32,
+                        [React.Event.Activated] = function()
+                            setShowCutConfirmation(true)
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 10)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(220, 100, 100)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 60, 60))
+                            },
+                            Rotation = 90
+                        }),
+                        Stroke = e("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 2,
+                            Transparency = 0.3
+                        }),
+                        TextStroke = e("UIStroke", {
+                            Color = Color3.fromRGB(0, 0, 0),
+                            Thickness = 3,
+                            Transparency = 0.2
+                        })
+                    })
+                }) or nil
+            })
+        })
+        }),
+        
+        -- Cut Plant Confirmation Dialog
+        CutConfirmationModal = showCutConfirmation and e(Modal, {
+            visible = showCutConfirmation,
+            onClose = function() setShowCutConfirmation(false) end,
+            zIndex = 50
+        }, {
+            ConfirmationContainer = e("Frame", {
+                Name = "ConfirmationContainer",
+                Size = UDim2.new(0, 400, 0, 200),
+                Position = UDim2.new(0.5, -200, 0.5, -100),
+                BackgroundColor3 = Color3.fromRGB(255, 240, 240),
+                BorderSizePixel = 0,
+                ZIndex = 50
+            }, {
+                Corner = e("UICorner", {
+                    CornerRadius = UDim.new(0, 15)
+                }),
+                Stroke = e("UIStroke", {
+                    Color = Color3.fromRGB(200, 80, 80),
+                    Thickness = 3
+                }),
+                
+                -- Warning Icon
+                WarningIcon = e("TextLabel", {
+                    Size = UDim2.new(0, 60, 0, 60),
+                    Position = UDim2.new(0.5, -30, 0, 20),
+                    Text = "⚠️",
+                    TextSize = 40,
+                    BackgroundTransparency = 1,
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    ZIndex = 51
+                }),
+                
+                -- Confirmation Text
+                ConfirmationText = e("TextLabel", {
+                    Size = UDim2.new(1, -40, 0, 40),
+                    Position = UDim2.new(0, 20, 0, 90),
+                    Text = "Are you sure you want to do this?",
+                    TextColor3 = Color3.fromRGB(180, 60, 60),
+                    TextSize = 18,
+                    TextWrapped = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.GothamBold,
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    ZIndex = 51
+                }),
+                
+                -- Button Container
+                ButtonContainer = e("Frame", {
+                    Size = UDim2.new(1, -40, 0, 40),
+                    Position = UDim2.new(0, 20, 0, 140),
+                    BackgroundTransparency = 1,
+                    ZIndex = 51
+                }, {
+                    Layout = e("UIListLayout", {
+                        FillDirection = Enum.FillDirection.Horizontal,
+                        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                        VerticalAlignment = Enum.VerticalAlignment.Center,
+                        Padding = UDim.new(0, 20)
+                    }),
+                    
+                    -- No Button
+                    NoButton = e("TextButton", {
+                        Size = UDim2.new(0, 120, 0, 40),
+                        Text = "❌ No",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 16,
+                        BackgroundColor3 = Color3.fromRGB(100, 100, 100),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 51,
+                        [React.Event.Activated] = function()
+                            setShowCutConfirmation(false)
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 8)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 120, 120)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 80, 80))
+                            },
+                            Rotation = 90
+                        })
+                    }),
+                    
+                    -- Yes Button
+                    YesButton = e("TextButton", {
+                        Size = UDim2.new(0, 120, 0, 40),
+                        Text = "✅ Yes",
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 16,
+                        BackgroundColor3 = Color3.fromRGB(200, 80, 80),
+                        BorderSizePixel = 0,
+                        Font = Enum.Font.GothamBold,
+                        ZIndex = 51,
+                        [React.Event.Activated] = function()
+                            setShowCutConfirmation(false)
+                            props.remotes.cutPlant:FireServer(plotId)
+                        end
+                    }, {
+                        Corner = e("UICorner", {
+                            CornerRadius = UDim.new(0, 8)
+                        }),
+                        Gradient = e("UIGradient", {
+                            Color = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(220, 100, 100)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 60, 60))
+                            },
+                            Rotation = 90
+                        })
                     })
                 })
             })
-        })
+        }) or nil
     })
 end
 
-return PlotUI
+return PlotUI_Simple
