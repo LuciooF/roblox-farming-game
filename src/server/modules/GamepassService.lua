@@ -189,8 +189,8 @@ function GamepassService.processReceipt(receiptInfo)
             SoundManager.playRebirthSound()
             
             -- Send rebirth notification (same as normal rebirth)
-            local NotificationManager = require(script.Parent.NotificationManager)
-            NotificationManager.sendRebirthNotification(player, result)
+--             local NotificationManager = require(script.Parent.NotificationManager)
+--             NotificationManager.sendRebirthNotification(player, result)
             
             -- Make potentially slow operations async to prevent lag
             spawn(function()
@@ -248,8 +248,8 @@ function GamepassService.applyGamepassEffects(player, gamepassKey, isNewPurchase
     if isNewPurchase then
         local gamepass = GamepassConfig.getGamepass(gamepassKey)
         if gamepass then
-            local NotificationManager = require(script.Parent.NotificationManager)
-            NotificationManager.sendSuccess(player, "🎉 " .. gamepass.name .. " activated!")
+--             local NotificationManager = require(script.Parent.NotificationManager)
+--             NotificationManager.sendSuccess(player, "🎉 " .. gamepass.name .. " activated!")
         end
     end
 end

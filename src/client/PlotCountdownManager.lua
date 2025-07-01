@@ -8,8 +8,6 @@ local Workspace = game:GetService("Workspace")
 local PlotUtils = require(script.Parent.PlotUtils)
 
 -- Simple logging functions for PlotCountdownManager
-local function logInfo(...) print("[INFO] PlotCountdownManager:", ...) end
-local function logDebug(...) print("[DEBUG] PlotCountdownManager:", ...) end
 
 local PlotCountdownManager = {}
 
@@ -39,10 +37,8 @@ function PlotCountdownManager.setupClearDisplaysRemote()
     local clearPlotsRemote = farmingRemotes:WaitForChild("ClearAllPlotDisplays")
     
     clearPlotsRemote.OnClientEvent:Connect(function()
-        logInfo("Clearing all plot displays after rebirth")
         PlotCountdownManager.clearAllDisplays()
     end)
-    logDebug("Set up ClearAllPlotDisplays remote listener")
 end
 
 -- Clear all plot countdown displays and reset data
@@ -81,7 +77,6 @@ function PlotCountdownManager.clearAllDisplays()
         end
     end
     
-    logInfo("Cleared all plot displays and reset countdown manager")
 end
 
 -- Scan for existing plots and set them to empty state
@@ -121,16 +116,13 @@ function PlotCountdownManager.scanExistingPlots()
             end
             
             if farmPlotCount > 0 then
-                logInfo("Found", farmPlotCount, "plots in", farmFolder.Name)
                 totalPlotCount = totalPlotCount + farmPlotCount
             end
         end
     end
     
     if totalPlotCount > 0 then
-        logInfo("Initialized", totalPlotCount, "total plots across all farms")
     else
-        logDebug("No existing plots found - will initialize when player is assigned a farm")
     end
 end
 
@@ -157,7 +149,6 @@ function PlotCountdownManager.initializePlotsInContainer(container)
         end
     end
     
-    logInfo("Initialized", plotCount, "plots in container")
 end
 
 -- Update plot timing data when server sends state changes
@@ -171,7 +162,6 @@ function PlotCountdownManager.updatePlotData(plotId, plotData)
     if previousData and previousData.harvestCount and plotData.harvestCount then
         if plotData.harvestCount > previousData.harvestCount then
             wasHarvested = true
-            logDebug("Plot", plotId, "was harvested - resetting firstReadyTime")
         end
     end
     
@@ -201,7 +191,6 @@ function PlotCountdownManager.updatePlotData(plotId, plotData)
         firstReadyTime = existingFirstReadyTime -- Preserve client-side timing unless harvest occurred
     }
     
-    logDebug("Updated plot", plotId, "data:", plotData.state, plotData.seedType, "owner:", plotData.ownerName or "none")
     
     -- Only start countdown for owned plots
     if plotData.isOwner then
@@ -222,7 +211,6 @@ function PlotCountdownManager.startMasterUpdateLoop()
         PlotCountdownManager.updateAllCountdowns()
     end)
     
-    logDebug("Started master countdown update loop")
 end
 
 -- Update all plot countdowns in a single loop
@@ -239,7 +227,9 @@ function PlotCountdownManager.updateAllCountdowns()
     for plotId, plotData in pairs(plotTimers) do
         local plot = PlotUtils.findPlotById(plotId)
         if plot then
-            local countdownGui = plot:FindFirstChild("CountdownDisplay")
+            -- Get the interaction part (for Models, the CountdownDisplay is on PrimaryPart)
+            local interactionPart = PlotUtils.getPlotInteractionPart(plot)
+            local countdownGui = interactionPart and interactionPart:FindFirstChild("CountdownDisplay")
             local countdownLabel = countdownGui and countdownGui:FindFirstChild("TextLabel")
             if countdownLabel then
                 -- Check distance before updating UI
@@ -264,7 +254,13 @@ function PlotCountdownManager.shouldShowUIForPlot(plot, plotData, playerPosition
         return false -- No player position available
     end
     
-    local plotPosition = plot.Position
+    -- Get position from interaction part (for Models, use PrimaryPart position)
+    local interactionPart = PlotUtils.getPlotInteractionPart(plot)
+    if not interactionPart then
+        return false -- Can't determine position
+    end
+    
+    local plotPosition = interactionPart.Position
     local distance = (playerPosition - plotPosition).Magnitude
     local maxDistance = 50 -- Maximum distance to show UI
     
@@ -311,8 +307,10 @@ function PlotCountdownManager.updateCountdownDisplay(plotId, countdownLabel)
     local state = plotData.state
     
     if state == "empty" then
-        countdownLabel.Text = ""
-        countdownLabel.Visible = false
+        -- For owned empty plots, show helpful text
+        countdownLabel.Visible = true
+        countdownLabel.Text = "🌱 Ready to Plant"
+        countdownLabel.TextColor3 = Color3.fromRGB(100, 255, 100) -- Light green
         return
     end
     
@@ -337,14 +335,28 @@ function PlotCountdownManager.updateCountdownDisplay(plotId, countdownLabel)
         local timeSinceLastWater = currentTime - lastWaterActionTime
         local waterCooldownRemaining = waterCooldownSeconds - timeSinceLastWater
         
+        -- Also check alternative water timing data that might be available
+        local lastWateredAt = plotData.lastWateredAt or 0
+        local waterTime = plotData.waterTime or 30
+        local timeSinceLastWateredAt = currentTime - lastWateredAt
+        local waterCooldownFromWateredAt = waterTime - timeSinceLastWateredAt
+        
         -- Show water status based on current state
         if wateredCount < waterNeeded then
-            if lastWaterActionTime == 0 or waterCooldownRemaining <= 0 then
+            -- Use whichever water timing data is available and more recent
+            local isOnCooldown = false
+            if lastWaterActionTime > 0 and waterCooldownRemaining > 0 then
+                isOnCooldown = true
+            elseif lastWateredAt > 0 and waterCooldownFromWateredAt > 0 then
+                isOnCooldown = true
+            end
+            
+            if isOnCooldown then
+                -- Recently watered but needs more, on cooldown
+                displayText = cropEmoji .. " " .. plantName .. "\n💧 Soaking up"
+            else
                 -- Can water now
                 displayText = cropEmoji .. " " .. plantName .. "\n💧 Needs Water"
-            else
-                -- Recently watered but needs more, on cooldown
-                displayText = cropEmoji .. " " .. plantName .. "\n💧 Drinking Water"
             end
         else
             -- Fully watered, just show crop name
@@ -368,8 +380,16 @@ function PlotCountdownManager.updateCountdownDisplay(plotId, countdownLabel)
         local cropEmoji = cropData and cropData.emoji or "🌟"
         local plantName = plotData.seedType:gsub("^%l", string.upper)
         local accumulatedCrops = plotData.accumulatedCrops or 1
-        displayText = cropEmoji .. " " .. plantName .. "\n✨ Ready (" .. accumulatedCrops .. ")"
-        color = Color3.fromRGB(255, 255, 100) -- Gold
+        
+        -- Only show "Ready" if there are actually crops to harvest
+        if accumulatedCrops > 0 then
+            displayText = cropEmoji .. " " .. plantName .. "\n✨ Ready (" .. accumulatedCrops .. ")"
+            color = Color3.fromRGB(255, 255, 100) -- Gold
+        else
+            -- No crops to harvest, show as growing instead
+            displayText = cropEmoji .. " " .. plantName .. "\n⚡ Growing..."
+            color = Color3.fromRGB(100, 255, 200) -- Bright green
+        end
         
     elseif state == "dead" then
         local plantName = plotData.seedType:gsub("^%l", string.upper)
@@ -386,9 +406,23 @@ function PlotCountdownManager.updateNonOwnerDisplay(plotId, countdownLabel, plot
     local state = plotData.state
     local ownerName = plotData.ownerName or "Someone"
     
+    print("DEBUG: updateNonOwnerDisplay for plot", plotId, "state:", state, "plotIndex:", plotData.plotIndex)
+    
     if state == "empty" then
         countdownLabel.Text = ""  -- Completely hide text for empty non-owned plots
         countdownLabel.Visible = false  -- Make sure it's truly invisible
+    elseif state == "locked" then
+        -- Show plot price for purchasable plots
+        countdownLabel.Visible = true
+        local plotPrice = plotData.plotPrice or (plotData.plotIndex and (plotData.plotIndex * 100) or 500)
+        countdownLabel.Text = "Plot " .. (plotData.plotIndex or "?") .. "\n$" .. tostring(plotPrice)
+        countdownLabel.TextColor3 = Color3.fromRGB(255, 100, 100) -- Red for purchasable
+    elseif state == "rebirth_locked" then
+        -- Show rebirth requirement
+        countdownLabel.Visible = true
+        local requiredRebirth = plotData.requiredRebirth or 1
+        countdownLabel.Text = "Rebirth " .. tostring(requiredRebirth) .. "\nRequired"
+        countdownLabel.TextColor3 = Color3.fromRGB(150, 150, 150) -- Gray for locked
     else
         -- Show basic status without revealing timing details
         countdownLabel.Visible = true  -- Make sure it's visible for crops
@@ -473,7 +507,6 @@ function PlotCountdownManager.onPlotStateUpdate(plotId, newState, additionalData
         plotTimers[plotId].firstReadyTime = nil -- Clear timer when plot becomes empty
     end
     
-    logDebug("Plot", plotId, "state updated to", newState)
 end
 
 return PlotCountdownManager

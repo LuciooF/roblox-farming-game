@@ -9,7 +9,6 @@ local Players = game:GetService("Players")
 
 local ScreenUtils = require(ReplicatedStorage.Shared.ScreenUtils)
 -- Simple logging functions for SettingsPanel
-local function logInfo(...) print("[INFO] SettingsPanel:", ...) end
 local player = Players.LocalPlayer
 
 local function SettingsPanel(props)

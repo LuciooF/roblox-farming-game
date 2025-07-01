@@ -8,7 +8,7 @@ local TextChatService = game:GetService("TextChatService")
 local Logger = require(script.Parent.Logger)
 local RankConfig = require(game:GetService("ReplicatedStorage").Shared.RankConfig)
 local PlayerDataManager = require(script.Parent.PlayerDataManager)
-local NotificationManager = require(script.Parent.NotificationManager)
+-- -- local NotificationManager = require(script.Parent.NotificationManager)
 
 local ChatManager = {}
 local log = Logger.getModuleLogger("ChatManager")
@@ -121,7 +121,7 @@ function ChatManager.broadcastSystemMessage(message, color)
     -- Server can't use DisplaySystemMessage - use notifications instead
     -- Send announcement to all players via notifications
     for _, player in pairs(Players:GetPlayers()) do
-        NotificationManager.sendSuccess(player, message)
+--         NotificationManager.sendSuccess(player, message)
     end
     
     log.info("Broadcasted system message:", message)
@@ -153,8 +153,8 @@ function ChatManager.checkRankUp(player)
         ChatManager.announceRankUp(player, previousRank, currentRank)
         
         -- Show special rank-up notification
-        local NotificationManager = require(script.Parent.NotificationManager)
-        NotificationManager.sendRankUpNotification(player, currentRank)
+--         local NotificationManager = require(script.Parent.NotificationManager)
+--         NotificationManager.sendRankUpNotification(player, currentRank)
         
         -- Update rank display immediately
         local RankDisplayManager = require(script.Parent.RankDisplayManager)

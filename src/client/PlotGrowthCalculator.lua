@@ -151,16 +151,6 @@ function PlotGrowthCalculator.calculateOfflineGrowth(plotData, lastOnlineAt, pla
     -- Determine if plot needs water now
     local waterNeeded = currentTime >= waterNeededAt
     
-    print("[DEBUG]", "Offline growth calculation:")
-    print("[DEBUG]", "  Time offline:", secondsToHours(timeOffline), "hours")
-    print("[DEBUG]", "  Actual growth time:", secondsToHours(actualGrowthTime), "hours")
-    print("[DEBUG]", "  Production rate:", productionRate, "crops/hour")
-    print("[DEBUG]", "  Existing crops:", existingCrops)
-    print("[DEBUG]", "  New crops:", cropsFromOfflineGrowth)
-    print("[DEBUG]", "  Total (before limit):", totalCropsBeforeLimit)
-    print("[DEBUG]", "  Plot limit:", plotLimit)
-    print("[DEBUG]", "  Final total:", totalCropsReady)
-    print("[DEBUG]", "  Water needed:", waterNeeded)
     
     return {
         totalCropsReady = totalCropsReady,

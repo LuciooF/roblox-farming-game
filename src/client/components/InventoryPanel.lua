@@ -12,8 +12,6 @@ local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.Numb
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 -- Simple logging functions for InventoryPanel
-local function logInfo(...) print("[INFO] InventoryPanel:", ...) end
-local function logDebug(...) print("[DEBUG] InventoryPanel:", ...) end
 
 -- Sound IDs for button interactions
 local HOVER_SOUND_ID = "rbxassetid://15675059323"
@@ -63,6 +61,45 @@ local function createFlipAnimation(iconRef, animationTracker)
     animationTracker.current:Play()
 end
 
+-- Function to create bounce animation for cards
+local function createBounceAnimation(cardElement)
+    if not cardElement then 
+        print("Card element not found for bounce animation")
+        return 
+    end
+    
+    print("Creating bounce animation for:", cardElement.Name)
+    
+    -- Store the original size since GridLayout controls position
+    local originalSize = cardElement.Size
+    
+    -- Create bounce animation (scale up slightly)
+    local bounceUpTween = TweenService:Create(
+        cardElement,
+        TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { 
+            Size = originalSize + UDim2.new(0, 6, 0, 6) -- Grow by 6 pixels each way
+        }
+    )
+    
+    bounceUpTween:Play()
+    
+    -- Create return animation
+    bounceUpTween.Completed:Connect(function()
+        -- Safety check: make sure the card still exists
+        if not cardElement or not cardElement.Parent then return end
+        
+        local returnTween = TweenService:Create(
+            cardElement,
+            TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+            { 
+                Size = originalSize -- Return to original size
+            }
+        )
+        returnTween:Play()
+    end)
+end
+
 local function InventoryPanel(props)
     local playerData = props.playerData
     local visible = props.visible or false
@@ -71,7 +108,6 @@ local function InventoryPanel(props)
     
     -- Debug inventory visibility
     React.useEffect(function()
-        logDebug("InventoryPanel visibility changed to:", visible)
     end, {visible})
     
     -- Responsive sizing (same as shop)
@@ -87,16 +123,15 @@ local function InventoryPanel(props)
     local cardTitleSize = ScreenUtils.getProportionalTextSize(screenSize, 20)
     local cardValueSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
     
-    -- Dynamic panel sizing based on screen dimensions
-    local panelWidth = math.min(screenSize.X * 0.9, ScreenUtils.getProportionalSize(screenSize, 1100))
-    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 750))
+    -- Panel sizing (exact same as ShopPanel)
+    local panelWidth = math.min(screenSize.X * 0.9, ScreenUtils.getProportionalSize(screenSize, 900))
+    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 600))
     
-    -- Card sizing - dynamically adjust columns based on available width
-    local minCardWidth = ScreenUtils.getProportionalSize(screenSize, 220)
-    local cardsPerRow = math.max(2, math.floor((panelWidth - 100) / (minCardWidth + 15)))
-    local availableWidth = panelWidth - 100
-    local cardWidth = math.floor((availableWidth / cardsPerRow) - 15)
-    local cardHeight = ScreenUtils.getProportionalSize(screenSize, 260) -- Fixed proportional height for stacked buttons
+    -- Calculate grid for inventory cards - responsive layout (exact same as ShopPanel)
+    local minCardWidth = ScreenUtils.getProportionalSize(screenSize, 250)
+    local cardsPerRow = math.max(2, math.min(4, math.floor((panelWidth - 120) / (minCardWidth + 20)))) -- Force 2-4 columns
+    local cardWidth = (panelWidth - 120) / cardsPerRow - 20
+    local cardHeight = ScreenUtils.getProportionalSize(screenSize, 280)
     
     -- Get inventory items from all crop types
     local inventoryItems = {}
@@ -176,8 +211,8 @@ local function InventoryPanel(props)
     
     return e("Frame", {
         Name = "InventoryContainer",
-        Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale + 50), -- Extra space for floating title
-        Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -(panelHeight * scale + 50) / 2),
+        Size = UDim2.new(0, panelWidth, 0, panelHeight + 50), -- Extra space for floating title
+        Position = UDim2.new(0.5, -panelWidth / 2, 0.5, -(panelHeight + 50) / 2),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         Visible = visible,
@@ -186,7 +221,7 @@ local function InventoryPanel(props)
         
         InventoryPanel = e("Frame", {
             Name = "InventoryPanel",
-            Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
+            Size = UDim2.new(0, panelWidth, 0, panelHeight),
             Position = UDim2.new(0, 0, 0, 50), -- Below floating title
             BackgroundColor3 = Color3.fromRGB(240, 245, 255),
             BackgroundTransparency = 0.05,
@@ -196,7 +231,7 @@ local function InventoryPanel(props)
             -- Floating Title (positioned very close to main panel)
             FloatingTitle = e("Frame", {
                 Name = "FloatingTitle",
-                Size = UDim2.new(0, 260, 0, 40),
+                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 260), 0, ScreenUtils.getProportionalSize(screenSize, 40)),
                 Position = UDim2.new(0, -10, 0, -25), -- Much closer to main panel
                 BackgroundColor3 = Color3.fromRGB(100, 200, 100),
                 BorderSizePixel = 0,
@@ -234,7 +269,7 @@ local function InventoryPanel(props)
                 
                 InventoryIcon = e("ImageLabel", {
                     Name = "InventoryIcon",
-                    Size = UDim2.new(0, 24, 0, 24),
+                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 24), 0, ScreenUtils.getProportionalSize(screenSize, 24)),
                     Image = assets["General/Barn/Barn Outline 256.png"] or "",
                     BackgroundTransparency = 1,
                     ScaleType = Enum.ScaleType.Fit,
@@ -284,7 +319,7 @@ local function InventoryPanel(props)
         -- Close Button (partially outside main panel, square with 3D effect)
         CloseButton = e("ImageButton", {
             Name = "CloseButton",
-            Size = UDim2.new(0, 32, 0, 32),
+            Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 32), 0, ScreenUtils.getProportionalSize(screenSize, 32)),
             Position = UDim2.new(1, -16, 0, -16), -- Half outside the panel
             Image = assets["X Button/X Button 64.png"],
             ImageColor3 = Color3.fromRGB(255, 255, 255), -- Pure white text
@@ -354,14 +389,16 @@ local function InventoryPanel(props)
                 totalValue = totalValue + (item.quantity * item.sellPrice)
             end
             
-            -- Determine button width based on total value text length
+            -- Determine button width based on total value text length (proportional)
             local buttonText = "SELL ALL ( " .. NumberFormatter.format(totalValue) .. ")"
-            local buttonWidth = math.max(200, 140 + (string.len(buttonText) * 6))
+            local baseButtonWidth = ScreenUtils.getProportionalSize(screenSize, 200)
+            local buttonWidth = math.max(baseButtonWidth, ScreenUtils.getProportionalSize(screenSize, 140) + (string.len(buttonText) * ScreenUtils.getProportionalSize(screenSize, 6)))
+            local buttonHeight = ScreenUtils.getProportionalSize(screenSize, 35)
             
             return e("TextButton", {
                 Name = "SellAllButton",
-                Size = UDim2.new(0, buttonWidth, 0, 35),
-                Position = UDim2.new(1, -buttonWidth - 10, 0, 10),
+                Size = UDim2.new(0, buttonWidth, 0, buttonHeight),
+                Position = UDim2.new(1, -buttonWidth - ScreenUtils.getProportionalSize(screenSize, 10), 0, ScreenUtils.getProportionalSize(screenSize, 10)),
                 Text = "",
                 BackgroundColor3 = Color3.fromRGB(255, 165, 0),
                 BorderSizePixel = 0,
@@ -421,7 +458,7 @@ local function InventoryPanel(props)
                 
                 SellIcon = e("ImageLabel", {
                     Name = "SellIcon",
-                    Size = UDim2.new(0, 20, 0, 20),
+                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 20), 0, ScreenUtils.getProportionalSize(screenSize, 20)),
                     Image = assets["Currency/Cash/Cash Outline 256.png"] or "",
                     BackgroundTransparency = 1,
                     ScaleType = Enum.ScaleType.Fit,
@@ -568,6 +605,7 @@ local function InventoryPanel(props)
                         -- Animation refs - simplified without React.useRef in loop
                         local cropIconRef = {current = nil}
                         local sellIconRef = {current = nil}
+                        local cardElement = nil
                         local cropAnimTracker = {current = nil}
                         local sellAnimTracker = {current = nil}
                         
@@ -580,6 +618,9 @@ local function InventoryPanel(props)
                             ZIndex = 32,
                             LayoutOrder = i,
                             AutoButtonColor = false,
+                            ref = function(element)
+                                cardElement = element
+                            end,
                             [React.Event.MouseEnter] = function()
                                 playSound("hover")
                                 createFlipAnimation(cropIconRef, cropAnimTracker)
@@ -588,6 +629,7 @@ local function InventoryPanel(props)
                                 handleCropSale(itemData.type, itemData.sellPrice)
                                 createFlipAnimation(cropIconRef, cropAnimTracker)
                                 createFlipAnimation(sellIconRef, sellAnimTracker)
+                                createBounceAnimation(cardElement)
                             end
                         }, {
                             Corner = e("UICorner", {
@@ -620,8 +662,9 @@ local function InventoryPanel(props)
                             -- Crop Icon
                             CropIcon = itemData.visual and itemData.visual.assetId and e("ImageLabel", {
                                 Name = "CropIcon",
-                                Size = UDim2.new(0, 60, 0, 60),
-                                Position = UDim2.new(0.5, -30, 0, 15),
+                                Size = UDim2.new(0.3, 0, 0.3, 0), -- 30% of card size
+                                Position = UDim2.new(0.5, 0, 0.15, 0), -- Centered, 15% from top
+                                AnchorPoint = Vector2.new(0.5, 0.5),
                                 Image = itemData.visual.assetId:gsub("-64%.png", "-outline-256.png"):gsub("-256%.png", "-outline-256.png"),
                                 BackgroundTransparency = 1,
                                 ScaleType = Enum.ScaleType.Fit,
@@ -629,8 +672,9 @@ local function InventoryPanel(props)
                                 ref = cropIconRef
                             }) or e("TextLabel", {
                                 Name = "CropEmoji",
-                                Size = UDim2.new(1, 0, 0, 50),
-                                Position = UDim2.new(0, 0, 0, 15),
+                                Size = UDim2.new(0.3, 0, 0.3, 0), -- 30% of card size
+                                Position = UDim2.new(0.5, 0, 0.15, 0), -- Centered, 15% from top
+                                AnchorPoint = Vector2.new(0.5, 0.5),
                                 Text = itemData.visual and itemData.visual.emoji or "🌱",
                                 TextSize = normalTextSize,
             TextWrapped = true,
@@ -643,8 +687,9 @@ local function InventoryPanel(props)
                             -- Quantity Badge (top right)
                             QuantityBadge = e("Frame", {
                                 Name = "QuantityBadge",
-                                Size = UDim2.new(0, 30, 0, 20),
-                                Position = UDim2.new(1, -35, 0, 5),
+                                Size = UDim2.new(0.15, 0, 0.08, 0), -- 15% width, 8% height of card
+                                Position = UDim2.new(0.85, 0, 0.02, 0), -- 85% from left, 2% from top
+                                AnchorPoint = Vector2.new(0.5, 0),
                                 BackgroundColor3 = Color3.fromRGB(255, 165, 0),
                                 BorderSizePixel = 0,
                                 ZIndex = 34
@@ -673,8 +718,8 @@ local function InventoryPanel(props)
                             -- Crop Name
                             CropName = e("TextLabel", {
                                 Name = "CropName",
-                                Size = UDim2.new(1, -10, 0, 20),
-                                Position = UDim2.new(0, 5, 0, 80),
+                                Size = UDim2.new(0.9, 0, 0.08, 0), -- 90% width, 8% height
+                                Position = UDim2.new(0.05, 0, 0.32, 0), -- 5% from left, 32% from top
                                 Text = itemData.crop.name,
                                 TextColor3 = Color3.fromRGB(40, 40, 40),
                                 TextSize = cardTitleSize,
@@ -687,8 +732,8 @@ local function InventoryPanel(props)
                             -- Crop Description
                             CropDescription = e("TextLabel", {
                                 Name = "CropDescription",
-                                Size = UDim2.new(1, -10, 0, 25),
-                                Position = UDim2.new(0, 5, 0, 100),
+                                Size = UDim2.new(0.9, 0, 0.1, 0), -- 90% width, 10% height
+                                Position = UDim2.new(0.05, 0, 0.4, 0), -- 5% from left, 40% from top
                                 Text = itemData.crop.description or "A wonderful crop!",
                                 TextColor3 = Color3.fromRGB(70, 80, 120),
                                 TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
@@ -703,8 +748,9 @@ local function InventoryPanel(props)
                             -- Rarity Badge
                             RarityBadge = e("Frame", {
                                 Name = "RarityBadge",
-                                Size = UDim2.new(0, 60, 0, 15),
-                                Position = UDim2.new(0.5, -30, 0, 145),
+                                Size = UDim2.new(0.3, 0, 0.06, 0), -- 30% width, 6% height of card
+                                Position = UDim2.new(0.5, 0, 0.55, 0), -- Centered horizontally, 55% from top
+                                AnchorPoint = Vector2.new(0.5, 0),
                                 BackgroundColor3 = colors[1],
                                 BorderSizePixel = 0,
                                 ZIndex = 33
@@ -727,8 +773,8 @@ local function InventoryPanel(props)
                             -- Sell One Button
                             SellOneButton = e("TextButton", {
                                 Name = "SellOneButton",
-                                Size = UDim2.new(1, -10, 0, 20),
-                                Position = UDim2.new(0, 5, 0, 170),
+                                Size = UDim2.new(0.9, 0, 0.08, 0), -- 90% width, 8% height
+                                Position = UDim2.new(0.05, 0, 0.65, 0), -- 5% from left, 65% from top
                                 Text = "",
                                 BackgroundColor3 = Color3.fromRGB(40, 120, 40),
                                 BorderSizePixel = 0,
@@ -738,6 +784,7 @@ local function InventoryPanel(props)
                                     handleCropSale(itemData.type, itemData.sellPrice)
                                     createFlipAnimation(cropIconRef, cropAnimTracker)
                                     createFlipAnimation(sellIconRef, sellAnimTracker)
+                                    createBounceAnimation(cardElement)
                                 end
                             }, {
                                 Corner = e("UICorner", {
@@ -794,7 +841,7 @@ local function InventoryPanel(props)
                                     
                                     SellIcon = e("ImageLabel", {
                                         Name = "SellIcon",
-                                        Size = UDim2.new(0, 14, 0, 14),
+                                        Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 14), 0, ScreenUtils.getProportionalSize(screenSize, 14)),
                                         Image = assets["Currency/Cash/Cash Outline 256.png"] or "",
                                         BackgroundTransparency = 1,
                                         ScaleType = Enum.ScaleType.Fit,
@@ -829,8 +876,8 @@ local function InventoryPanel(props)
                             -- Sell All Button
                             SellAllButton = e("TextButton", {
                                 Name = "SellAllButton",
-                                Size = UDim2.new(1, -10, 0, 20),
-                                Position = UDim2.new(0, 5, 0, 195),
+                                Size = UDim2.new(0.9, 0, 0.08, 0), -- 90% width, 8% height
+                                Position = UDim2.new(0.05, 0, 0.75, 0), -- 5% from left, 75% from top
                                 Text = "",
                                 BackgroundColor3 = Color3.fromRGB(255, 165, 0),
                                 BorderSizePixel = 0,
@@ -840,6 +887,7 @@ local function InventoryPanel(props)
                                     handleCropSellAll(itemData.type, itemData.quantity)
                                     createFlipAnimation(cropIconRef, cropAnimTracker)
                                     createFlipAnimation(sellIconRef, sellAnimTracker)
+                                    createBounceAnimation(cardElement)
                                 end
                             }, {
                                 Corner = e("UICorner", {
@@ -896,7 +944,7 @@ local function InventoryPanel(props)
                                     
                                     SellAllIcon = e("ImageLabel", {
                                         Name = "SellAllIcon",
-                                        Size = UDim2.new(0, 14, 0, 14),
+                                        Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 14), 0, ScreenUtils.getProportionalSize(screenSize, 14)),
                                         Image = assets["Currency/Cash/Cash Outline 256.png"] or "",
                                         BackgroundTransparency = 1,
                                         ScaleType = Enum.ScaleType.Fit,

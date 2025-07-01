@@ -33,7 +33,7 @@ local function WeatherPanel(props)
     -- Responsive sizing
     local scale = ScreenUtils.getProportionalScale(screenSize)
     local panelWidth = math.min(screenSize.X * 0.9, ScreenUtils.getProportionalSize(screenSize, 600))
-    local panelHeight = math.min(screenSize.Y * 0.85, ScreenUtils.getProportionalSize(screenSize, 520))
+    local panelHeight = math.min(screenSize.Y * 0.9, ScreenUtils.getProportionalSize(screenSize, 580))
     
     -- Proportional text sizes
     local titleTextSize = ScreenUtils.getProportionalTextSize(screenSize, 32)
@@ -64,7 +64,6 @@ local function WeatherPanel(props)
     
     -- Debug: Only log if icon is empty
     if weatherIcon == "" then
-        print("WeatherPanel - No icon found for weather:", weatherName)
     end
     
     -- Pre-create sounds for better performance
@@ -191,8 +190,8 @@ local function WeatherPanel(props)
                 -- Floating Title (Weather-themed purple)
                 FloatingTitle = e("Frame", {
                     Name = "FloatingTitle",
-                    Size = UDim2.new(0, 180, 0, 40),
-                    Position = UDim2.new(0, -10, 0, -25),
+                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 180), 0, ScreenUtils.getProportionalSize(screenSize, 40)),
+                    Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, -10), 0, ScreenUtils.getProportionalSize(screenSize, -25)),
                     BackgroundColor3 = Color3.fromRGB(150, 100, 255),
                     BorderSizePixel = 0,
                     ZIndex = 32
@@ -214,7 +213,7 @@ local function WeatherPanel(props)
                     }),
                     TitleText = e("TextLabel", {
                         Size = UDim2.new(1, -10, 1, 0),
-                        Position = UDim2.new(0, 5, 0, 0),
+                        Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 5), 0, 0),
                         Text = "⛅ WEATHER",
                         TextColor3 = Color3.fromRGB(255, 255, 255),
                         TextSize = normalTextSize,
@@ -254,8 +253,8 @@ local function WeatherPanel(props)
                 -- Close Button
                 CloseButton = e("ImageButton", {
                     Name = "CloseButton",
-                    Size = UDim2.new(0, 32, 0, 32),
-                    Position = UDim2.new(1, -16, 0, -16),
+                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 32), 0, ScreenUtils.getProportionalSize(screenSize, 32)),
+                    Position = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -16), 0, ScreenUtils.getProportionalSize(screenSize, -16)),
                     Image = assets["X Button/X Button 64.png"],
                     ImageColor3 = Color3.fromRGB(255, 255, 255),
                     ScaleType = Enum.ScaleType.Fit,
@@ -282,7 +281,7 @@ local function WeatherPanel(props)
                     Shadow = e("Frame", {
                         Name = "Shadow",
                         Size = UDim2.new(1, 2, 1, 2),
-                        Position = UDim2.new(0, 2, 0, 2),
+                        Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 2), 0, ScreenUtils.getProportionalSize(screenSize, 2)),
                         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
                         BackgroundTransparency = 0.7,
                         BorderSizePixel = 0,
@@ -298,7 +297,7 @@ local function WeatherPanel(props)
                 TitleSection = e("Frame", {
                     Name = "TitleSection",
                     Size = UDim2.new(1, -40, 0, 60),
-                    Position = UDim2.new(0, 20, 0, 20),
+                    Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 20), 0, ScreenUtils.getProportionalSize(screenSize, 20)),
                 BackgroundTransparency = 1,
                 ZIndex = 32
             }, {
@@ -324,7 +323,7 @@ local function WeatherPanel(props)
                 Subtitle = e("TextLabel", {
                     Name = "Subtitle",
                     Size = UDim2.new(1, 0, 0, 20),
-                    Position = UDim2.new(0, 0, 0, 45),
+                    Position = UDim2.new(0, 0, 0, ScreenUtils.getProportionalSize(screenSize, 45)),
                     Text = "Real-time weather forecast for your farm",
                     TextColor3 = Color3.fromRGB(120, 120, 120),
                     TextSize = normalTextSize,
@@ -343,7 +342,7 @@ local function WeatherPanel(props)
                 StrategyTip = e("TextLabel", {
                     Name = "StrategyTip",
                     Size = UDim2.new(1, 0, 0, 20),
-                    Position = UDim2.new(0, 0, 0, 70),
+                    Position = UDim2.new(0, 0, 0, ScreenUtils.getProportionalSize(screenSize, 70)),
                     Text = "💡 Weather affects your farm! Plan strategically with the forecast.",
                     TextColor3 = Color3.fromRGB(60, 120, 60),
                     TextSize = normalTextSize,
@@ -360,11 +359,12 @@ local function WeatherPanel(props)
                 })
             }),
             
-            -- Current Weather Card
+            -- Main Weather Card (includes current weather + forecast)
             CurrentWeatherCard = e("Frame", {
-                Name = "CurrentWeatherCard",
-                Size = UDim2.new(1, -40, 0, 180),
-                Position = UDim2.new(0, 20, 0, 140),
+                Name = "MainWeatherCard",
+                Size = UDim2.new(1, -40, 0, ScreenUtils.getProportionalSize(screenSize, 360)),
+                Position = UDim2.new(0.5, 0, 0, ScreenUtils.getProportionalSize(screenSize, 110)),
+                AnchorPoint = Vector2.new(0.5, 0),
                 BackgroundColor3 = Color3.fromRGB(248, 250, 252),
                 BorderSizePixel = 0,
                 ZIndex = 32
@@ -441,7 +441,7 @@ local function WeatherPanel(props)
                         DayInfo = e("TextLabel", {
                             Name = "DayInfo",
                             Size = UDim2.new(1, 0, 0, 18),
-                            Position = UDim2.new(0, 0, 0, 25),
+                            Position = UDim2.new(0, 0, 0, ScreenUtils.getProportionalSize(screenSize, 25)),
                             Text = dayName,
                             TextColor3 = Color3.fromRGB(100, 100, 100),
                             TextSize = normalTextSize,
@@ -460,7 +460,7 @@ local function WeatherPanel(props)
                         Temperature = e("TextLabel", {
                             Name = "Temperature",
                             Size = UDim2.new(1, 0, 0, 17),
-                            Position = UDim2.new(0, 0, 0, 43),
+                            Position = UDim2.new(0, 0, 0, ScreenUtils.getProportionalSize(screenSize, 43)),
                             Text = temperature .. "°F",
                             TextColor3 = Color3.fromRGB(60, 60, 60),
                             TextSize = normalTextSize,
@@ -483,7 +483,7 @@ local function WeatherPanel(props)
                         Size = UDim2.new(1, -30, 0, 20),
                         Text = weatherDesc,
                         TextColor3 = Color3.fromRGB(80, 80, 80),
-                        TextSize = 12 * scale,
+                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
                         BackgroundTransparency = 1,
                         Font = Enum.Font.Gotham,
                         TextXAlignment = Enum.TextXAlignment.Center,
@@ -491,52 +491,50 @@ local function WeatherPanel(props)
                         TextWrapped = true,
                         ZIndex = 33,
                         LayoutOrder = 3
-                    })
-                })
-            }),
-            
-            -- Forecast Section
-            ForecastSection = e("Frame", {
-                Name = "ForecastSection",
-                Size = UDim2.new(1, -40, 0, 140),
-                Position = UDim2.new(0, 20, 0, 340),
-                BackgroundTransparency = 1,
-                ZIndex = 32
-            }, {
-                ForecastTitle = e("TextLabel", {
-                    Name = "ForecastTitle",
-                    Size = UDim2.new(1, 0, 0, 30),
-                    Position = UDim2.new(0, 0, 0, 0),
-                    Text = "📅 3-Day Forecast",
-                    TextColor3 = Color3.fromRGB(50, 50, 50),
-                    TextSize = normalTextSize,
-            TextWrapped = true,
-                    BackgroundTransparency = 1,
-                    Font = Enum.Font.GothamBold,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    ZIndex = 32
-                }, {
-                    TextSizeConstraint = e("UITextSizeConstraint", {
-                        MaxTextSize = 20 * scale,
-                        MinTextSize = 16 * scale
-                    })
-                }),
-                
-                -- Forecast Cards Container
-                ForecastContainer = e("Frame", {
-                    Name = "ForecastContainer",
-                    Size = UDim2.new(1, 0, 0, 100),
-                    Position = UDim2.new(0, 0, 0, 40),
-                    BackgroundTransparency = 1,
-                    ZIndex = 32
-                }, {
-                    Layout = e("UIListLayout", {
-                        FillDirection = Enum.FillDirection.Horizontal,
-                        HorizontalAlignment = Enum.HorizontalAlignment.Center,
-                        VerticalAlignment = Enum.VerticalAlignment.Top,
-                        Padding = UDim.new(0, 15),
-                        SortOrder = Enum.SortOrder.LayoutOrder
                     }),
+                    
+                    -- Forecast Section (inside the main card)
+                    ForecastSection = e("Frame", {
+                        Name = "ForecastSection",
+                        Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 140)),
+                        BackgroundTransparency = 1,
+                        ZIndex = 33,
+                        LayoutOrder = 4
+                    }, {
+                        ForecastTitle = e("TextLabel", {
+                            Name = "ForecastTitle",
+                            Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 30)),
+                            Position = UDim2.new(0, 0, 0, 0),
+                            Text = "📅 3-Day Forecast",
+                            TextColor3 = Color3.fromRGB(50, 50, 50),
+                            TextSize = normalTextSize,
+                            TextWrapped = true,
+                            BackgroundTransparency = 1,
+                            Font = Enum.Font.GothamBold,
+                            TextXAlignment = Enum.TextXAlignment.Center,
+                            ZIndex = 33
+                        }, {
+                            TextSizeConstraint = e("UITextSizeConstraint", {
+                                MaxTextSize = ScreenUtils.getProportionalTextSize(screenSize, 20),
+                                MinTextSize = ScreenUtils.getProportionalTextSize(screenSize, 16)
+                            })
+                        }),
+                        
+                        -- Forecast Cards Container
+                        ForecastContainer = e("Frame", {
+                            Name = "ForecastContainer",
+                            Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 100)),
+                            Position = UDim2.new(0, 0, 0, ScreenUtils.getProportionalSize(screenSize, 40)),
+                            BackgroundTransparency = 1,
+                            ZIndex = 33
+                        }, {
+                            Layout = e("UIListLayout", {
+                                FillDirection = Enum.FillDirection.Horizontal,
+                                HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                                VerticalAlignment = Enum.VerticalAlignment.Top,
+                                Padding = UDim.new(0, ScreenUtils.getProportionalSize(screenSize, 15)),
+                                SortOrder = Enum.SortOrder.LayoutOrder
+                            }),
                     
                     -- Generate forecast cards
                     ForecastCards = React.createElement(React.Fragment, {}, (function()
@@ -558,7 +556,7 @@ local function WeatherPanel(props)
                                 
                                 forecastCards["ForecastCard" .. i] = e("Frame", {
                                     Name = "ForecastCard" .. i,
-                                    Size = UDim2.new(0, 160, 0, 100),
+                                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 160), 0, ScreenUtils.getProportionalSize(screenSize, 100)),
                                     BackgroundColor3 = Color3.fromRGB(252, 252, 252),
                                     BorderSizePixel = 0,
                                     ZIndex = 33,
@@ -578,7 +576,7 @@ local function WeatherPanel(props)
                                     DayName = e("TextLabel", {
                                         Name = "DayName",
                                         Size = UDim2.new(1, -10, 0, 20),
-                                        Position = UDim2.new(0, 5, 0, 5),
+                                        Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 5), 0, ScreenUtils.getProportionalSize(screenSize, 5)),
                                         Text = dayName,
                                         TextColor3 = Color3.fromRGB(60, 60, 60),
                                         TextSize = normalTextSize,
@@ -589,24 +587,24 @@ local function WeatherPanel(props)
                                         ZIndex = 34
                                     }, {
                                         TextSizeConstraint = e("UITextSizeConstraint", {
-                                            MaxTextSize = 14 * scale,
-                                            MinTextSize = 10 * scale
+                                            MaxTextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
+                                            MinTextSize = ScreenUtils.getProportionalTextSize(screenSize, 10)
                                         })
                                     }),
                                     
                                     -- Weather Icon (Interactive)
                                     WeatherIcon = createWeatherIcon(
                                         dayWeatherName,
-                                        UDim2.new(0, 40, 0, 40),
-                                        UDim2.new(0.5, -20, 0, 30),
+                                        UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 40), 0, ScreenUtils.getProportionalSize(screenSize, 40)),
+                                        UDim2.new(0.5, ScreenUtils.getProportionalSize(screenSize, -20), 0, ScreenUtils.getProportionalSize(screenSize, 30)),
                                         34
                                     ),
                                     
                                     -- Weather Name
                                     WeatherName = e("TextLabel", {
                                         Name = "WeatherName",
-                                        Size = UDim2.new(1, -10, 0, 15),
-                                        Position = UDim2.new(0, 5, 0, 75),
+                                        Size = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -10), 0, ScreenUtils.getProportionalSize(screenSize, 15)),
+                                        Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 5), 0, ScreenUtils.getProportionalSize(screenSize, 75)),
                                         Text = dayWeatherName,
                                         TextColor3 = Color3.fromRGB(80, 80, 80),
                                         TextSize = normalTextSize,
@@ -617,8 +615,8 @@ local function WeatherPanel(props)
                                         ZIndex = 34
                                     }, {
                                         TextSizeConstraint = e("UITextSizeConstraint", {
-                                            MaxTextSize = 12 * scale,
-                                            MinTextSize = 8 * scale
+                                            MaxTextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
+                                            MinTextSize = ScreenUtils.getProportionalTextSize(screenSize, 8)
                                         })
                                     })
                                 })
@@ -627,6 +625,8 @@ local function WeatherPanel(props)
                         
                         return forecastCards
                     end)())
+                        })
+                    })
                 })
             })
         })

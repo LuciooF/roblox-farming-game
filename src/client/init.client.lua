@@ -8,10 +8,8 @@ local UserInputService = game:GetService("UserInputService")
 local function createLogger(name)
     return {
         info = function(...) print("[INFO]", name, ...) end,
-        debug = function(...) print("[DEBUG]", name, ...) end,
         warn = function(...) warn("[WARN]", name, ...) end,
         error = function(...) error("[ERROR] " .. name .. ": " .. table.concat({...}, " ")) end,
-        trace = function(...) print("[TRACE]", name, ...) end
     }
 end
 
@@ -67,61 +65,10 @@ local previousMoney = nil
 _G.lastActionTime = 0 -- Global so other modules can update it
 local pendingPurchase = false
 
--- Ensure mobile controls are enabled and protected
+-- Simple mobile control enablement - no hacks
 if UserInputService.TouchEnabled then
     GuiService.TouchControlsEnabled = true
-    log.info("Mobile device detected - ensuring touch controls are enabled")
-    
-    -- Force enable both movement and camera controls
-    local Players = game:GetService("Players")
-    local player = Players.LocalPlayer
-    
-    -- Enable mobile controls more aggressively with multiple approaches
-    spawn(function()
-        wait(0.5) -- Shorter initial wait
-        GuiService.TouchControlsEnabled = true
-        
-        -- Try multiple methods to enable mobile controls
-        pcall(function()
-            -- Method 1: Direct PlayerModule access
-            if player and player.PlayerScripts then
-                local playerModule = player.PlayerScripts:WaitForChild("PlayerModule", 3)
-                if playerModule then
-                    local controls = require(playerModule:WaitForChild("ControlModule"))
-                    if controls and controls.Enable then
-                        controls:Enable()
-                        log.info("Mobile movement controls enabled via ControlModule")
-                    end
-                end
-            end
-        end)
-        
-        -- Method 2: Force enable at game level
-        wait(1)
-        GuiService.TouchControlsEnabled = true
-        
-        -- Method 3: Enable via PlayerGui properties 
-        pcall(function()
-            local playerGui = player:WaitForChild("PlayerGui")
-            if playerGui then
-                -- Ensure no ScreenGuis are blocking input
-                for _, gui in pairs(playerGui:GetChildren()) do
-                    if gui:IsA("ScreenGui") and gui.Name ~= "LoadingScreen" then
-                        pcall(function()
-                            -- Make sure they don't have Modal properties that block input
-                            if gui:FindFirstChild("Modal") then
-                                gui.Modal.Modal = false
-                            end
-                        end)
-                    end
-                end
-            end
-        end)
-        
-        wait(2)
-        GuiService.TouchControlsEnabled = true
-        log.info("Mobile controls force re-enabled after full UI load")
-    end)
+    log.info("Mobile device detected - TouchControlsEnabled set to true")
 end
 
 -- Wait for React packages and components to be available
@@ -129,7 +76,6 @@ local packagesExist = ReplicatedStorage:WaitForChild("Packages", 5)
 local reactExists = packagesExist and packagesExist:FindFirstChild("react")
 local componentsExist = script:FindFirstChild("components")
 
-log.debug("packagesExist =", packagesExist ~= nil, "reactExists =", reactExists ~= nil, "componentsExist =", componentsExist ~= nil)
 
 if not reactExists or not componentsExist then
     error("❌ React packages or components not found! Cannot start UI.")
@@ -157,17 +103,14 @@ local CodesService = require(script.CodesService)
 local RewardsService = require(script.RewardsService)
 
 -- Wait for farming remotes
-log.debug("Waiting for FarmingRemotes folder...")
 local farmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes", 10)
 if not farmingRemotes then
     error("❌ FarmingRemotes folder not found after 10 seconds!")
 end
-log.debug("Found FarmingRemotes folder, waiting for SyncPlayerData...")
 local syncRemote = farmingRemotes:WaitForChild("SyncPlayerData", 10)
 if not syncRemote then
     error("❌ SyncPlayerData remote not found after 10 seconds!")
 end
-log.debug("Found SyncPlayerData remote, continuing...")
 local buyRemote = farmingRemotes:WaitForChild("BuyItem")
 local sellRemote = farmingRemotes:WaitForChild("SellCrop")
 local togglePremiumRemote = farmingRemotes:WaitForChild("TogglePremium")
@@ -206,10 +149,17 @@ local gamepassData = {}
 
 -- Remove loading state - no more loading screen
 
--- Create React root
-log.debug("Creating React root in PlayerGui")
-local root = ReactRoblox.createRoot(playerGui)
-log.debug("React root created successfully")
+-- Create React root on a ScreenGui instead of directly on PlayerGui
+-- This prevents React from interfering with mobile controls
+local reactScreenGui = Instance.new("ScreenGui")
+reactScreenGui.Name = "ReactContainer"
+reactScreenGui.ResetOnSpawn = false
+reactScreenGui.IgnoreGuiInset = true -- Don't interfere with mobile controls
+reactScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+reactScreenGui.DisplayOrder = 1
+reactScreenGui.Parent = playerGui
+
+local root = ReactRoblox.createRoot(reactScreenGui)
 
 -- Remote objects for passing to components
 local remotes = {
@@ -248,7 +198,7 @@ end
 
 -- Update UI function - renders loading screen or main UI
 local function updateUI()
-    -- Update screen size
+    -- Update screen size for responsive design
     updateScreenSize()
     
     if not playerData or not characterReady then
@@ -259,7 +209,7 @@ local function updateUI()
         elseif not characterReady then
             reason = "character spawn"
         end
-        log.debug("Waiting for", reason, "- showing loading screen")
+        
         root:render(React.createElement(LoadingScreen, {
             screenSize = screenSize
         }))
@@ -290,7 +240,6 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
     
     -- Use minimal logging for data sync (can be verbose)
     if newPlayerData.money then
-        log.trace("Player data synced - Money:", newPlayerData.money)
     end
     
     -- Detect shop purchases (money decreased recently)
@@ -300,7 +249,6 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
         
         -- If money decreased and it was recent (within 3 seconds), it's likely a purchase
         if newPlayerData.money < previousMoney and timeSinceLastAction < 3 then
-            log.debug("Shop purchase detected - money:", previousMoney, "→", newPlayerData.money)
             SoundUtils.playShopPurchaseSound()
         -- If money increased and it was recent, it's likely a sale
         elseif newPlayerData.money > previousMoney and timeSinceLastAction < 3 then
@@ -322,7 +270,6 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
             end
             
             if soldSomething then
-                log.debug("Sale detected - money:", previousMoney, "→", newPlayerData.money)
                 SoundUtils.playSellSound()
             end
         end
@@ -344,6 +291,9 @@ syncRemote.OnClientEvent:Connect(function(newPlayerData)
     
     -- Update player data
     playerData = newPlayerData
+    
+    -- Make player data available globally for other modules
+    _G.currentPlayerData = playerData
     
     -- Update PlotInteractionManager with current inventory data
     PlotInteractionManager.updatePlayerData(playerData)
@@ -368,14 +318,12 @@ end)
 
 -- Handle weather updates
 weatherRemote.OnClientEvent:Connect(function(newWeatherData)
-    log.trace("Weather data received:", newWeatherData.current and newWeatherData.current.name or "unknown")
     weatherData = newWeatherData
     updateUI()
 end)
 
 -- Handle gamepass data updates
 gamepassDataRemote.OnClientEvent:Connect(function(newGamepassData)
-    log.debug("Gamepass data received with", newGamepassData and #newGamepassData or 0, "gamepasses")
     
     -- Detect new gamepass purchases (when gamepass data increases)
     if gamepassData and newGamepassData then
@@ -383,7 +331,6 @@ gamepassDataRemote.OnClientEvent:Connect(function(newGamepassData)
         local newCount = newGamepassData and #newGamepassData or 0
         
         if newCount > oldCount then
-            log.debug("New gamepass detected - playing purchase sound")
             SoundUtils.playGamepassPurchaseSound()
         end
     end
@@ -508,5 +455,4 @@ end)
 
 -- Development hot reload support (optional)
 if game:GetService("RunService"):IsStudio() then
-    log.debug("Development mode: Hot reload available")
 end

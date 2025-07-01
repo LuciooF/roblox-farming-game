@@ -7,7 +7,6 @@ local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 
 -- Simple logging
-local function logInfo(...) print("[INFO] DoubleJumpController:", ...) end
 
 local DoubleJumpController = {}
 
@@ -55,7 +54,6 @@ local function performDoubleJump()
     local currentTime = tick()
     if currentTime - lastJumpTime < COOLDOWN_TIME then return end
     
-    print("[DEBUG] DoubleJumpController: Performing double jump")
     
     -- Apply upward velocity for double jump
     local bodyVelocity = Instance.new("BodyVelocity")
@@ -77,7 +75,6 @@ local function performDoubleJump()
     -- end
     
     -- Visual effect (optional - could add particles here)
-    print("[DEBUG] DoubleJumpController: Double jump performed successfully")
 end
 
 -- Handle input for jumping
@@ -96,7 +93,6 @@ local function onInputBegan(input, gameProcessed)
             canDoubleJump = true
             hasDoubleJumped = false
             lastJumpTime = currentTime
-            print("[DEBUG] DoubleJumpController: First jump detected, double jump enabled")
         elseif canDoubleJump and not hasDoubleJumped then
             -- Second jump in air - perform double jump
             performDoubleJump()
@@ -114,7 +110,6 @@ local function onHeartbeat()
         -- Just landed
         canDoubleJump = false
         hasDoubleJumped = false
-        print("[DEBUG] DoubleJumpController: Character landed, double jump reset")
     end
     
     isGrounded = grounded
@@ -131,12 +126,10 @@ local function setupCharacter(newCharacter)
     hasDoubleJumped = false
     isGrounded = true
     
-    logInfo("Double jump controller setup for character:", character.Name)
 end
 
 -- Initialize the controller
 function DoubleJumpController.initialize()
-    logInfo("Initializing double jump controller")
     
     -- Connect input handling
     UserInputService.InputBegan:Connect(onInputBegan)
@@ -152,12 +145,10 @@ function DoubleJumpController.initialize()
     -- Setup for future characters
     player.CharacterAdded:Connect(setupCharacter)
     
-    logInfo("Double jump controller initialized successfully")
 end
 
 -- Cleanup function
 function DoubleJumpController.cleanup()
-    logInfo("Cleaning up double jump controller")
     -- Note: In a real implementation, you'd store connections and disconnect them here
 end
 

@@ -11,9 +11,6 @@ local CropRegistry = require(game:GetService("ReplicatedStorage").Shared.CropReg
 local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.NumberFormatter)
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
--- Simple logging functions for ShopPanel
-local function logInfo(...) print("[INFO] ShopPanel:", ...) end
-local function logDebug(...) print("[DEBUG] ShopPanel:", ...) end
 local Modal = require(script.Parent.Modal)
 
 -- Sound IDs for button interactions
@@ -79,10 +76,6 @@ local function ShopPanel(props)
     local remotes = props.remotes or {}
     local tutorialData = props.tutorialData
     
-    -- Debug shop visibility
-    React.useEffect(function()
-        logDebug("ShopPanel visibility changed to:", visible)
-    end, {visible})
     
     -- Responsive sizing
     local screenSize = props.screenSize or Vector2.new(1024, 768)
@@ -136,9 +129,15 @@ local function ShopPanel(props)
         
         for cropId, crop in pairs(CropRegistry.crops) do
             if crop.rarity == category.rarity then
+                -- Apply rebirth multiplier to seed cost (same as server-side selling multiplier)
+                local baseCost = crop.seedCost
+                local rebirths = playerData.rebirths or 0
+                local rebirthMultiplier = 1 + (rebirths * 0.5) -- Same formula as GameConfig.Rebirth.getCropMultiplier
+                local adjustedPrice = math.floor(baseCost * rebirthMultiplier)
+                
                 table.insert(shopSeeds, {
                     type = cropId,
-                    price = crop.seedCost,
+                    price = adjustedPrice,
                     crop = crop,
                     visual = crop,
                     category = category.name,
@@ -163,7 +162,6 @@ local function ShopPanel(props)
     -- Multiply by 1.3 for safety buffer without excessive empty space
     local totalHeight = ((totalRows * cardHeight) + ((totalRows - 1) * 20) + 40) * 1.3
     
-    logInfo("Shop Panel: Total items:", #shopSeeds, "Cards per row:", cardsPerRow, "Total rows:", totalRows, "Canvas height:", totalHeight, "Card width:", cardWidth)
     
     -- Handle crop purchase
     local function handleSeedPurchase(seedType, price)
@@ -419,9 +417,9 @@ local function ShopPanel(props)
                         local colors = rarityColors[rarity] or rarityColors.common
                         local isLocked = not seedData.categoryUnlocked
                         
-                        -- Check if this is the potato card and tutorial is on buy_potato step
+                        -- Check if this is the banana card and tutorial is on buy_banana step
                         local shouldHighlight = false
-                        if tutorialData and tutorialData.step and tutorialData.step.id == "buy_potato" and seedData.type == "potato" then
+                        if tutorialData and tutorialData.step and tutorialData.step.id == "buy_banana" and seedData.type == "banana" then
                             shouldHighlight = true
                         end
                         
@@ -518,7 +516,7 @@ local function ShopPanel(props)
                                         Position = UDim2.new(0.5, 0, 0.15, 0), -- Centered, 15% from top
                                         AnchorPoint = Vector2.new(0.5, 0.5),
                                         Text = tostring(seedData.visual and seedData.visual.emoji or "🌱"),
-                                        TextSize = normalTextSize,
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
                                         TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.SourceSansBold,
@@ -531,22 +529,23 @@ local function ShopPanel(props)
                             -- Crop Name (mysterious if locked)
                             CropName = e("TextLabel", {
                                 Name = "CropName",
-                                Size = UDim2.new(1, -10, 0, 20),
-                                Position = UDim2.new(0, 5, 0, 80),
+                                Size = UDim2.new(0.9, 0, 0.08, 0), -- 90% card width, 8% card height
+                                Position = UDim2.new(0.05, 0, 0.28, 0), -- 5% from left, 28% from top (proportional)
                                 Text = isLocked and "??? ??? ???" or tostring(seedData.crop.name or seedData.type or "Unknown"),
                                 TextColor3 = canAfford and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(120, 120, 120),
                                 TextSize = cardTitleSize,
-            TextWrapped = true,
+                                TextWrapped = true,
                                 BackgroundTransparency = 1,
                                 Font = Enum.Font.SourceSansBold,
+                                TextXAlignment = Enum.TextXAlignment.Center,
                                 ZIndex = 33
                             }),
                             
                             -- Crop Description (proportional positioning)
                             CropDescription = e("TextLabel", {
                                 Name = "CropDescription",
-                                Size = UDim2.new(0.9, 0, 0.15, 0), -- 90% card width, 15% card height
-                                Position = UDim2.new(0.05, 0, 0.4, 0), -- 5% from left, 40% from top
+                                Size = UDim2.new(0.9, 0, 0.10, 0), -- 90% card width, 10% card height (reduced)
+                                Position = UDim2.new(0.05, 0, 0.37, 0), -- 5% from left, 37% from top (below name)
                                 Text = isLocked and "???" or (seedData.crop.description or "A wonderful crop to grow!"),
                                 TextColor3 = canAfford and Color3.fromRGB(70, 80, 120) or Color3.fromRGB(100, 100, 100),
                                 TextSize = smallTextSize,
@@ -558,11 +557,11 @@ local function ShopPanel(props)
                                 ZIndex = 33
                             }),
                             
-                            -- Water and Production Stats Table (proportional positioning)
+                            -- Water and Production Stats Table (2x2 grid for water types and production)
                             StatsTable = not isLocked and e("Frame", {
                                 Name = "StatsTable",
-                                Size = UDim2.new(0.9, 0, 0.12, 0), -- 90% card width, 12% card height
-                                Position = UDim2.new(0.05, 0, 0.55, 0), -- 5% from left, 55% from top
+                                Size = UDim2.new(0.9, 0, 0.25, 0), -- 90% card width, 25% card height (more space for 4 rows)
+                                Position = UDim2.new(0.05, 0, 0.48, 0), -- 5% from left, 48% from top (moved up more)
                                 BackgroundTransparency = 1,
                                 ZIndex = 33
                             }, {
@@ -570,25 +569,25 @@ local function ShopPanel(props)
                                     FillDirection = Enum.FillDirection.Vertical,
                                     HorizontalAlignment = Enum.HorizontalAlignment.Center,
                                     VerticalAlignment = Enum.VerticalAlignment.Top,
-                                    Padding = UDim.new(0, 2),
+                                    Padding = UDim.new(0, 1),
                                     SortOrder = Enum.SortOrder.LayoutOrder
                                 }),
                                 
-                                -- Headers row
-                                HeadersRow = e("Frame", {
-                                    Name = "HeadersRow",
-                                    Size = UDim2.new(1, 0, 0, 12),
+                                -- First row: Water to grow | Production
+                                Row1 = e("Frame", {
+                                    Name = "Row1",
+                                    Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 11)),
                                     BackgroundTransparency = 1,
                                     LayoutOrder = 1,
                                     ZIndex = 34
                                 }, {
-                                    WaterHeader = e("TextLabel", {
-                                        Size = UDim2.new(0.5, -10, 1, 0),
+                                    WaterToGrowHeader = e("TextLabel", {
+                                        Size = UDim2.new(0.5, -5, 1, 0),
                                         Position = UDim2.new(0, 0, 0, 0),
-                                        Text = "Water Needed",
+                                        Text = "Water to grow",
                                         TextColor3 = canAfford and Color3.fromRGB(0, 100, 200) or Color3.fromRGB(120, 120, 120),
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
+                                        TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
                                         TextXAlignment = Enum.TextXAlignment.Center,
@@ -596,12 +595,12 @@ local function ShopPanel(props)
                                     }),
                                     
                                     ProductionHeader = e("TextLabel", {
-                                        Size = UDim2.new(0.5, -10, 1, 0),
-                                        Position = UDim2.new(0.5, 10, 0, 0),
+                                        Size = UDim2.new(0.5, -5, 1, 0),
+                                        Position = UDim2.new(0.5, 5, 0, 0),
                                         Text = "Production",
                                         TextColor3 = canAfford and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(120, 120, 120),
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
+                                        TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
                                         TextXAlignment = Enum.TextXAlignment.Center,
@@ -609,21 +608,21 @@ local function ShopPanel(props)
                                     })
                                 }),
                                 
-                                -- Values row
-                                ValuesRow = e("Frame", {
-                                    Name = "ValuesRow",
-                                    Size = UDim2.new(1, 0, 0, 14),
+                                -- Second row: Water value | Production value
+                                Row2 = e("Frame", {
+                                    Name = "Row2",
+                                    Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 13)),
                                     BackgroundTransparency = 1,
                                     LayoutOrder = 2,
                                     ZIndex = 34
                                 }, {
-                                    WaterValue = e("TextLabel", {
-                                        Size = UDim2.new(0.5, -10, 1, 0),
+                                    WaterToGrowValue = e("TextLabel", {
+                                        Size = UDim2.new(0.5, -5, 1, 0),
                                         Position = UDim2.new(0, 0, 0, 0),
                                         Text = tostring(seedData.crop.waterNeeded),
                                         TextColor3 = canAfford and Color3.fromRGB(0, 100, 200) or Color3.fromRGB(120, 120, 120),
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
+                                        TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
                                         TextXAlignment = Enum.TextXAlignment.Center,
@@ -631,12 +630,56 @@ local function ShopPanel(props)
                                     }),
                                     
                                     ProductionValue = e("TextLabel", {
-                                        Size = UDim2.new(0.5, -10, 1, 0),
-                                        Position = UDim2.new(0.5, 10, 0, 0),
+                                        Size = UDim2.new(0.5, -5, 1, 0),
+                                        Position = UDim2.new(0.5, 5, 0, 0),
                                         Text = tostring(seedData.crop.productionRate or 0) .. "/h",
                                         TextColor3 = canAfford and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(120, 120, 120),
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
+                                        TextWrapped = true,
+                                        BackgroundTransparency = 1,
+                                        Font = Enum.Font.GothamBold,
+                                        TextXAlignment = Enum.TextXAlignment.Center,
+                                        ZIndex = 35
+                                    })
+                                }),
+                                
+                                -- Third row: Maintenance water header
+                                Row3 = e("Frame", {
+                                    Name = "Row3",
+                                    Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 11)),
+                                    BackgroundTransparency = 1,
+                                    LayoutOrder = 3,
+                                    ZIndex = 34
+                                }, {
+                                    MaintenanceWaterHeader = e("TextLabel", {
+                                        Size = UDim2.new(1, 0, 1, 0),
+                                        Position = UDim2.new(0, 0, 0, 0),
+                                        Text = "Maintenance water every",
+                                        TextColor3 = canAfford and Color3.fromRGB(100, 0, 200) or Color3.fromRGB(120, 120, 120),
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
+                                        TextWrapped = true,
+                                        BackgroundTransparency = 1,
+                                        Font = Enum.Font.GothamBold,
+                                        TextXAlignment = Enum.TextXAlignment.Center,
+                                        ZIndex = 35
+                                    })
+                                }),
+                                
+                                -- Fourth row: Maintenance water value
+                                Row4 = e("Frame", {
+                                    Name = "Row4",
+                                    Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 13)),
+                                    BackgroundTransparency = 1,
+                                    LayoutOrder = 4,
+                                    ZIndex = 34
+                                }, {
+                                    MaintenanceWaterValue = e("TextLabel", {
+                                        Size = UDim2.new(1, 0, 1, 0),
+                                        Position = UDim2.new(0, 0, 0, 0),
+                                        Text = string.format("%.1fh", (seedData.crop.maintenanceWaterInterval or 7200) / 3600),
+                                        TextColor3 = canAfford and Color3.fromRGB(100, 0, 200) or Color3.fromRGB(120, 120, 120),
+                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
+                                        TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
                                         TextXAlignment = Enum.TextXAlignment.Center,
@@ -645,11 +688,11 @@ local function ShopPanel(props)
                                 })
                             }) or nil,
                             
-                            -- Rarity Badge (moved up to avoid overlap)
+                            -- Rarity Badge (repositioned to avoid overlap)
                             RarityBadge = e("Frame", {
                                 Name = "RarityBadge",
-                                Size = UDim2.new(0.4, 0, 0.08, 0), -- 40% card width, 8% card height
-                                Position = UDim2.new(0.5, 0, 0.68, 0), -- Centered horizontally, 68% from top
+                                Size = UDim2.new(0.4, 0, 0.07, 0), -- 40% card width, 7% card height (slightly smaller)
+                                Position = UDim2.new(0.5, 0, 0.75, 0), -- Centered horizontally, 75% from top (moved down)
                                 AnchorPoint = Vector2.new(0.5, 0.5),
                                 BackgroundColor3 = colors[1],
                                 BorderSizePixel = 0,
@@ -670,11 +713,11 @@ local function ShopPanel(props)
                                 })
                             }),
                             
-                            -- Buy Button (moved up to fit properly)
+                            -- Buy Button (repositioned to bottom)
                             BuyButton = e("TextButton", {
                                 Name = "BuyButton",
                                 Size = UDim2.new(0.9, 0, 0.12, 0), -- 90% card width, 12% card height
-                                Position = UDim2.new(0.05, 0, 0.76, 0), -- 5% from left, 76% from top
+                                Position = UDim2.new(0.05, 0, 0.83, 0), -- 5% from left, 83% from top (moved to bottom)
                                 Text = "",
                                 BackgroundColor3 = canAfford and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(150, 150, 150),
                                 BorderSizePixel = 0,

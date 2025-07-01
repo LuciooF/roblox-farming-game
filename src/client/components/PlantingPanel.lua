@@ -12,8 +12,6 @@ local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.Numb
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 -- Simple logging functions for PlantingPanel
-local function logInfo(...) print("[INFO] PlantingPanel:", ...) end
-local function logDebug(...) print("[DEBUG] PlantingPanel:", ...) end
 local Modal = require(script.Parent.Modal)
 
 -- Sound IDs for button interactions
@@ -78,17 +76,16 @@ local function PlantingPanel(props)
     local plantingMode = props.plantingMode or "single" -- "single" or "all"
     local screenSize = props.screenSize or Vector2.new(1024, 768)
     
-    -- Calculate available plot space for "all" mode
+    -- Calculate available plot space for "all" mode (matching PlotUI logic exactly)
     local MAX_PLANTS_PER_PLOT = 50
-    local currentPlants = 0
-    if plotData.state and plotData.state ~= "empty" then
-        currentPlants = (plotData.maxHarvests or 0) - (plotData.harvestCount or 0)
-    end
-    local availableSpace = MAX_PLANTS_PER_PLOT - currentPlants
+    local maxHarvests = plotData.maxHarvests or 0
+    local harvestCount = plotData.harvestCount or 0
+    local activePlants = maxHarvests - harvestCount
+    local currentPlantCount = plotData.state == "empty" and 0 or activePlants
+    local availableSpace = MAX_PLANTS_PER_PLOT - currentPlantCount
     
     -- Debug planting panel visibility
     React.useEffect(function()
-        logDebug("PlantingPanel visibility changed to:", visible)
     end, {visible})
     
     -- Responsive sizing
@@ -107,32 +104,6 @@ local function PlantingPanel(props)
     -- Get plantable seeds from inventory
     local plantableSeeds = {}
     
-    -- Debug logging to see what's in the inventory
-    React.useEffect(function()
-        if visible then
-            logInfo("PlantingPanel opened - debugging inventory:")
-            logInfo("playerData exists:", playerData ~= nil)
-            if playerData then
-                logInfo("playerData.inventory exists:", playerData.inventory ~= nil)
-                if playerData.inventory then
-                    logInfo("inventory.seeds exists:", playerData.inventory.seeds ~= nil)
-                    logInfo("inventory.crops exists:", playerData.inventory.crops ~= nil)
-                    if playerData.inventory.seeds then
-                        logInfo("Seeds in inventory:", playerData.inventory.seeds)
-                        for k, v in pairs(playerData.inventory.seeds) do
-                            logInfo("  Seed:", k, "Quantity:", v)
-                        end
-                    end
-                    if playerData.inventory.crops then
-                        logInfo("Crops in inventory:", playerData.inventory.crops)
-                        for k, v in pairs(playerData.inventory.crops) do
-                            logInfo("  Crop:", k, "Quantity:", v)
-                        end
-                    end
-                end
-            end
-        end
-    end, {visible, playerData})
     
     -- Check both seeds and crops in inventory
     if playerData.inventory then
@@ -226,7 +197,15 @@ local function PlantingPanel(props)
                 
                 -- Plant the minimum of available space and seeds owned
                 quantity = math.min(availableSpace, seedCount)
-                quantity = math.max(1, quantity) -- At least 1
+                
+                -- Ensure we don't plant negative amounts or exceed limits
+                quantity = math.max(0, quantity)
+                quantity = math.min(quantity, MAX_PLANTS_PER_PLOT - currentPlantCount)
+                
+                -- If nothing to plant, don't proceed
+                if quantity <= 0 then
+                    return
+                end
             end
             
             onPlant(seedType, quantity)
@@ -524,8 +503,8 @@ local function PlantingPanel(props)
                                 -- Seed Icon
                                 SeedIcon = seedData.visual and seedData.visual.assetId and e("ImageLabel", {
                                     Name = "SeedIcon",
-                                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 70), 0, ScreenUtils.getProportionalSize(screenSize, 70)),
-                                    Position = UDim2.new(0, 15, 0.5, -ScreenUtils.getProportionalSize(screenSize, 35)),
+                                    Size = UDim2.new(0.15, 0, 0.8, 0),
+                                    Position = UDim2.new(0.02, 0, 0.1, 0),
                                     Image = seedData.visual.assetId:gsub("-64%.png", "-outline-256.png"):gsub("-256%.png", "-outline-256.png"),
                                     BackgroundTransparency = 1,
                                     ScaleType = Enum.ScaleType.Fit,
@@ -533,8 +512,8 @@ local function PlantingPanel(props)
                                     ref = seedIconRef
                                 }) or e("TextLabel", {
                                     Name = "SeedEmoji",
-                                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 70), 0, ScreenUtils.getProportionalSize(screenSize, 70)),
-                                    Position = UDim2.new(0, 15, 0.5, -ScreenUtils.getProportionalSize(screenSize, 35)),
+                                    Size = UDim2.new(0.15, 0, 0.8, 0),
+                                    Position = UDim2.new(0.02, 0, 0.1, 0),
                                     Text = seedData.visual and seedData.visual.emoji or "🌱",
                                     TextSize = normalTextSize,
             TextWrapped = true,
@@ -544,77 +523,99 @@ local function PlantingPanel(props)
                                     ref = seedIconRef
                                 }),
                                 
-                                -- Seed Name
-                                SeedName = e("TextLabel", {
-                                    Name = "SeedName",
-                                    Size = UDim2.new(0, 150, 0, 20),
-                                    Position = UDim2.new(0, 100, 0, 10),
-                                    Text = crop.name,
-                                    TextColor3 = Color3.fromRGB(40, 40, 40),
-                                    TextSize = normalTextSize,
-            TextWrapped = true,
+                                -- Info Container for proper vertical stacking
+                                InfoContainer = e("Frame", {
+                                    Name = "InfoContainer",
+                                    Size = UDim2.new(0.3, 0, 1, -10),
+                                    Position = UDim2.new(0.18, 0, 0, 5),
                                     BackgroundTransparency = 1,
-                                    Font = Enum.Font.GothamBold,
-                                    TextXAlignment = Enum.TextXAlignment.Left,
-                                    ZIndex = 33
-                                }),
-                                
-                                -- Rarity Badge
-                                RarityBadge = e("Frame", {
-                                    Name = "RarityBadge",
-                                    Size = UDim2.new(0, 70, 0, 16),
-                                    Position = UDim2.new(0, 100, 0, 35),
-                                    BackgroundColor3 = rarityColor,
-                                    BorderSizePixel = 0,
                                     ZIndex = 33
                                 }, {
-                                    Corner = e("UICorner", {
-                                        CornerRadius = UDim.new(0, 8)
+                                    InfoLayout = e("UIListLayout", {
+                                        FillDirection = Enum.FillDirection.Vertical,
+                                        HorizontalAlignment = Enum.HorizontalAlignment.Left,
+                                        VerticalAlignment = Enum.VerticalAlignment.Top,
+                                        Padding = UDim.new(0, 4),
+                                        SortOrder = Enum.SortOrder.LayoutOrder
                                     }),
-                                    RarityText = e("TextLabel", {
-                                        Size = UDim2.new(1, 0, 1, 0),
-                                        Text = rarity:upper(),
-                                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                                    
+                                    -- Seed Name
+                                    SeedName = e("TextLabel", {
+                                        Name = "SeedName",
+                                        Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 28)),
+                                        Text = crop.name,
+                                        TextColor3 = Color3.fromRGB(40, 40, 40),
                                         TextSize = normalTextSize,
-            TextWrapped = true,
+                                        TextWrapped = true,
                                         BackgroundTransparency = 1,
                                         Font = Enum.Font.GothamBold,
-                                        ZIndex = 34
+                                        TextXAlignment = Enum.TextXAlignment.Left,
+                                        TextYAlignment = Enum.TextYAlignment.Center,
+                                        ZIndex = 34,
+                                        LayoutOrder = 1
+                                    }),
+                                    
+                                    -- Rarity Badge
+                                    RarityBadge = e("Frame", {
+                                        Name = "RarityBadge",
+                                        Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 80), 0, ScreenUtils.getProportionalSize(screenSize, 20)),
+                                        BackgroundColor3 = rarityColor,
+                                        BorderSizePixel = 0,
+                                        ZIndex = 34,
+                                        LayoutOrder = 2
                                     }, {
-                                        TextStroke = e("UIStroke", {
-                                            Color = Color3.fromRGB(0, 0, 0),
-                                            Thickness = 2,
-                                            Transparency = 0.5
+                                        Corner = e("UICorner", {
+                                            CornerRadius = UDim.new(0, 6)
+                                        }),
+                                        RarityText = e("TextLabel", {
+                                            Size = UDim2.new(1, 0, 1, 0),
+                                            Text = rarity:upper(),
+                                            TextColor3 = Color3.fromRGB(255, 255, 255),
+                                            TextSize = smallTextSize,
+                                            TextWrapped = true,
+                                            BackgroundTransparency = 1,
+                                            Font = Enum.Font.GothamBold,
+                                            TextXAlignment = Enum.TextXAlignment.Center,
+                                            TextYAlignment = Enum.TextYAlignment.Center,
+                                            ZIndex = 35
+                                        }, {
+                                            TextStroke = e("UIStroke", {
+                                                Color = Color3.fromRGB(0, 0, 0),
+                                                Thickness = 2,
+                                                Transparency = 0.5
+                                            })
                                         })
-                                    })
-                                }),
-                                
-                                -- Quantity Badge
-                                QuantityBadge = e("Frame", {
-                                    Name = "QuantityBadge",
-                                    Size = UDim2.new(0, 50, 0, 20),
-                                    Position = UDim2.new(0, 100, 0, 55),
-                                    BackgroundColor3 = Color3.fromRGB(80, 160, 80),
-                                    BorderSizePixel = 0,
-                                    ZIndex = 33
-                                }, {
-                                    Corner = e("UICorner", {
-                                        CornerRadius = UDim.new(0, 10)
                                     }),
-                                    QuantityText = e("TextLabel", {
-                                        Size = UDim2.new(1, 0, 1, 0),
-                                        Text = "x" .. NumberFormatter.format(seedData.quantity),
-                                        TextColor3 = Color3.fromRGB(255, 255, 255),
-                                        TextSize = normalTextSize,
-            TextWrapped = true,
-                                        BackgroundTransparency = 1,
-                                        Font = Enum.Font.GothamBold,
-                                        ZIndex = 34
+                                    
+                                    -- Quantity Badge
+                                    QuantityBadge = e("Frame", {
+                                        Name = "QuantityBadge",
+                                        Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 60), 0, ScreenUtils.getProportionalSize(screenSize, 18)),
+                                        BackgroundColor3 = Color3.fromRGB(80, 160, 80),
+                                        BorderSizePixel = 0,
+                                        ZIndex = 34,
+                                        LayoutOrder = 3
                                     }, {
-                                        TextStroke = e("UIStroke", {
-                                            Color = Color3.fromRGB(0, 0, 0),
-                                            Thickness = 2,
-                                            Transparency = 0.5
+                                        Corner = e("UICorner", {
+                                            CornerRadius = UDim.new(0, 8)
+                                        }),
+                                        QuantityText = e("TextLabel", {
+                                            Size = UDim2.new(1, 0, 1, 0),
+                                            Text = "x" .. NumberFormatter.format(seedData.quantity),
+                                            TextColor3 = Color3.fromRGB(255, 255, 255),
+                                            TextSize = smallTextSize,
+                                            TextWrapped = true,
+                                            BackgroundTransparency = 1,
+                                            Font = Enum.Font.GothamBold,
+                                            TextXAlignment = Enum.TextXAlignment.Center,
+                                            TextYAlignment = Enum.TextYAlignment.Center,
+                                            ZIndex = 35
+                                        }, {
+                                            TextStroke = e("UIStroke", {
+                                                Color = Color3.fromRGB(0, 0, 0),
+                                                Thickness = 2,
+                                                Transparency = 0.5
+                                            })
                                         })
                                     })
                                 }),
@@ -622,8 +623,8 @@ local function PlantingPanel(props)
                                 -- Stats Container (middle column - between left info and right buttons)
                                 StatsContainer = e("Frame", {
                                     Name = "StatsContainer",
-                                    Size = UDim2.new(0, 180, 1, -20),
-                                    Position = UDim2.new(0, 200, 0, 10),
+                                    Size = UDim2.new(0.35, 0, 1, -20),
+                                    Position = UDim2.new(0.45, 0, 0, 10),
                                     BackgroundTransparency = 1,
                                     ZIndex = 33
                                 }, {
@@ -740,8 +741,8 @@ local function PlantingPanel(props)
                                 -- Button Container (rightmost column - relative to card)
                                 ButtonContainer = e("Frame", {
                                     Name = "ButtonContainer",
-                                    Size = UDim2.new(0, 100, 1, -10),
-                                    Position = UDim2.new(1, -110, 0, 5),
+                                    Size = UDim2.new(0.18, 0, 1, -10),
+                                    Position = UDim2.new(0.82, 0, 0, 5),
                                     BackgroundTransparency = 1,
                                     ZIndex = 34
                                 }, {
@@ -756,15 +757,10 @@ local function PlantingPanel(props)
                                     -- Plant Button
                                     PlantButton = e("TextButton", {
                                         Name = "PlantButton",
-                                        Size = UDim2.new(0, 90, 0, 30),
-                                        Text = "PLANT",
-                                        TextColor3 = Color3.fromRGB(255, 255, 255),
-                                        TextTransparency = 0,
-                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
-                                        TextWrapped = true,
+                                        Size = UDim2.new(1, -4, 0.35, 0),
+                                        Text = "",
                                         BackgroundColor3 = Color3.fromRGB(100, 200, 100),
                                         BorderSizePixel = 0,
-                                        Font = Enum.Font.GothamBold,
                                         ZIndex = 35,
                                         LayoutOrder = 1,
                                         AutoButtonColor = false,
@@ -787,25 +783,31 @@ local function PlantingPanel(props)
                                             Thickness = 2,
                                             Transparency = 0.2
                                         }),
-                                        TextStroke = e("UIStroke", {
-                                            Color = Color3.fromRGB(0, 0, 0),
-                                            Thickness = 2,
-                                            Transparency = 0
+                                        ButtonText = e("TextLabel", {
+                                            Size = UDim2.new(1, 0, 1, 0),
+                                            Text = "PLANT",
+                                            TextColor3 = Color3.fromRGB(255, 255, 255),
+                                            TextSize = ScreenUtils.getProportionalTextSize(screenSize, 14),
+                                            TextWrapped = true,
+                                            BackgroundTransparency = 1,
+                                            Font = Enum.Font.GothamBold,
+                                            ZIndex = 36
+                                        }, {
+                                            TextStroke = e("UIStroke", {
+                                                Color = Color3.fromRGB(0, 0, 0),
+                                                Thickness = 2,
+                                                Transparency = 0
+                                            })
                                         })
                                     }),
                                     
                                     -- Plant All Button (only show if we have more than 1 seed and space for more than 1)
                                     PlantAllButton = (seedData.quantity > 1 and availableSpace > 1) and e("TextButton", {
                                         Name = "PlantAllButton",
-                                        Size = UDim2.new(0, 90, 0, 30),
-                                        Text = "PLANT ALL (" .. math.min(seedData.quantity, availableSpace) .. ")",
-                                        TextColor3 = Color3.fromRGB(255, 255, 255),
-                                        TextTransparency = 0,
-                                        TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
-                                        TextWrapped = true,
+                                        Size = UDim2.new(1, -4, 0.35, 0),
+                                        Text = "",
                                         BackgroundColor3 = Color3.fromRGB(100, 200, 100),
                                         BorderSizePixel = 0,
-                                        Font = Enum.Font.GothamBold,
                                         ZIndex = 35,
                                         LayoutOrder = 2,
                                         AutoButtonColor = false,
@@ -830,10 +832,21 @@ local function PlantingPanel(props)
                                             Thickness = 2,
                                             Transparency = 0.2
                                         }),
-                                        TextStroke = e("UIStroke", {
-                                            Color = Color3.fromRGB(0, 0, 0),
-                                            Thickness = 2,
-                                            Transparency = 0
+                                        ButtonText = e("TextLabel", {
+                                            Size = UDim2.new(1, 0, 1, 0),
+                                            Text = "PLANT ALL (" .. math.min(seedData.quantity, availableSpace) .. ")",
+                                            TextColor3 = Color3.fromRGB(255, 255, 255),
+                                            TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
+                                            TextWrapped = true,
+                                            BackgroundTransparency = 1,
+                                            Font = Enum.Font.GothamBold,
+                                            ZIndex = 36
+                                        }, {
+                                            TextStroke = e("UIStroke", {
+                                                Color = Color3.fromRGB(0, 0, 0),
+                                                Thickness = 2,
+                                                Transparency = 0
+                                            })
                                         })
                                     }) or nil
                                 })

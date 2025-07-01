@@ -9,7 +9,6 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Simple logging functions for DebugPanel
-local function logInfo(...) print("[INFO] DebugPanel:", ...) end
 local function logError(...) error("[ERROR] DebugPanel: " .. table.concat({...}, " ")) end
 
 local DebugPanel = {}
@@ -34,8 +33,8 @@ function DebugPanel.create()
     -- Create main debug frame with modern styling
     debugFrame = Instance.new("Frame")
     debugFrame.Name = "DebugPanel"
-    debugFrame.Size = UDim2.new(0, 280, 0, 480)
-    debugFrame.Position = UDim2.new(0.5, -140, 0.5, -240)
+    debugFrame.Size = UDim2.new(0, 300, 0, 500)
+    debugFrame.Position = UDim2.new(0.5, -150, 0.5, -250)
     debugFrame.BackgroundColor3 = Color3.fromRGB(240, 245, 255)
     debugFrame.BackgroundTransparency = 0.05
     debugFrame.BorderSizePixel = 0
@@ -43,7 +42,6 @@ function DebugPanel.create()
     debugFrame.ZIndex = 1000
     debugFrame.Parent = screenGui
     
-    logInfo("Debug panel created with ScreenGui wrapper")
     
     -- Add modern corner styling
     local corner = Instance.new("UICorner")
@@ -71,7 +69,7 @@ function DebugPanel.create()
     -- Floating Title (positioned outside main panel like other UIs)
     local titleFrame = Instance.new("Frame")
     titleFrame.Name = "FloatingTitle"
-    titleFrame.Size = UDim2.new(0, 220, 0, 40)
+    titleFrame.Size = UDim2.new(0, 240, 0, 40)
     titleFrame.Position = UDim2.new(0, -10, 0, -25)
     titleFrame.BackgroundColor3 = Color3.fromRGB(255, 100, 150)
     titleFrame.BorderSizePixel = 0
@@ -115,8 +113,46 @@ function DebugPanel.create()
     titleTextStroke.Transparency = 0.5
     titleTextStroke.Parent = title
     
-    -- Create buttons container with modern styling
-    local buttonsFrame = Instance.new("Frame")
+    -- Close button (X) in top right
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -35, 0, 5)
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    closeButton.Text = "✕"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 18
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.BorderSizePixel = 0
+    closeButton.ZIndex = 1004
+    closeButton.Parent = titleFrame
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = closeButton
+    
+    local closeStroke = Instance.new("UIStroke")
+    closeStroke.Color = Color3.fromRGB(200, 0, 0)
+    closeStroke.Thickness = 2
+    closeStroke.Transparency = 0.2
+    closeStroke.Parent = closeButton
+    
+    -- Close button click handler
+    closeButton.MouseButton1Click:Connect(function()
+        DebugPanel.hide()
+    end)
+    
+    -- Close button hover effects
+    closeButton.MouseEnter:Connect(function()
+        closeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+    end)
+    
+    closeButton.MouseLeave:Connect(function()
+        closeButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    end)
+    
+    -- Create scrollable buttons container with modern styling
+    local buttonsFrame = Instance.new("ScrollingFrame")
     buttonsFrame.Name = "ButtonsFrame"
     buttonsFrame.Size = UDim2.new(1, -40, 1, -70)
     buttonsFrame.Position = UDim2.new(0, 20, 0, 50)
@@ -125,6 +161,14 @@ function DebugPanel.create()
     buttonsFrame.BorderSizePixel = 0
     buttonsFrame.ZIndex = 1001
     buttonsFrame.Parent = debugFrame
+    
+    -- Scrolling frame properties
+    buttonsFrame.ScrollBarThickness = 8
+    buttonsFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 100, 150)
+    buttonsFrame.ScrollBarImageTransparency = 0.3
+    buttonsFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Will be set automatically
+    buttonsFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    buttonsFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     
     local buttonsCorner = Instance.new("UICorner")
     buttonsCorner.CornerRadius = UDim.new(0, 15)
@@ -232,15 +276,14 @@ function DebugPanel.create()
         DebugPanel.clearCodes()
     end)
     
-    -- Close button
-    local closeBtn = DebugPanel.createButton("Close Panel", Color3.fromRGB(100, 100, 100))
-    closeBtn.LayoutOrder = 9
-    closeBtn.Parent = buttonsFrame
-    closeBtn.MouseButton1Click:Connect(function()
-        DebugPanel.hide()
+    -- Show Random Pro Tip button
+    local proTipBtn = DebugPanel.createButton("Show Random Pro Tip", Color3.fromRGB(255, 100, 200))
+    proTipBtn.LayoutOrder = 11
+    proTipBtn.Parent = buttonsFrame
+    proTipBtn.MouseButton1Click:Connect(function()
+        DebugPanel.showRandomProTip()
     end)
     
-    logInfo("Debug panel created")
 end
 
 -- Create a button with modern styling matching other UI components
@@ -358,7 +401,6 @@ function DebugPanel.show()
     if debugFrame then
         debugFrame.Visible = true
         isVisible = true
-        logInfo("Debug panel shown - frame exists and set to visible")
     else
         logError("Debug panel frame not found!")
     end
@@ -369,12 +411,33 @@ function DebugPanel.hide()
     if debugFrame then
         debugFrame.Visible = false
         isVisible = false
-        logInfo("Debug panel hidden")
     end
 end
 
 -- Toggle the debug panel
+-- Check if player is authorized for debug
+function DebugPanel.checkAuthorization()
+    local remoteFolder = ReplicatedStorage:FindFirstChild("FarmingRemotes")
+    local checkDebugAuth = remoteFolder and remoteFolder:FindFirstChild("CheckDebugAuth")
+    
+    if checkDebugAuth then
+        local success, isAuthorized = pcall(function()
+            return checkDebugAuth:InvokeServer()
+        end)
+        return success and isAuthorized
+    else
+        -- In studio or testing environment - allow access
+        return true
+    end
+end
+
 function DebugPanel.toggle()
+    -- 🔒 SECURITY CHECK: Only allow authorized users
+    if not DebugPanel.checkAuthorization() then
+        -- Silently ignore for unauthorized users
+        return
+    end
+    
     if isVisible then
         DebugPanel.hide()
     else
@@ -388,7 +451,6 @@ function DebugPanel.addRebirth()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("addRebirth")
-    logInfo("Requested +1 rebirth via debug")
 end
 
 -- Debug function: Reset rebirths
@@ -397,7 +459,6 @@ function DebugPanel.resetRebirths()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("resetRebirths")
-    logInfo("Requested rebirth reset via debug")
 end
 
 -- Debug function: Reset datastore
@@ -406,7 +467,6 @@ function DebugPanel.resetDatastore()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("resetDatastore")
-    logInfo("Requested datastore reset via debug")
 end
 
 -- Debug function: Perform rebirth (normal system)
@@ -415,7 +475,6 @@ function DebugPanel.performRebirth()
     local rebirthRemote = remotes:WaitForChild("PerformRebirth")
     
     rebirthRemote:FireServer()
-    logInfo("Requested normal rebirth")
 end
 
 -- Debug function: Add money
@@ -424,7 +483,6 @@ function DebugPanel.addMoney()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("addMoney", 10000)
-    logInfo("Requested +$10,000 via debug")
     
     -- Show reward animation
     local RewardsService = require(script.Parent.Parent.RewardsService)
@@ -437,7 +495,6 @@ function DebugPanel.checkGamepass()
     local debugRemote = remotes:WaitForChild("DebugActions")
     
     debugRemote:FireServer("checkGamepass")
-    logInfo("Requested gamepass ownership check")
 end
 
 -- Debug function: Test different reward types
@@ -453,7 +510,6 @@ function DebugPanel.testRewards()
     -- Test future boost reward (will queue after pet)
     RewardsService.showBoostReward("Growth Speed", 30, 2, "Your crops grow faster!")
     
-    logInfo("Queued test rewards")
 end
 
 -- Debug function: Clear all redeemed codes
@@ -467,10 +523,59 @@ function DebugPanel.clearCodes()
     })
     
     if success then
-        logInfo("Requested codes clear via debug")
     else
         logError("Failed to clear codes - remote not available")
     end
+end
+
+-- Show a random pro tip (debug function)
+function DebugPanel.showRandomProTip()
+    local ProTipsManager = require(script.Parent.Parent.ProTipsManager)
+    
+    -- Get a random tip from the available tips (same as ProTipsManager)
+    local tips = {
+        -- Basic farming tips
+        "Plant crops in all your plots to maximize your income!",
+        "Water your crops regularly to speed up their growth time.",
+        "Save up for better seeds - they give much higher profits!",
+        "Check the shop for special seeds with unique properties.",
+        "Harvest crops as soon as they're ready to start growing new ones.",
+        
+        -- Rebirth system tips
+        "Rebirth to unlock massive production boosts, better plants, and more plots! Your progress resets but permanent bonuses make it worth it!",
+        "Each rebirth increases your chances of growing rare crops and unlocks access to new exciting worlds with unique opportunities!",
+        
+        -- Plot stacking tips
+        "Stack up to 50 plants in the same plot for incredible production! Example: 1 wheat at 50/hour + 1 more = 100/hour from that plot!",
+        "Higher stack counts mean exponential profits - always try to fill your plots to maximum capacity!",
+        
+        -- Ranking and competition
+        "Climb the ranks to reach the top of the leaderboard and show off your rarest plants to other players!",
+        "Compete with friends to see who can build the most profitable farm empire!",
+        
+        -- Offline optimization tips
+        "Going offline? Plant crops with long water maintenance times! Wheat only produces for 2 hours offline, but some crops last 12+ hours!",
+        "Before logging off, water all crops and choose long-duration plants to maximize your offline earnings!",
+        "Plan your offline strategy: longer-lasting crops mean more money when you return!",
+        
+        -- Advanced tips
+        "Mix different crop types to discover powerful combinations and unlock hidden bonuses!",
+        "The weather affects your crop growth - use it to your advantage for faster harvests!",
+        "Higher tier plots can grow multiple crops at once - upgrade wisely!",
+        "Some rare seeds can only be found during special events - don't miss out!",
+        "Expand your farm by purchasing adjacent plots for maximum growing space!",
+        "The golden watering can waters all nearby crops at once - a huge time saver!",
+        "Combine harvesting with production boosts for maximum profit per hour!",
+        
+        -- Social and progression tips
+        "Join friends in their farms to help them water crops and learn new strategies!",
+        "Click on other players' farms to visit and discover new farming techniques!",
+        "Complete the tutorial for easy starting money and essential farming knowledge!",
+        "Check daily for free rewards and bonuses to boost your farm's growth!"
+    }
+    
+    local randomTip = tips[math.random(1, #tips)]
+    ProTipsManager.showTipNow(randomTip)
 end
 
 
@@ -488,7 +593,6 @@ function DebugPanel.addProductionBoost()
     local FarmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
     local debugRemote = FarmingRemotes:WaitForChild("DebugActions")
     
-    print("[INFO] DebugPanel: Adding 100% debug production boost")
     debugRemote:FireServer("addProductionBoost", 100)
 end
 
@@ -497,11 +601,10 @@ function DebugPanel.removeProductionBoost()
     local FarmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
     local debugRemote = FarmingRemotes:WaitForChild("DebugActions")
     
-    print("[INFO] DebugPanel: Removing 100% debug production boost")
     debugRemote:FireServer("removeProductionBoost", 100)
 end
 
--- Initialize
+-- Initialize debug panel
 DebugPanel.create()
 
 return DebugPanel

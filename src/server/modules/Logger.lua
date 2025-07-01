@@ -16,7 +16,7 @@ local LOG_LEVELS = {
 }
 
 -- Current log level (can be changed at runtime)
-local currentLogLevel = LOG_LEVELS.WARN -- Default to WARN (shows WARN and ERROR only)
+local currentLogLevel = LOG_LEVELS.DEBUG -- Changed to DEBUG to show all logs for debugging
 
 -- Color codes for different log levels
 local LOG_COLORS = {

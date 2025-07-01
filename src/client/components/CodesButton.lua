@@ -23,7 +23,7 @@ local function CodesButton(props)
     return e("TextButton", {
         Name = "CodesButton",
         Size = UDim2.new(0, buttonWidth, 0, buttonHeight),
-        Position = UDim2.new(1, -buttonWidth - 20 * scale, 0.5, 0),
+        Position = UDim2.new(1, -buttonWidth - 5 * scale, 0.5, 0), -- Minimal margin - close to right edge
         AnchorPoint = Vector2.new(0, 0.5),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255), -- Pure white background
         Text = "",

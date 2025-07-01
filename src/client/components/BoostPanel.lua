@@ -226,7 +226,7 @@ local function BoostPanel(props)
             table.insert(boosts, {
                 icon = "☁️",
                 name = "Cloudy Weather", 
-                effect = "100%",
+                effect = "0%",
                 effects = {
                     "All plants grow at normal speed",
                     "Normal water requirements"
@@ -266,7 +266,7 @@ local function BoostPanel(props)
     for _, boost in ipairs(boosts) do
         if boost.effect:match("%%") then
             local percent = tonumber(boost.effect:match("([%d%.]+)"))
-            if percent then
+            if percent and percent > 0 then -- Only add non-zero percentages
                 totalMoneyMultiplier = totalMoneyMultiplier + (percent / 100)
             end
         end
@@ -342,8 +342,8 @@ local function BoostPanel(props)
             -- Boost Icon (centered in circle)
             BoostIcon = e("ImageLabel", {
                 Name = "BoostIcon",
-                Size = UDim2.new(0, 32, 0, 32),
-                Position = UDim2.new(0.5, -16, 0.5, -16), -- Perfectly centered
+                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 32), 0, ScreenUtils.getProportionalSize(screenSize, 32)),
+                Position = UDim2.new(0.5, ScreenUtils.getProportionalSize(screenSize, -16), 0.5, ScreenUtils.getProportionalSize(screenSize, -16)), -- Perfectly centered
                 Image = assets["Player/Boost/Boost Yellow Outline 256.png"] or "",
                 BackgroundTransparency = 1,
                 ScaleType = Enum.ScaleType.Fit,
@@ -355,8 +355,8 @@ local function BoostPanel(props)
             -- Boost Count Badge (top left)
             CountBadge = e("Frame", {
                 Name = "CountBadge",
-                Size = UDim2.new(0, 24, 0, 16),
-                Position = UDim2.new(0, -6, 0, -4), -- Top left, slightly outside circle
+                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 24), 0, ScreenUtils.getProportionalSize(screenSize, 16)),
+                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, -6), 0, ScreenUtils.getProportionalSize(screenSize, -4)), -- Top left, slightly outside circle
                 BackgroundColor3 = Color3.fromRGB(255, 80, 80),
                 BorderSizePixel = 0,
                 ZIndex = 17
@@ -368,7 +368,7 @@ local function BoostPanel(props)
                     Size = UDim2.new(1, 0, 1, 0),
                     Text = tostring(totalBoosts),
                     TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextSize = normalTextSize,
+                    TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
             TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
@@ -385,8 +385,8 @@ local function BoostPanel(props)
             -- Effect Badge (bottom right)
             EffectBadge = e("Frame", {
                 Name = "EffectBadge",
-                Size = UDim2.new(0, 65, 0, 18), -- Made even wider and taller to fit larger numbers
-                Position = UDim2.new(1, -60, 1, -10), -- Moved further down to avoid blocking icon
+                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 65), 0, ScreenUtils.getProportionalSize(screenSize, 18)), -- Made even wider and taller to fit larger numbers
+                Position = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -60), 1, ScreenUtils.getProportionalSize(screenSize, -10)), -- Moved further down to avoid blocking icon
                 BackgroundColor3 = Color3.fromRGB(80, 255, 80),
                 BorderSizePixel = 0,
                 ZIndex = 17
@@ -401,7 +401,7 @@ local function BoostPanel(props)
                         return "+" .. NumberFormatter.format(percentValue) .. "%"
                     end)(),
                     TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextSize = math.max(normalTextSize - 1, 10), -- Slightly smaller text to ensure it fits
+                    TextSize = ScreenUtils.getProportionalTextSize(screenSize, 11), -- Slightly smaller text to ensure it fits
             TextWrapped = true,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,

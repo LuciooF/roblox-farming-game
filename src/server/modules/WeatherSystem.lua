@@ -5,7 +5,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 local Logger = require(script.Parent.Logger)
-local NotificationManager = require(script.Parent.NotificationManager)
+-- -- local NotificationManager = require(script.Parent.NotificationManager)
 local ConfigManager = require(script.Parent.ConfigManager)
 
 local log = Logger.getModuleLogger("WeatherSystem")
@@ -263,7 +263,7 @@ function WeatherSystem.notifyWeatherChange(weatherName)
     local message = weatherData.emoji .. " Weather changed to " .. weatherName .. "! " .. weatherData.description
     
     for _, player in ipairs(Players:GetPlayers()) do
-        NotificationManager.sendNotification(player, message, "info")
+--         NotificationManager.sendNotification(player, message, "info")
     end
 end
 

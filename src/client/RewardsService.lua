@@ -5,8 +5,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 -- Simple logging functions
-local function logInfo(...) print("[INFO] RewardsService:", ...) end
-local function logDebug(...) print("[DEBUG] RewardsService:", ...) end
 local function logWarn(...) warn("[WARN] RewardsService:", ...) end
 
 local RewardsService = {}
@@ -20,7 +18,6 @@ local rewardConnections = {}
 
 -- Initialize the service
 function RewardsService.initialize()
-    logInfo("RewardsService initialized")
 end
 
 -- Show a reward to the player
@@ -31,7 +28,6 @@ function RewardsService.showReward(rewardData)
         return
     end
     
-    logInfo("Queueing reward:", rewardData.type, "amount:", rewardData.amount or "N/A")
     
     -- Add to queue
     table.insert(rewardQueue, rewardData)
@@ -52,7 +48,6 @@ function RewardsService.processNextReward()
     isShowingReward = true
     local reward = table.remove(rewardQueue, 1)
     
-    logDebug("Showing reward:", reward.type)
     
     -- Fire event to show UI
     local event = RewardsService.getRewardShowEvent()
@@ -76,7 +71,6 @@ end
 
 -- Called when a reward UI finishes showing
 function RewardsService.onRewardFinished()
-    logDebug("Reward display finished")
     isShowingReward = false
     
     -- Process next reward after a short delay

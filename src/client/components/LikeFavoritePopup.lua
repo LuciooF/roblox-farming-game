@@ -57,7 +57,6 @@ local function LikeFavoritePopup(props)
         end)
         
         if not success then
-            print("[WARN] Failed to show favorite prompt:", err)
         end
     end, {visible, hasShownFavoritePrompt})
     
@@ -205,10 +204,7 @@ local function LikeFavoritePopup(props)
                 Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 150), 0, ScreenUtils.getProportionalSize(screenSize, 40)),
                 Position = UDim2.new(0.5, 0, 0, ScreenUtils.getProportionalSize(screenSize, 240)),
                 AnchorPoint = Vector2.new(0.5, 0),
-                Text = "⭐ Favorite Game",
-                TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextSize = buttonTextSize,
-                Font = Enum.Font.GothamBold,
+                Text = "",
                 BackgroundColor3 = Color3.fromRGB(255, 200, 50),
                 BorderSizePixel = 0,
                 ZIndex = 53,
@@ -220,8 +216,7 @@ local function LikeFavoritePopup(props)
                     end)
                     
                     if not success then
-                        print("[WARN] Failed to show favorite prompt:", err)
-                    end
+                                end
                 end
             }, {
                 Corner = e("UICorner", {
@@ -238,6 +233,22 @@ local function LikeFavoritePopup(props)
                     Color = Color3.fromRGB(255, 255, 255),
                     Thickness = 2,
                     Transparency = 0.2
+                }),
+                ButtonText = e("TextLabel", {
+                    Size = UDim2.new(1, 0, 1, 0),
+                    Text = "⭐ Favorite Game",
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextSize = buttonTextSize,
+                    TextWrapped = true,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.GothamBold,
+                    ZIndex = 54
+                }, {
+                    TextStroke = e("UIStroke", {
+                        Color = Color3.fromRGB(0, 0, 0),
+                        Thickness = 2,
+                        Transparency = 0
+                    })
                 })
             }),
             

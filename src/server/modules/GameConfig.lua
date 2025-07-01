@@ -32,7 +32,7 @@ end
 GameConfig.Rebirth = {
     -- Exponentially growing money requirements for rebirths
     getMoneyRequirement = function(rebirth)
-        return math.floor(1000 * (2.5 ^ rebirth)) -- 1K, 2.5K, 6.25K, 15.6K, 39K, 97.5K, etc.
+        return math.floor(1000 * (5 ^ rebirth)) -- 1K, 5K, 25K, 125K, 625K, 3.1M, etc.
     end,
     
     -- Crop value multiplier based on rebirths

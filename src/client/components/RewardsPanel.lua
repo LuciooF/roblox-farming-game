@@ -38,7 +38,6 @@ local function RewardsPanel(props)
     -- Hide reward function (defined first so it's available for timer)
     local hideReward = React.useCallback(function()
         -- Stop timer if it's running
-        print("hideReward called - stopping timer")
         timerRef.current = nil
         
         if panelRef.current then
@@ -65,7 +64,6 @@ local function RewardsPanel(props)
 
     -- Show reward function
     local showReward = React.useCallback(function(reward)
-        print("Showing reward:", reward.type, reward.amount or "")
         setRewardData(reward)
         setVisible(true)
         setTimeRemaining(5) -- Reset timer
@@ -77,7 +75,6 @@ local function RewardsPanel(props)
         spawn(function()
             for i = 5, 1, -1 do
                 if not timerRef.current then 
-                    print("Timer cancelled at", i)
                     return 
                 end
                 setTimeRemaining(i)
@@ -85,14 +82,11 @@ local function RewardsPanel(props)
             end
             -- Check one more time before auto-closing
             if timerRef.current then
-                print("Timer completed - auto-closing")
                 if hideRewardRef.current then
                     hideRewardRef.current()
                 else
-                    print("hideReward function not available in ref")
                 end
             else
-                print("Timer was cancelled before completion")
             end
         end)
         

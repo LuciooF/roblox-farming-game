@@ -3,6 +3,7 @@
 
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
+local PlotUtils = require(script.Parent.PlotUtils)
 -- Simple logging removed ClientLogger
 
 
@@ -15,7 +16,14 @@ function RainEffectManager.createRainEffect(plot)
         return
     end
     
-    print("[DEBUG]", "Creating rain effect for plot")
+    -- Get the position from the appropriate part
+    local PlotUtils = require(script.Parent.PlotUtils)
+    local interactionPart = PlotUtils.getPlotInteractionPart(plot)
+    
+    if not interactionPart then
+        warn("[WARN]", "Could not find interaction part for rain effect on plot:", plot.Name)
+        return
+    end
     
     -- Create a part to attach the particle emitter to
     local rainPart = Instance.new("Part")
@@ -24,7 +32,7 @@ function RainEffectManager.createRainEffect(plot)
     rainPart.CanCollide = false
     rainPart.Transparency = 1
     rainPart.Size = Vector3.new(10, 0.1, 10)
-    rainPart.Position = plot.Position + Vector3.new(0, 10, 0) -- Position above plot
+    rainPart.Position = interactionPart.Position + Vector3.new(0, 10, 0) -- Position above plot
     rainPart.Parent = workspace
     
     -- Create particle emitter for rain drops
@@ -66,7 +74,10 @@ function RainEffectManager.createRainEffect(plot)
     splashPart.CanCollide = false
     splashPart.Transparency = 1
     splashPart.Size = Vector3.new(8, 0.1, 8)
-    splashPart.Position = plot.Position + Vector3.new(0, 0.5, 0) -- Just above plot surface
+    -- Get the interaction part for positioning (works for both Parts and Models)
+    local interactionPart = PlotUtils.getPlotInteractionPart(plot)
+    local plotPosition = interactionPart and interactionPart.Position or Vector3.new(0, 0, 0)
+    splashPart.Position = plotPosition + Vector3.new(0, 0.5, 0) -- Just above plot surface
     splashPart.Parent = workspace
     
     local splashEmitter = Instance.new("ParticleEmitter")
@@ -101,7 +112,6 @@ function RainEffectManager.createRainEffect(plot)
     -- Optional: Add sound effect (commented out as sounds aren't loaded yet)
     -- SoundManager.playWaterSound(plot.Position)
     
-    print("[DEBUG]", "Rain effect created successfully")
 end
 
 

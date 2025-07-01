@@ -3,13 +3,6 @@
 
 local Workspace = game:GetService("Workspace")
 
--- Configurable logging functions for PlotUtils
-local DEBUG_ENABLED = false -- Set to true only for debugging plot issues
-local function logDebug(...) 
-    if DEBUG_ENABLED then
-        print("[DEBUG] PlotUtils:", ...) 
-    end
-end
 local function logWarn(...) warn("[WARN] PlotUtils:", ...) end
 
 local PlotUtils = {}
@@ -54,7 +47,6 @@ function PlotUtils.findPlotById(globalPlotId)
     local farmId = math.floor((globalPlotId - 1) / MAX_PLOTS_PER_FARM) + 1
     local localPlotId = ((globalPlotId - 1) % MAX_PLOTS_PER_FARM) + 1
     
-    logDebug("Looking for global plot", globalPlotId, "-> farm", farmId, "local plot", localPlotId)
     
     -- Find the specific farm
     local farmFolder = farmsContainer:FindFirstChild("Farm_" .. farmId)
@@ -64,11 +56,29 @@ function PlotUtils.findPlotById(globalPlotId)
     end
     
     -- Search for plot with matching local PlotId in this farm
+    -- First check in Plots folder (new structure)
+    local plotsFolder = farmFolder:FindFirstChild("Plots")
+    if plotsFolder then
+        for _, child in pairs(plotsFolder:GetChildren()) do
+            if (child:IsA("Model") or child:IsA("BasePart")) and child.Name:match("Plot") then
+                local plotIdValue = child:FindFirstChild("PlotId")
+                if plotIdValue and plotIdValue.Value == localPlotId then
+                    
+                    -- Cache the result
+                    plotCache[globalPlotId] = child
+                    lastCacheTime[globalPlotId] = tick()
+                    
+                    return child
+                end
+            end
+        end
+    end
+    
+    -- Fallback: search descendants for backward compatibility
     for _, child in pairs(farmFolder:GetDescendants()) do
-        if child:IsA("BasePart") and child.Name:match("Plot") then
+        if (child:IsA("BasePart") or child:IsA("Model")) and child.Name:match("Plot") then
             local plotIdValue = child:FindFirstChild("PlotId")
             if plotIdValue and plotIdValue.Value == localPlotId then
-                logDebug("Found global plot", globalPlotId, "as local plot", localPlotId, "in", farmFolder.Name)
                 
                 -- Cache the result
                 plotCache[globalPlotId] = child
@@ -79,7 +89,6 @@ function PlotUtils.findPlotById(globalPlotId)
         end
     end
     
-    logDebug("Plot", localPlotId, "not found in farm", farmId, "- may not be created yet for global plot", globalPlotId)
     return nil
 end
 
@@ -123,13 +132,57 @@ function PlotUtils.getFarmPlots(farmId)
     if not farmFolder then return {} end
     
     local plots = {}
-    for _, child in pairs(farmFolder:GetChildren()) do
-        if child.Name:match("^FarmPlot_") then
-            table.insert(plots, child)
+    -- Look for Plots folder first
+    local plotsFolder = farmFolder:FindFirstChild("Plots")
+    if plotsFolder then
+        -- Get plots from Plots folder
+        for _, plot in pairs(plotsFolder:GetChildren()) do
+            if plot:IsA("Model") and plot.Name:match("^Plot") then
+                table.insert(plots, plot)
+            end
+        end
+    else
+        -- Fallback: check direct children (old structure)
+        for _, child in pairs(farmFolder:GetChildren()) do
+            if (child:IsA("Model") or child:IsA("BasePart")) and child.Name:match("^Plot") then
+                table.insert(plots, child)
+            end
         end
     end
     
     return plots
+end
+
+-- Get the interaction part for a plot (for proximity prompts, positioning, etc.)
+function PlotUtils.getPlotInteractionPart(plot)
+    if not plot then return nil end
+    
+    -- If it's already a Part, return it
+    if plot:IsA("BasePart") then
+        return plot
+    end
+    
+    -- If it's a Model, use PrimaryPart
+    if plot:IsA("Model") then
+        if plot.PrimaryPart then
+            return plot.PrimaryPart
+        end
+        
+        -- Fallback: look for a part named "PlotBase", "Core", or similar
+        local basePart = plot:FindFirstChild("PlotBase") or plot:FindFirstChild("Core") or plot:FindFirstChild("Base")
+        if basePart and basePart:IsA("BasePart") then
+            return basePart
+        end
+        
+        -- Final fallback: return the first Part found
+        for _, child in pairs(plot:GetChildren()) do
+            if child:IsA("BasePart") then
+                return child
+            end
+        end
+    end
+    
+    return nil
 end
 
 -- Validate plot exists and get its data

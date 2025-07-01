@@ -4,7 +4,7 @@
 local Logger = require(script.Parent.Logger)
 local GameConfig = require(script.Parent.GameConfig)
 local PlayerDataManager = require(script.Parent.PlayerDataManager)
-local NotificationManager = require(script.Parent.NotificationManager)
+-- -- local NotificationManager = require(script.Parent.NotificationManager)
 local RemoteManager = require(script.Parent.RemoteManager)
 
 local TutorialManager = {}
@@ -14,15 +14,6 @@ local log = Logger.getModuleLogger("TutorialManager")
 
 -- Tutorial steps configuration
 local TUTORIAL_STEPS = {
-    {
-        id = "welcome",
-        title = "🌱 Welcome to the Farm!",
-        description = "Welcome to your new farming adventure! Let's learn the basics.",
-        instruction = "Click 'Start Tutorial' to begin or 'Skip' to skip the tutorial (you'll miss rewards!)",
-        reward = {money = 5},
-        action = "continue",
-        arrowTarget = nil -- No arrow for welcome screen
-    },
     {
         id = "first_plot",
         title = "🏡 Your First Plot",
@@ -63,7 +54,7 @@ local TUTORIAL_STEPS = {
         id = "sell_crops",
         title = "💰 Sell Your Crops",
         description = "Great harvest! Now let's turn those crops into money.",
-        instruction = "Click the inventory button (🎒) then click 'Sell All'",
+        instruction = "Click the inventory button (🏚️) then click 'Sell All'",
         reward = {money = 20},
         action = "sell_crops",
         arrowTarget = nil -- No arrow, just shiny effect
@@ -78,22 +69,22 @@ local TUTORIAL_STEPS = {
         arrowTarget = {type = "plot", plotId = 1} -- Points to the plot they just harvested
     },
     {
-        id = "buy_potato",
-        title = "🥔 The Potato Challenge",
-        description = "Now for the real test! Potato is unlocked at 1 rebirth and sells for much more than starter crops.",
-        instruction = "Farm and sell crops until you can buy potato from the shop!",
+        id = "buy_banana",
+        title = "🍌 The Banana Challenge",
+        description = "Now for the real test! Banana sells for much more than starter crops.",
+        instruction = "Farm and sell crops until you can buy banana from the shop!",
         reward = {money = 25},
         action = "buy_crop",
-        target = "potato",
+        target = "banana",
         arrowTarget = nil -- No arrow, just shiny effect
     },
     {
-        id = "plant_potato",
-        title = "🥔 Plant Your Potato",
-        description = "Excellent work saving up! Potato takes longer to grow but it's worth it.",
-        instruction = "Plant your potato seed in an empty plot",
+        id = "plant_banana",
+        title = "🍌 Plant Your Banana",
+        description = "Excellent work saving up! Banana takes longer to grow but it's worth it.",
+        instruction = "Plant your banana seed in an empty plot",
         reward = {money = 30},
-        action = "plant_potato",
+        action = "plant_banana",
         arrowTarget = {type = "plot", plotId = nil} -- Points to any empty plot
     }
 }
@@ -291,8 +282,8 @@ function TutorialManager.progressTutorial(player, action, data)
     
     -- Check if action matches expected action OR if sending "continue" to a step that allows it
     if currentStep.action ~= action and not (currentStep.action == "continue" and action == "continue") then
-        -- Special override for plant_potato
-        if not (currentStep.action == "plant_potato" and action == "plant_seed") then
+        -- Special override for plant_banana
+        if not (currentStep.action == "plant_banana" and action == "plant_seed") then
             log.debug("Tutorial action mismatch: expected", currentStep.action, "got", action)
             return
         end
@@ -308,15 +299,15 @@ function TutorialManager.progressTutorial(player, action, data)
         log.debug("Buy crop passed target check")
     end
     
-    -- Check for plant_potato action (when planting potato specifically)
-    if action == "plant_seed" and currentStep.action == "plant_potato" then
-        if not data or data.seedType ~= "potato" then
-            log.debug("Plant potato check failed - expected potato, got", data and data.seedType or "nil")
+    -- Check for plant_banana action (when planting banana specifically)
+    if action == "plant_seed" and currentStep.action == "plant_banana" then
+        if not data or data.seedType ~= "banana" then
+            log.debug("Plant banana check failed - expected banana, got", data and data.seedType or "nil")
             return
         end
-        log.debug("Plant potato check passed")
+        log.debug("Plant banana check passed")
         -- Override the action to match the expected action
-        action = "plant_potato"
+        action = "plant_banana"
     end
     
     -- Mark current step as completed and give reward
@@ -366,7 +357,7 @@ function TutorialManager.completeTutorial(player)
         })
     end
     
-    NotificationManager.sendNotification(player, "🎉 Tutorial completed! You're ready to farm!")
+--     NotificationManager.sendNotification(player, "🎉 Tutorial completed! You're ready to farm!")
     log.info("Player completed tutorial:", player.Name)
 end
 
@@ -392,7 +383,7 @@ function TutorialManager.skipTutorial(player)
     end
     
     local totalRewards = getTotalTutorialRewards()
-    NotificationManager.sendWarning(player, "⚠️ Tutorial skipped. You missed out on " .. totalRewards .. " coins in rewards!")
+--     NotificationManager.sendWarning(player, "⚠️ Tutorial skipped. You missed out on " .. totalRewards .. " coins in rewards!")
     log.info("Player skipped tutorial:", player.Name)
 end
 
@@ -432,10 +423,10 @@ function TutorialManager.checkGameAction(player, action, data)
         return
     end
     
-    -- Special case: Check if this is a plant_potato step and we're planting potato
-    if currentStep.action == "plant_potato" and action == "plant_seed" then
-        if data and data.seedType == "potato" then
-            log.warn("🥔 Special case: Planting potato detected for plant_potato step!")
+    -- Special case: Check if this is a plant_banana step and we're planting banana
+    if currentStep.action == "plant_banana" and action == "plant_seed" then
+        if data and data.seedType == "banana" then
+            log.warn("🍌 Special case: Planting banana detected for plant_banana step!")
             TutorialManager.progressTutorial(player, action, data)
             return
         end

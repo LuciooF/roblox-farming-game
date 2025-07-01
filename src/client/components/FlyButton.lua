@@ -124,7 +124,6 @@ local function FlyButton(props)
             FlyController.toggleFly()
         else
             -- Instead of prompting directly, open the gamepass panel
-            print("DEBUG FlyButton: Opening gamepass panel for fly purchase")
             
             -- Find and trigger the gamepass panel opening
             local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -132,7 +131,6 @@ local function FlyButton(props)
             if farmingUI then
                 -- Trigger gamepass panel visibility through a global or event
                 -- For now, just show a message
-                print("Please use the Gamepass Panel to purchase Fly Mode")
             end
         end
     end
@@ -144,11 +142,11 @@ local function FlyButton(props)
         BackgroundTransparency = 1,
         ZIndex = 14
     }, {
-        -- Fly Button (to the left of music button)
+        -- Fly Button (top right, to the left of music button)
         FlyButton = e("TextButton", {
             Name = "FlyButton",
             Size = UDim2.new(0, buttonSize, 0, buttonSize),
-            Position = UDim2.new(1, -(buttonSize + ScreenUtils.getProportionalPadding(screenSize, 20)) - (buttonSize + ScreenUtils.getProportionalPadding(screenSize, 10)), 1, -(buttonSize + ScreenUtils.getProportionalPadding(screenSize, 20))), -- To the left of music button
+            Position = UDim2.new(1, -(buttonSize + ScreenUtils.getProportionalPadding(screenSize, 5)) - (buttonSize + ScreenUtils.getProportionalPadding(screenSize, 10)), 0, ScreenUtils.getProportionalPadding(screenSize, 10)), -- Top right, to the left of music button
             Text = "",
             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
             BorderSizePixel = 0,

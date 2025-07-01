@@ -28,6 +28,7 @@ local RewardsPanel = require(script.Parent.RewardsPanel)
 local CodesPanel = require(script.Parent.CodesPanel)
 local CodesButton = require(script.Parent.CodesButton)
 local LikeFavoritePopup = require(script.Parent.LikeFavoritePopup)
+local ProTipDisplay = require(script.Parent.ProTipDisplay)
 
 local function MainUI(props)
     local playerData = props.playerData or {}
@@ -52,6 +53,10 @@ local function MainUI(props)
     local codesVisible, setCodesVisible = React.useState(false)
     local likeFavoriteVisible, setLikeFavoriteVisible = React.useState(false)
     local likeFavoriteData, setLikeFavoriteData = React.useState(nil)
+    
+    -- ProTips state
+    local currentProTip, setCurrentProTip = React.useState(nil)
+    local showProTip, setShowProTip = React.useState(false)
     
     -- Track previous gamepass ownership to detect new purchases
     local previousGamepasses, setPreviousGamepasses = React.useState(nil) -- nil = not initialized yet
@@ -86,6 +91,19 @@ local function MainUI(props)
         DebugPanel.create()
     end, {})
     
+    -- Initialize ProTips manager
+    React.useEffect(function()
+        local ProTipsManager = require(script.Parent.Parent.ProTipsManager)
+        
+        ProTipsManager.init(function(tipText, visible)
+            setCurrentProTip(tipText)
+            setShowProTip(visible)
+        end, function()
+            -- Return current player data for rebirth checking
+            return playerData
+        end)
+    end, {})
+    
     -- Set up global handler for like/favorite popup
     React.useEffect(function()
         -- Make this accessible globally for CodesService
@@ -104,7 +122,6 @@ local function MainUI(props)
     
     -- Event handlers
     local function handleShopClick()
-        print("Shop button clicked! Current state:", shopVisible)
         setShopVisible(not shopVisible)
         setInventoryVisible(false)
         setWeatherVisible(false)
@@ -185,40 +202,60 @@ local function MainUI(props)
         local availableSeeds = (playerData.inventory and playerData.inventory.crops and playerData.inventory.crops[seedType]) or 0
         
         if availableSeeds <= 0 then
-            print("No", seedType, "seeds available to plant")
             return
         end
         
-        -- Calculate how many we can plant (current + available, up to any plot limit)
-        local currentPlanted = plotData.harvestCount or 1
-        local maxPerPlot = 1000 -- Default max if no limit specified
+        -- Calculate how many we can plant (matching PlotUI logic exactly)
+        local MAX_PLANTS_PER_PLOT = 50
+        local maxHarvests = plotData.maxHarvests or 0
+        local harvestCount = plotData.harvestCount or 0
+        local activePlants = maxHarvests - harvestCount
+        local currentPlantCount = plotData.state == "empty" and 0 or activePlants
+        local availableSpace = MAX_PLANTS_PER_PLOT - currentPlantCount
         
-        -- Check if there's a crop limit from GameConfig
-        if playerData.gameConfig and playerData.gameConfig.crops and playerData.gameConfig.crops[seedType] then
-            local cropConfig = playerData.gameConfig.crops[seedType]
-            maxPerPlot = cropConfig.maxPerPlot or maxPerPlot
-        end
-        
-        local canPlantMore = maxPerPlot - currentPlanted
-        local quantityToPlant = math.min(availableSeeds, canPlantMore)
+        local quantityToPlant = math.min(availableSeeds, availableSpace)
         
         if quantityToPlant <= 0 then
-            print("Plot already at maximum capacity for", seedType)
             return
         end
         
-        print("Planting all available", seedType, "- quantity:", quantityToPlant, "on plot:", plotData.plotId)
         
         -- Plant the seeds directly without opening UI
         if remotes.farmAction then
-            -- Limit to 50 per the server's validation (most common case)
-            local batchSize = math.min(quantityToPlant, 50)
-            remotes.farmAction:FireServer("plant", plotData.plotId, seedType, batchSize)
-            
-            -- If there are more than 50, the user can click Plant All again
-            if quantityToPlant > 50 then
-                print("Planted 50", seedType, "- click Plant All again to plant remaining", quantityToPlant - 50)
-            end
+            remotes.farmAction:FireServer("plant", plotData.plotId, seedType, quantityToPlant)
+        end
+        
+        -- Don't close the plot UI - let user continue managing the plot
+    end
+    
+    local function handlePlantOneSameCrop(plotData)
+        if not plotData or not plotData.seedType then
+            warn("Cannot plant one - no seed type in plot data")
+            return
+        end
+        
+        local seedType = plotData.seedType
+        local availableSeeds = (playerData.inventory and playerData.inventory.crops and playerData.inventory.crops[seedType]) or 0
+        
+        if availableSeeds <= 0 then
+            return
+        end
+        
+        -- Calculate if we can plant 1 more (matching PlotUI logic)
+        local MAX_PLANTS_PER_PLOT = 50
+        local maxHarvests = plotData.maxHarvests or 0
+        local harvestCount = plotData.harvestCount or 0
+        local activePlants = maxHarvests - harvestCount
+        local currentPlantCount = plotData.state == "empty" and 0 or activePlants
+        local availableSpace = MAX_PLANTS_PER_PLOT - currentPlantCount
+        
+        if availableSpace <= 0 then
+            return
+        end
+        
+        -- Plant exactly 1 seed
+        if remotes.farmAction then
+            remotes.farmAction:FireServer("plant", plotData.plotId, seedType, 1)
         end
         
         -- Don't close the plot UI - let user continue managing the plot
@@ -243,7 +280,6 @@ local function MainUI(props)
     local function handlePlantSeed(seedType, quantity)
         quantity = quantity or 1 -- Default to 1 if no quantity specified
         local plotData = selectedPlotForPlanting and selectedPlotForPlanting.plotData
-        print("Planting seed:", seedType, "quantity:", quantity, "on plot:", plotData and plotData.plotId)
         
         if remotes.farmAction and plotData then
             remotes.farmAction:FireServer("plant", plotData.plotId, seedType, quantity)
@@ -320,7 +356,6 @@ local function MainUI(props)
     end
     
     local function handleGamepassPurchase(gamepassKey)
-        print("Gamepass purchase requested:", gamepassKey)
         
         -- Send request to server to handle the purchase
         if remotes.gamepassPurchase then
@@ -356,10 +391,7 @@ local function MainUI(props)
     
     -- Watch for gamepass purchases and trigger confetti
     React.useEffect(function()
-        print("Player data gamepasses updated:", playerData.gamepasses)
         if playerData.gamepasses then
-            print("Current gamepasses:", playerData.gamepasses)
-            print("Previous gamepasses:", previousGamepasses)
             
             -- Only check for new purchases if we have previous state (not first initialization)
             if previousGamepasses ~= nil then
@@ -367,17 +399,13 @@ local function MainUI(props)
                 local gamepassCount = 0
                 for gamepassKey, owned in pairs(playerData.gamepasses) do
                     gamepassCount = gamepassCount + 1
-                    print("Checking gamepass:", gamepassKey, "owned:", owned, "previously owned:", previousGamepasses[gamepassKey])
                     if owned and not previousGamepasses[gamepassKey] then
                         -- Player just got a new gamepass! Show confetti
-                        print("Gamepass purchased detected:", gamepassKey, "- showing confetti!")
                         setConfettiVisible(true)
                         break -- Only show confetti once even if multiple gamepasses purchased
                     end
                 end
-                print("Total gamepasses found:", gamepassCount)
             else
-                print("First gamepass initialization - not checking for new purchases")
             end
             
             -- Update previous gamepasses for next comparison
@@ -395,7 +423,7 @@ local function MainUI(props)
     }, {
         -- Background click detector to close panels (only when panels are visible)
         -- Proportional space at bottom for controls
-        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible or plantingVisible or codesVisible) and e("TextButton", {
+        ClickDetector = (inventoryVisible or shopVisible or weatherVisible or gamepassVisible or plantingVisible or codesVisible or rebirthVisible) and e("TextButton", {
             Name = "ClickDetector",
             Size = UDim2.new(1, 0, 1, -ScreenUtils.getProportionalSize(screenSize, 200)), -- Proportional space at bottom
             Position = UDim2.new(0, 0, 0, 0),
@@ -429,7 +457,27 @@ local function MainUI(props)
             onGamepassClick = handleGamepassClick,
             onRebirthClick = handleRebirthClick,
             onPetsClick = function()
-                DebugPanel.toggle()
+                -- Check if player is authorized for debug UI
+                local remoteFolder = game:GetService("ReplicatedStorage"):WaitForChild("FarmingRemotes")
+                local checkDebugAuth = remoteFolder:FindFirstChild("CheckDebugAuth")
+                
+                if checkDebugAuth then
+                    local success, isAuthorized = pcall(function()
+                        return checkDebugAuth:InvokeServer()
+                    end)
+                    
+                    if success and isAuthorized then
+                        -- Toggle debug panel for authorized users
+                        DebugPanel.toggle()
+                    else
+                        -- Not authorized - do nothing (silent)
+                        -- Could show "Pets coming soon" tooltip here if desired
+                    end
+                else
+                    -- RemoteFunction not found - probably in studio
+                    -- For testing purposes, allow in studio
+                    DebugPanel.toggle()
+                end
             end
         }),
         
@@ -544,6 +592,7 @@ local function MainUI(props)
             playerData = playerData,
             weatherData = props.weatherData or {},
             visible = plotUIVisible,
+            screenSize = props.screenSize,
             onClose = function() 
                 setPlotUIVisible(false)
                 setSelectedPlotData(nil)
@@ -561,8 +610,11 @@ local function MainUI(props)
                 if mode == "all" and selectedPlotData and selectedPlotData.seedType then
                     -- Plot already has crops - automatically plant more of the same type
                     handlePlantAllSameCrop(selectedPlotData)
+                elseif mode == "one" and selectedPlotData and selectedPlotData.seedType then
+                    -- Plot already has crops - automatically plant 1 more of the same type
+                    handlePlantOneSameCrop(selectedPlotData)
                 else
-                    -- Empty plot or single plant mode - open planting panel
+                    -- Empty plot or other modes - open planting panel
                     handlePlantingRequest(selectedPlotData, mode)
                 end
             end,
@@ -576,6 +628,7 @@ local function MainUI(props)
             plantingMode = selectedPlotForPlanting.mode,
             playerData = playerData,
             visible = plantingVisible,
+            screenSize = props.screenSize,
             onClose = function()
                 setPlantingVisible(false)
                 setSelectedPlotForPlanting(nil)
@@ -624,7 +677,14 @@ local function MainUI(props)
             groupId = likeFavoriteData.groupId,
             waitTimeSeconds = likeFavoriteData.waitTimeSeconds,
             screenSize = screenSize
-        }) or nil
+        }) or nil,
+        
+        -- Pro Tips Display (shows at bottom center with rainbow effect)
+        ProTipDisplay = e(ProTipDisplay, {
+            tipText = currentProTip,
+            visible = showProTip,
+            screenSize = screenSize
+        })
     })
 end
 

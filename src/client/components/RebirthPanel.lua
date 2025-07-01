@@ -10,7 +10,6 @@ local NumberFormatter = require(game:GetService("ReplicatedStorage").Shared.Numb
 local ScreenUtils = require(game:GetService("ReplicatedStorage").Shared.ScreenUtils)
 
 -- Simple logging functions for RebirthPanel
-local function logInfo(...) print("[INFO] RebirthPanel:", ...) end
 local function logWarn(...) warn("[WARN] RebirthPanel:", ...) end
 
 local function RebirthPanel(props)
@@ -24,7 +23,9 @@ local function RebirthPanel(props)
     local currentMultiplier = 1 + (currentRebirths * 0.5)
     local nextRebirths = currentRebirths + 1
     local nextMultiplier = 1 + (nextRebirths * 0.5)
-    local rebirthCost = math.floor(1000 * (2.5 ^ currentRebirths))
+    
+    -- Use GameConfig's rebirth pricing formula (5x multiplier)
+    local rebirthCost = math.floor(1000 * (5 ^ currentRebirths))
     local canAfford = playerData.money >= rebirthCost
     local progress = math.min((playerData.money / rebirthCost) * 100, 100)
     
@@ -181,12 +182,11 @@ local function RebirthPanel(props)
                     }),
                     
                     TitleText = e("TextLabel", {
-                        Size = UDim2.new(0, 0, 1, 0),
-                        AutomaticSize = Enum.AutomaticSize.X,
+                        Size = UDim2.new(1, 0, 1, 0),
                         Text = "REBIRTHS",
                         TextColor3 = Color3.fromRGB(255, 255, 255),
                         TextSize = normalTextSize,
-            TextWrapped = true,
+                        TextWrapped = true,
                         BackgroundTransparency = 1,
                         Font = Enum.Font.GothamBold,
                         ZIndex = 34,
@@ -258,22 +258,24 @@ local function RebirthPanel(props)
             }, {
                 -- Info Text
                 InfoText = e("TextLabel", {
-                    Size = UDim2.new(1, 0, 0, ScreenUtils.getProportionalSize(screenSize, 40)),
-                    Position = UDim2.new(0, 0, 0, 0),
-                    Text = "🌟 Rebirth resets your progress but gives you permanent stacking benefits! 🌟",
+                    Size = UDim2.new(1, -20, 0, ScreenUtils.getProportionalSize(screenSize, 80)),
+                    Position = UDim2.new(0, 10, 0, 0),
+                    Text = "🌟 Rebirth resets your progress but gives you permanent stacking boost! 🌟",
                     TextColor3 = Color3.fromRGB(100, 50, 150),
-                    TextSize = titleTextSize,
+                    TextSize = titleTextSize * 0.8,
                     BackgroundTransparency = 1,
                     Font = Enum.Font.GothamBold,
                     TextXAlignment = Enum.TextXAlignment.Center,
+                    TextYAlignment = Enum.TextYAlignment.Top,
                     TextWrapped = true,
+                    TextScaled = true,
                     ZIndex = 32
                 }),
                 
                 -- Stats Container
                 StatsContainer = e("Frame", {
-                    Size = UDim2.new(1, 0, 0.6, ScreenUtils.getProportionalSize(screenSize, -50)),
-                    Position = UDim2.new(0, 0, 0, ScreenUtils.getProportionalSize(screenSize, 50)),
+                    Size = UDim2.new(1, 0, 0.6, ScreenUtils.getProportionalSize(screenSize, -90)),
+                    Position = UDim2.new(0, 0, 0, ScreenUtils.getProportionalSize(screenSize, 90)),
                     BackgroundTransparency = 1,
                     ZIndex = 31
                 }, {
@@ -389,8 +391,8 @@ local function RebirthPanel(props)
                         }),
                         
                         DateAchieved = e("TextLabel", {
-                            Size = UDim2.new(1, -20, 0, 30),
-                            Position = UDim2.new(0, 10, 0, 145),
+                            Size = UDim2.new(1, -20, 0, 25),
+                            Position = UDim2.new(0, 10, 0, 140),
                             Text = "Achieved: " .. achievedDate,
                             TextColor3 = Color3.fromRGB(100, 100, 100),
                             TextSize = normalTextSize,
@@ -559,8 +561,8 @@ local function RebirthPanel(props)
                         }),
                         
                         DatePredicted = e("TextLabel", {
-                            Size = UDim2.new(1, -20, 0, 30),
-                            Position = UDim2.new(0, 10, 0, 145),
+                            Size = UDim2.new(1, -20, 0, 25),
+                            Position = UDim2.new(0, 10, 0, 140),
                             Text = "Predicted: " .. nextDateText,
                             TextColor3 = Color3.fromRGB(100, 100, 100),
                             TextSize = normalTextSize,
@@ -573,7 +575,7 @@ local function RebirthPanel(props)
                         -- Prediction Explanation
                         PredictionExplanation = e("TextLabel", {
                             Size = UDim2.new(1, -20, 0, 20),
-                            Position = UDim2.new(0, 10, 0, 175),
+                            Position = UDim2.new(0, 10, 0, 165),
                             Text = predictionExplanation,
                             TextColor3 = Color3.fromRGB(120, 120, 120),
                             TextSize = smallTextSize,
@@ -702,29 +704,23 @@ local function RebirthPanel(props)
                         }),
                         
                         ButtonContent = e("Frame", {
-                            Size = UDim2.new(1, 0, 1, 0),
+                            Size = UDim2.new(1, -10, 1, -10),
+                            Position = UDim2.new(0, 5, 0, 5),
                             BackgroundTransparency = 1,
                             ZIndex = 33
                         }, {
-                            Layout = e("UIListLayout", {
-                                FillDirection = Enum.FillDirection.Horizontal,
-                                HorizontalAlignment = Enum.HorizontalAlignment.Center,
-                                VerticalAlignment = Enum.VerticalAlignment.Center,
-                                Padding = UDim.new(0, 10),
-                                SortOrder = Enum.SortOrder.LayoutOrder
-                            }),
                             
                             ButtonText = e("TextLabel", {
-                                Size = UDim2.new(0, 0, 0.8, 0),
-                                AutomaticSize = Enum.AutomaticSize.X,
+                                Size = UDim2.new(1, 0, 0.5, 0),
+                                Position = UDim2.new(0, 0, 0, 0),
                                 Text = canAfford and "REBIRTH" or "NEED",
                                 TextColor3 = Color3.fromRGB(255, 255, 255),
-                                TextSize = buttonTextSize,
+                                TextSize = buttonTextSize * 0.8,
                                 TextWrapped = true,
                                 BackgroundTransparency = 1,
                                 Font = Enum.Font.GothamBold,
-                                ZIndex = 34,
-                                LayoutOrder = 1
+                                TextXAlignment = Enum.TextXAlignment.Center,
+                                ZIndex = 34
                             }, {
                                 TextStroke = e("UIStroke", {
                                     Color = Color3.fromRGB(0, 0, 0),
@@ -733,32 +729,46 @@ local function RebirthPanel(props)
                                 })
                             }),
                             
-                            CashIcon = e("ImageLabel", {
-                                Size = UDim2.new(0, 25, 0, 25),
-                                Image = assets["Currency/Cash/Cash Outline 256.png"] or "",
+                            PriceContainer = e("Frame", {
+                                Size = UDim2.new(1, 0, 0.5, 0),
+                                Position = UDim2.new(0, 0, 0.5, 0),
                                 BackgroundTransparency = 1,
-                                ScaleType = Enum.ScaleType.Fit,
-                                ImageColor3 = Color3.fromRGB(255, 255, 255),
-                                ZIndex = 34,
-                                LayoutOrder = 2
-                            }),
-                            
-                            CostText = e("TextLabel", {
-                                Size = UDim2.new(0, 0, 0.8, 0),
-                                AutomaticSize = Enum.AutomaticSize.X,
-                                Text = NumberFormatter.format(rebirthCost),
-                                TextColor3 = Color3.fromRGB(255, 255, 255),
-                                TextSize = buttonTextSize,
-                                TextWrapped = true,
-                                BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamBold,
-                                ZIndex = 34,
-                                LayoutOrder = 3
+                                ZIndex = 33
                             }, {
-                                TextStroke = e("UIStroke", {
-                                    Color = Color3.fromRGB(0, 0, 0),
-                                    Thickness = 2,
-                                    Transparency = 0
+                                Layout = e("UIListLayout", {
+                                    FillDirection = Enum.FillDirection.Horizontal,
+                                    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                                    Padding = UDim.new(0, 3),
+                                    SortOrder = Enum.SortOrder.LayoutOrder
+                                }),
+                                
+                                CashIcon = e("ImageLabel", {
+                                    Size = UDim2.new(0, buttonTextSize * 0.6, 0, buttonTextSize * 0.6),
+                                    Image = assets["Currency/Cash/Cash Outline 256.png"] or "",
+                                    BackgroundTransparency = 1,
+                                    ScaleType = Enum.ScaleType.Fit,
+                                    ImageColor3 = Color3.fromRGB(255, 255, 255),
+                                    ZIndex = 34,
+                                    LayoutOrder = 1
+                                }),
+                                
+                                CostText = e("TextLabel", {
+                                    Size = UDim2.new(0, 0, 1, 0),
+                                    AutomaticSize = Enum.AutomaticSize.X,
+                                    Text = NumberFormatter.format(rebirthCost),
+                                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                                    TextSize = buttonTextSize * 0.7,
+                                    BackgroundTransparency = 1,
+                                    Font = Enum.Font.GothamBold,
+                                    ZIndex = 34,
+                                    LayoutOrder = 2
+                                }, {
+                                    TextStroke = e("UIStroke", {
+                                        Color = Color3.fromRGB(0, 0, 0),
+                                        Thickness = 1,
+                                        Transparency = 0
+                                    })
                                 })
                             })
                         })
@@ -793,49 +803,23 @@ local function RebirthPanel(props)
                         }),
                         
                         ButtonContent = e("Frame", {
-                            Size = UDim2.new(1, 0, 1, 0),
+                            Size = UDim2.new(1, -10, 1, -10),
+                            Position = UDim2.new(0, 5, 0, 5),
                             BackgroundTransparency = 1,
                             ZIndex = 33
                         }, {
-                            Layout = e("UIListLayout", {
-                                FillDirection = Enum.FillDirection.Horizontal,
-                                HorizontalAlignment = Enum.HorizontalAlignment.Center,
-                                VerticalAlignment = Enum.VerticalAlignment.Center,
-                                Padding = UDim.new(0, 3),
-                                SortOrder = Enum.SortOrder.LayoutOrder
-                            }),
                             
-                            RebirthIcon = e("ImageLabel", {
-                                Size = UDim2.new(0, 18, 0, 18),
-                                Image = assets["General/Rebirth/Rebirth Outline 256.png"],
-                                BackgroundTransparency = 1,
-                                ScaleType = Enum.ScaleType.Fit,
-                                ImageColor3 = Color3.fromRGB(255, 255, 255),
-                                ZIndex = 34,
-                                LayoutOrder = 1
-                            }),
-                            
-                            RobuxIcon = e("ImageLabel", {
-                                Size = UDim2.new(0, 16, 0, 16),
-                                Image = "rbxasset://textures/ui/common/robux.png",
-                                BackgroundTransparency = 1,
-                                ScaleType = Enum.ScaleType.Fit,
-                                ImageColor3 = Color3.fromRGB(255, 255, 255),
-                                ZIndex = 34,
-                                LayoutOrder = 2
-                            }),
-                            
-                            PriceText = e("TextLabel", {
-                                Size = UDim2.new(0, 0, 0.7, 0),
-                                AutomaticSize = Enum.AutomaticSize.X,
-                                Text = robuxPrice,
+                            ButtonText = e("TextLabel", {
+                                Size = UDim2.new(1, 0, 0.5, 0),
+                                Position = UDim2.new(0, 0, 0, 0),
+                                Text = "Rebirth!",
                                 TextColor3 = Color3.fromRGB(255, 255, 255),
                                 TextSize = buttonTextSize * 0.8,
                                 TextWrapped = true,
                                 BackgroundTransparency = 1,
                                 Font = Enum.Font.GothamBold,
-                                ZIndex = 34,
-                                LayoutOrder = 3
+                                TextXAlignment = Enum.TextXAlignment.Center,
+                                ZIndex = 34
                             }, {
                                 TextStroke = e("UIStroke", {
                                     Color = Color3.fromRGB(0, 0, 0),
@@ -844,22 +828,56 @@ local function RebirthPanel(props)
                                 })
                             }),
                             
-                            ButtonText = e("TextLabel", {
-                                Size = UDim2.new(0, 0, 0.7, 0),
-                                AutomaticSize = Enum.AutomaticSize.X,
-                                Text = " Rebirth!",
-                                TextColor3 = Color3.fromRGB(255, 255, 255),
-                                TextSize = buttonTextSize * 0.8,
-                                TextWrapped = true,
+                            PriceContainer = e("Frame", {
+                                Size = UDim2.new(1, 0, 0.5, 0),
+                                Position = UDim2.new(0, 0, 0.5, 0),
                                 BackgroundTransparency = 1,
-                                Font = Enum.Font.GothamBold,
-                                ZIndex = 34,
-                                LayoutOrder = 4
+                                ZIndex = 33
                             }, {
-                                TextStroke = e("UIStroke", {
-                                    Color = Color3.fromRGB(0, 0, 0),
-                                    Thickness = 2,
-                                    Transparency = 0
+                                Layout = e("UIListLayout", {
+                                    FillDirection = Enum.FillDirection.Horizontal,
+                                    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                                    Padding = UDim.new(0, 2),
+                                    SortOrder = Enum.SortOrder.LayoutOrder
+                                }),
+                                
+                                RebirthIcon = e("ImageLabel", {
+                                    Size = UDim2.new(0, buttonTextSize * 0.5, 0, buttonTextSize * 0.5),
+                                    Image = assets["General/Rebirth/Rebirth Outline 256.png"],
+                                    BackgroundTransparency = 1,
+                                    ScaleType = Enum.ScaleType.Fit,
+                                    ImageColor3 = Color3.fromRGB(255, 255, 255),
+                                    ZIndex = 34,
+                                    LayoutOrder = 1
+                                }),
+                                
+                                RobuxIcon = e("ImageLabel", {
+                                    Size = UDim2.new(0, buttonTextSize * 0.4, 0, buttonTextSize * 0.4),
+                                    Image = "rbxasset://textures/ui/common/robux.png",
+                                    BackgroundTransparency = 1,
+                                    ScaleType = Enum.ScaleType.Fit,
+                                    ImageColor3 = Color3.fromRGB(255, 255, 255),
+                                    ZIndex = 34,
+                                    LayoutOrder = 2
+                                }),
+                                
+                                PriceText = e("TextLabel", {
+                                    Size = UDim2.new(0, 0, 1, 0),
+                                    AutomaticSize = Enum.AutomaticSize.X,
+                                    Text = robuxPrice,
+                                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                                    TextSize = buttonTextSize * 0.6,
+                                    BackgroundTransparency = 1,
+                                    Font = Enum.Font.GothamBold,
+                                    ZIndex = 34,
+                                    LayoutOrder = 3
+                                }, {
+                                    TextStroke = e("UIStroke", {
+                                        Color = Color3.fromRGB(0, 0, 0),
+                                        Thickness = 1,
+                                        Transparency = 0
+                                    })
                                 })
                             })
                         })

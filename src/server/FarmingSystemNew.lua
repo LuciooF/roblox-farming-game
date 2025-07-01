@@ -13,7 +13,7 @@ local PlotManager = require(script.Parent.modules.PlotManager)
 local GamepassManager = require(script.Parent.modules.GamepassManager)
 local GamepassService = require(script.Parent.modules.GamepassService)
 local AutomationSystem = require(script.Parent.modules.AutomationSystem)
-local NotificationManager = require(script.Parent.modules.NotificationManager)
+-- -- local NotificationManager = require(script.Parent.modules.NotificationManager) -- REMOVED
 local RemoteManager = require(script.Parent.modules.RemoteManager)
 local TutorialManager = require(script.Parent.modules.TutorialManager)
 local FarmManager = require(script.Parent.modules.FarmManager)
@@ -144,7 +144,7 @@ function FarmingSystem.setupNPCInteractions()
                     -- Play sell sound for automation
                     -- SoundManager.playSellSound()
                 end
-                NotificationManager.sendAutomationNotification(player, success, message, details)
+--                 NotificationManager.sendAutomationNotification(player, success, message, details)
             end)
         end
     end
@@ -156,7 +156,7 @@ function FarmingSystem.setupNPCInteractions()
         if autoPrompt then
             autoPrompt.Triggered:Connect(function(player)
                 local message = GamepassManager.getAutomationMenuText(player)
-                NotificationManager.sendNotification(player, message)
+--                 NotificationManager.sendNotification(player, message)
             end)
         end
     end
@@ -189,7 +189,7 @@ function FarmingSystem.handlePlotAction(player, plotId)
         FarmingSystem.handleHarvestInteraction(player, plotId)
     else
         log.warn("Unknown plot state:", plotState.state, "for plot", plotId)
-        NotificationManager.sendError(player, "❌ Cannot interact with this plot right now")
+--         NotificationManager.sendError(player, "❌ Cannot interact with this plot right now")
     end
 end
 
@@ -221,7 +221,7 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
     end
     
     if not selectedCrop then
-        NotificationManager.sendCenterNotification(player, "🌱 No crops available to plant!\nHarvest some crops first or buy from shop.", "error")
+--         NotificationManager.sendCenterNotification(player, "🌱 No crops available to plant!\nHarvest some crops first or buy from shop.", "error")
         -- Send interaction failure to client for prediction rollback
         RemoteManager.sendInteractionFailure(player, plotId, "plant", "no_crops")
         return
@@ -252,13 +252,13 @@ function FarmingSystem.handlePlantInteraction(player, plotId)
     
     -- Use appropriate notification type based on success
     if success then
-        NotificationManager.sendSuccess(player, "🌱 " .. message)
+--         NotificationManager.sendSuccess(player, "🌱 " .. message)
     else
         -- Use center notification for critical gameplay errors
         if message:find("crops") or message:find("locked") or message:find("different crop") or message:find("ownership") then
-            NotificationManager.sendCenterNotification(player, "❌ " .. message, "error")
+--             NotificationManager.sendCenterNotification(player, "❌ " .. message, "error")
         else
-            NotificationManager.sendError(player, "❌ " .. message)
+--             NotificationManager.sendError(player, "❌ " .. message)
         end
     end
 end
@@ -278,9 +278,9 @@ function FarmingSystem.handleWaterInteraction(player, plotId)
             -- Play water sound at plot location
             -- SoundManager.playWaterSound(plot.Position)
         end
-        NotificationManager.sendSuccess(player, "💧 " .. message)
+--         NotificationManager.sendSuccess(player, "💧 " .. message)
     else
-        NotificationManager.sendError(player, "❌ " .. message)
+--         NotificationManager.sendError(player, "❌ " .. message)
     end
 end
 
@@ -302,9 +302,9 @@ function FarmingSystem.handleHarvestInteraction(player, plotId)
             -- Play harvest sound at plot location
             -- SoundManager.playHarvestSound(plot.Position)
         end
-        NotificationManager.sendMoney(player, "🌾 " .. message)
+--         NotificationManager.sendMoney(player, "🌾 " .. message)
     else
-        NotificationManager.sendError(player, "❌ " .. message)
+--         NotificationManager.sendError(player, "❌ " .. message)
     end
 end
 
@@ -353,7 +353,15 @@ end
 
 -- Player connection handlers
 function FarmingSystem.onPlayerJoined(player)
-    log.info("🚨 PLAYER JOINING - NEW OPTIMIZED CODE:", player.Name)
+    local joinTimestamp = tick()
+    log.info("🚨 PLAYER JOINING - NEW OPTIMIZED CODE:", player.Name, "at timestamp:", joinTimestamp)
+    
+    -- Log all currently connected players for context
+    local currentPlayers = {}
+    for _, existingPlayer in pairs(game.Players:GetPlayers()) do
+        table.insert(currentPlayers, existingPlayer.Name)
+    end
+    log.info("🔍 Current players when", player.Name, "joins:", table.concat(currentPlayers, ", "))
     
     -- Initialize remotes immediately (for loading screen communication)
     log.info("🔵 Initializing remotes for:", player.Name)
@@ -362,56 +370,9 @@ function FarmingSystem.onPlayerJoined(player)
     -- Connect respawn handler immediately
     player.CharacterAdded:Connect(FarmingSystem.onCharacterAdded)
     
-    -- OPTIMIZATION: Spawn character early so player sees something faster
-    log.info("🚀 Spawning character immediately for faster loading:", player.Name)
-    
-    -- Spawn character with validation and retry (moved up)
-    local function spawnCharacterSafely()
-        local maxRetries = 3
-        local retries = 0
-        
-        while retries < maxRetries do
-            local attemptStart = tick()
-            log.info("🚀 Character spawn attempt", retries + 1, "for:", player.Name)
-            
-            local success = pcall(function()
-                player:LoadCharacter()
-            end)
-            
-            local loadTime = tick()
-            log.info("⏱️ LoadCharacter() call took:", (loadTime - attemptStart), "seconds")
-            
-            -- Wait a moment for character to actually spawn
-            wait(0.5)
-            local validationTime = tick()
-            log.info("⏱️ Character validation took:", (validationTime - loadTime), "seconds")
-            
-            if success and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                log.info("✅ Character spawned successfully for:", player.Name, "in", (validationTime - attemptStart), "seconds")
-                return true
-            else
-                retries = retries + 1
-                log.warn("⚠️ Character spawn attempt", retries, "failed for:", player.Name, "- success:", success, "character exists:", player.Character ~= nil)
-                if retries < maxRetries then
-                    log.info("⏳ Waiting 1 second before retry...")
-                    wait(1) -- Wait before retry
-                end
-            end
-        end
-        
-        log.info("❌ Failed to spawn character after", maxRetries, "attempts for:", player.Name)
-        return false
-    end
-    
-    -- Spawn character immediately (player spawns at default location first)
-    local earlySpawnStart = tick()
-    local spawnSuccess = spawnCharacterSafely()
-    local earlySpawnTime = tick()
-    log.info("⏱️ EARLY CHARACTER SPAWN TOOK:", (earlySpawnTime - earlySpawnStart), "SECONDS")
-    
-    -- Load data in background and handle farm assignment/teleportation
+    -- Load data in background and handle farm assignment BEFORE spawning character
     spawn(function()
-        -- Character is already spawned above, now handle data loading and farm assignment
+        -- Handle data loading and farm assignment first, then spawn character at correct location
         
         log.info("🔵 LOADING PLAYER DATA IN BACKGROUND FOR:", player.Name)
         
@@ -428,7 +389,7 @@ function FarmingSystem.onPlayerJoined(player)
         PlayerDataManager.onPlayerJoined(player)
         log.info("🔄 PlayerDataManager.onPlayerJoined COMPLETE FOR:", player.Name)
         
-        -- Assign farm FIRST, then sync UI data after teleportation
+        -- Assign farm FIRST, then set spawn location, then spawn character
         local startTime = tick()
         log.info("🔵 STARTING FARM ASSIGNMENT FOR:", player.Name)
         local farmId = FarmManager.assignFarmToPlayer(player)
@@ -436,47 +397,194 @@ function FarmingSystem.onPlayerJoined(player)
         log.info("🔵 FARM ASSIGNMENT COMPLETED FOR:", player.Name, "ID:", farmId, "in", (farmAssignTime - startTime), "seconds")
         
         if farmId then
-            FarmManager.setPlayerSpawn(player, farmId)
-            log.info("🔵 SETTING SPAWN LOCATION FOR:", player.Name, "FARM:", farmId)
+            -- Audit spawn locations before setting
+            FarmManager.auditSpawnLocations("BEFORE_SETTING_" .. player.Name)
             
-            -- Teleport existing character to their assigned farm BEFORE sending UI data
-            log.info("📍 STARTING CHARACTER TELEPORTATION FOR:", player.Name)
-            local teleportStart = tick()
+            -- Set spawn location BEFORE spawning character
+            local spawnSetSuccess = FarmManager.setPlayerSpawn(player, farmId)
             
-            local character = player.Character
-            if character and character:FindFirstChild("HumanoidRootPart") then
+            if spawnSetSuccess then
+                log.info("✅ SPAWN LOCATION SET FOR:", player.Name, "FARM:", farmId)
+                
+                -- Audit spawn locations after setting
+                FarmManager.auditSpawnLocations("AFTER_SETTING_" .. player.Name)
+                
+                -- Verify spawn location is actually set and wait a moment
+                wait(0.2) -- Give Roblox time to register the spawn location change
+                
+                -- Double-check the spawn location is correct
                 local farmModel = workspace.PlayerFarms:FindFirstChild("Farm_" .. farmId)
-                local spawnPoint = farmModel and farmModel:FindFirstChild("FarmSpawn_" .. farmId)
-                if spawnPoint then
-                    character.HumanoidRootPart.CFrame = spawnPoint.CFrame + Vector3.new(0, 3, 0)
-                    log.info("✅ CHARACTER TELEPORTED:", player.Name, "TO FARM:", farmId)
-                    
-                    -- NOW sync UI data after teleportation
-                    log.info("🚀 SYNCING UI DATA AFTER TELEPORTATION FOR:", player.Name)
-                    RemoteManager.syncPlayerData(player)
-                    log.info("🚀 UI DATA SYNCED FOR:", player.Name)
-                    
-                    -- Send character ready signal after both teleportation AND UI sync
-                    log.info("📡 SENDING CHARACTER READY SIGNAL FOR:", player.Name)
-                    RemoteManager.sendCharacterReady(player)
-                    log.info("📡 CHARACTER READY SIGNAL SENT FOR:", player.Name)
+                local expectedSpawn = farmModel and farmModel:FindFirstChild("FarmSpawn_" .. farmId)
+                
+                if expectedSpawn and player.RespawnLocation == expectedSpawn then
+                    log.info("✅ SPAWN LOCATION VERIFIED FOR:", player.Name, "AT FARM:", farmId)
                 else
-                    log.info("❌ NO SPAWN POINT FOUND FOR FARM:", farmId)
-                    -- Sync UI and send ready signal anyway
-                    RemoteManager.syncPlayerData(player)
-                    log.info("📡 SENDING CHARACTER READY SIGNAL ANYWAY FOR:", player.Name)
-                    RemoteManager.sendCharacterReady(player)
+                    log.warn("⚠️ SPAWN LOCATION NOT PROPERLY SET - Retrying for:", player.Name)
+                    -- Retry setting spawn location
+                    FarmManager.setPlayerSpawn(player, farmId)
+                    wait(0.1)
+                    FarmManager.auditSpawnLocations("AFTER_RETRY_" .. player.Name)
                 end
+                
+                -- Final audit before spawning character
+                FarmManager.auditSpawnLocations("BEFORE_SPAWN_" .. player.Name)
+                
+                -- Additional debugging: check what Roblox thinks player's spawn location is
+                local currentRespawnLocation = player.RespawnLocation
+                if currentRespawnLocation then
+                    log.info("🎯 PLAYER", player.Name, "RespawnLocation is set to:", currentRespawnLocation.Name, "at position:", currentRespawnLocation.Position)
+                else
+                    log.error("🚨 PLAYER", player.Name, "RespawnLocation is NIL! This could be the problem!")
+                end
+                
+                -- NOW spawn character at the correct farm location
+                log.info("🚀 SPAWNING CHARACTER AT ASSIGNED FARM FOR:", player.Name, "FARM:", farmId)
             else
-                log.info("⚠️ NO CHARACTER FOUND FOR TELEPORTATION:", player.Name, "- will rely on onCharacterAdded")
-                -- Still sync UI data even without character
-                RemoteManager.syncPlayerData(player)
-                -- Character ready signal will be sent by onCharacterAdded when character spawns at farm
+                log.error("❌ FAILED TO SET SPAWN LOCATION FOR:", player.Name, "FARM:", farmId)
+                -- Still try to spawn character, but it might spawn at default location
             end
             
-            local teleportTime = tick()
-            log.info("⏱️ CHARACTER TELEPORTATION TOOK:", (teleportTime - teleportStart), "SECONDS")
-            log.info("⏱️ TOTAL FARM ASSIGNMENT TOOK:", (teleportTime - startTime), "SECONDS")
+            -- Character spawn function with immediate teleportation
+            local function spawnCharacterSafely()
+                local maxRetries = 3
+                local retries = 0
+                
+                while retries < maxRetries do
+                    local attemptStart = tick()
+                    log.info("🚀 Character spawn attempt", retries + 1, "for:", player.Name, "at farm", farmId)
+                    
+                    -- Final spawn audit RIGHT before LoadCharacter call
+                    FarmManager.auditSpawnLocations("IMMEDIATE_PRE_LOAD_" .. player.Name)
+                    
+                    local success = pcall(function()
+                        log.info("⚡ CALLING LoadCharacter() for:", player.Name, "at timestamp:", tick())
+                        player:LoadCharacter()
+                        log.info("⚡ LoadCharacter() call completed for:", player.Name, "at timestamp:", tick())
+                    end)
+                    
+                    local loadTime = tick()
+                    log.info("⏱️ LoadCharacter() call took:", (loadTime - attemptStart), "seconds")
+                    
+                    -- Wait a moment for character to actually spawn
+                    wait(0.5)
+                    local validationTime = tick()
+                    log.info("⏱️ Character validation took:", (validationTime - loadTime), "seconds")
+                    
+                    if success and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        -- Log where player actually spawned
+                        local actualSpawnPos = player.Character.HumanoidRootPart.Position
+                        log.info("📍 PLAYER", player.Name, "SPAWNED AT POSITION:", actualSpawnPos)
+                        
+                        -- Check which farm they spawned near (if any)
+                        local spawnedNearFarm = nil
+                        for i = 1, 6 do -- 6 farms total
+                            local farmModel = workspace.PlayerFarms:FindFirstChild("Farm_" .. i)
+                            if farmModel then
+                                -- Use farm spawn location as reference point instead of PrimaryPart
+                                local farmSpawn = farmModel:FindFirstChild("FarmSpawn_" .. i)
+                                if farmSpawn then
+                                    local distance = (actualSpawnPos - farmSpawn.Position).Magnitude
+                                    if distance < 50 then -- Within 50 studs of farm spawn
+                                        spawnedNearFarm = i
+                                        log.info("📍 PLAYER", player.Name, "SPAWNED NEAR FARM", i, "(distance:", distance, "from spawn)")
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        
+                        if not spawnedNearFarm then
+                            log.warn("📍 PLAYER", player.Name, "SPAWNED IN UNKNOWN LOCATION:", actualSpawnPos)
+                        end
+                        
+                        -- Check if they spawned at the correct farm
+                        if spawnedNearFarm == farmId then
+                            log.info("✅ PLAYER", player.Name, "SPAWNED AT CORRECT FARM", farmId)
+                        else
+                            log.error("❌ PLAYER", player.Name, "SPAWNED AT WRONG LOCATION! Expected farm", farmId, "but spawned near farm", spawnedNearFarm or "UNKNOWN")
+                        end
+                        
+                        -- IMMEDIATELY teleport to correct farm location regardless of where they spawned
+                        local farmModel = workspace.PlayerFarms:FindFirstChild("Farm_" .. farmId)
+                        local farmSpawn = farmModel and farmModel:FindFirstChild("FarmSpawn_" .. farmId)
+                        
+                        if farmSpawn then
+                            log.info("📍 FORCE TELEPORTING", player.Name, "TO FARM", farmId, "IMMEDIATELY AFTER SPAWN")
+                            player.Character.HumanoidRootPart.CFrame = farmSpawn.CFrame + Vector3.new(0, 3, 0)
+                            log.info("✅ Character spawned and teleported for:", player.Name, "to farm", farmId, "in", (validationTime - attemptStart), "seconds")
+                        else
+                            log.warn("⚠️ Farm spawn location not found for teleportation - farm", farmId)
+                        end
+                        
+                        return true
+                    else
+                        retries = retries + 1
+                        log.warn("⚠️ Character spawn attempt", retries, "failed for:", player.Name, "- success:", success, "character exists:", player.Character ~= nil)
+                        if retries < maxRetries then
+                            log.info("⏳ Waiting 1 second before retry...")
+                            wait(1) -- Wait before retry
+                        end
+                    end
+                end
+                
+                log.error("❌ Failed to spawn character after", maxRetries, "attempts for:", player.Name)
+                return false
+            end
+            
+            -- Spawn character now that spawn location is set
+            local spawnStart = tick()
+            local spawnSuccess = spawnCharacterSafely()
+            local spawnTime = tick()
+            log.info("⏱️ CHARACTER SPAWN TOOK:", (spawnTime - spawnStart), "SECONDS")
+            
+            if spawnSuccess then
+                -- Audit spawn locations after character spawned
+                FarmManager.auditSpawnLocations("AFTER_SPAWN_" .. player.Name)
+                
+                -- Verify character spawned at correct farm location
+                wait(0.1) -- Let character fully load position
+                
+                local character = player.Character
+                local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+                
+                if humanoidRootPart then
+                    local farmModel = workspace.PlayerFarms:FindFirstChild("Farm_" .. farmId)
+                    local farmSpawn = farmModel and farmModel:FindFirstChild("FarmSpawn_" .. farmId)
+                    
+                    if farmSpawn then
+                        local spawnPos = farmSpawn.Position
+                        local charPos = humanoidRootPart.Position
+                        local distance = (spawnPos - charPos).Magnitude
+                        
+                        if distance > 50 then -- If character spawned far from farm
+                            log.warn("⚠️ CHARACTER SPAWNED FAR FROM FARM for:", player.Name, "Distance:", distance, "- Teleporting to farm")
+                            humanoidRootPart.CFrame = farmSpawn.CFrame + Vector3.new(0, 3, 0)
+                            log.info("📍 TELEPORTED", player.Name, "TO CORRECT FARM LOCATION")
+                        else
+                            log.info("✅ CHARACTER SPAWNED AT CORRECT FARM for:", player.Name, "Distance from spawn:", distance)
+                        end
+                    end
+                end
+                
+                -- Sync UI data after successful spawn
+                log.info("🚀 SYNCING UI DATA AFTER SPAWN FOR:", player.Name)
+                RemoteManager.syncPlayerData(player)
+                log.info("🚀 UI DATA SYNCED FOR:", player.Name)
+                
+                -- Send character ready signal
+                log.info("📡 SENDING CHARACTER READY SIGNAL FOR:", player.Name)
+                RemoteManager.sendCharacterReady(player)
+                log.info("📡 CHARACTER READY SIGNAL SENT FOR:", player.Name)
+            else
+                log.error("❌ CHARACTER SPAWN FAILED FOR:", player.Name)
+                -- Still sync UI data for potential retry
+                RemoteManager.syncPlayerData(player)
+            end
+            
+            local totalTime = tick()
+            log.info("⏱️ TOTAL FARM ASSIGNMENT AND SPAWN TOOK:", (totalTime - startTime), "SECONDS")
+        else
+            log.error("❌ NO FARM ASSIGNED FOR:", player.Name, "- cannot spawn character")
         end
         
         -- Send a final sync after everything is complete (includes updated gamepass data)
@@ -492,15 +600,26 @@ function FarmingSystem.onPlayerJoined(player)
 end
 
 function FarmingSystem.onPlayerLeft(player)
+    log.info("🚪 PLAYER LEAVING DETECTED:", player.Name, "- Starting cleanup sequence")
+    
     -- Clean up farm assignment first
+    log.debug("🚪 Step 1: Farm cleanup for", player.Name)
     FarmManager.onPlayerLeaving(player)
+    
     -- Handle remote cleanup
+    log.debug("🚪 Step 2: Remote cleanup for", player.Name)
     RemoteManager.onPlayerLeft(player)
+    
     -- Clean up chat rank tracking
+    log.debug("🚪 Step 3: Chat cleanup for", player.Name)
     local ChatManager = require(script.Parent.modules.ChatManager)
     ChatManager.onPlayerRemoving(player)
+    
     -- Release ProfileStore profile last
+    log.info("🚪 Step 4: CRITICAL - ProfileStore release for", player.Name)
     PlayerDataManager.onPlayerLeaving(player)
+    
+    log.info("🚪 PLAYER CLEANUP COMPLETE for:", player.Name)
 end
 
 -- Handle respawning

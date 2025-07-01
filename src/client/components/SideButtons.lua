@@ -140,9 +140,8 @@ local function SideButtons(props)
     if tutorialData and tutorialData.step then
         if tutorialData.step.id == "sell_crops" then
             shouldHighlightInventory = true
-        elseif tutorialData.step.id == "buy_potato" then
+        elseif tutorialData.step.id == "buy_banana" then
             shouldHighlightShop = true
-            shouldHighlightRebirth = true -- Also highlight rebirth button for potato challenge
         end
     end
     
@@ -374,7 +373,7 @@ local function SideButtons(props)
             UDim2.new(0, (2 * buttonSize) + spacing, 0, (4 * buttonSize) + (3 * spacing)) or -- 2x4 grid on compact screens
             UDim2.new(0, buttonSize, 0, (7 * buttonSize) + (6 * spacing)), -- 1x7 column on wide screens
         Position = isCompactLayout and 
-            UDim2.new(1, -((2 * buttonSize) + spacing + ScreenUtils.getProportionalSize(screenSize, 15)), 0, ScreenUtils.getProportionalSize(screenSize, 80)) or -- Top-right on compact
+            UDim2.new(1, -((2 * buttonSize) + spacing + ScreenUtils.getProportionalSize(screenSize, 5)), 0, ScreenUtils.getProportionalSize(screenSize, 80)) or -- Top-right on compact (minimal margin)
             UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 20), 0.5, -((7 * buttonSize) + (6 * spacing))/2), -- Left-center on wide
         BackgroundTransparency = 1,
         ZIndex = 10
@@ -631,7 +630,25 @@ local function SideButtons(props)
             [React.Event.MouseEnter] = function(rbx)
                 playSound("hover")
                 createIconSpin(petsIconRef, petsAnimTracker)
-                showTooltip("Debug - Developer tools")
+                
+                -- Check authorization and show appropriate tooltip
+                local remoteFolder = game:GetService("ReplicatedStorage"):FindFirstChild("FarmingRemotes")
+                local checkDebugAuth = remoteFolder and remoteFolder:FindFirstChild("CheckDebugAuth")
+                
+                if checkDebugAuth then
+                    local success, isAuthorized = pcall(function()
+                        return checkDebugAuth:InvokeServer()
+                    end)
+                    
+                    if success and isAuthorized then
+                        showTooltip("Debug Panel")
+                    else
+                        showTooltip("Pets! Soon")
+                    end
+                else
+                    -- In studio or testing - show debug tooltip
+                    showTooltip("Debug Panel")
+                end
             end,
             [React.Event.MouseLeave] = function()
                 hideTooltip()

@@ -139,11 +139,11 @@ local function MusicButton(props)
         BackgroundTransparency = 1,
         ZIndex = 14
     }, {
-        -- Music Button (bottom right corner)
+        -- Music Button (top right corner)
         MusicButton = e("TextButton", {
             Name = "MusicButton",
             Size = UDim2.new(0, buttonSize, 0, buttonSize),
-            Position = UDim2.new(1, -(buttonSize + ScreenUtils.getProportionalPadding(screenSize, 20)), 1, -(buttonSize + ScreenUtils.getProportionalPadding(screenSize, 20))), -- Bottom right corner
+            Position = UDim2.new(1, -(buttonSize + ScreenUtils.getProportionalPadding(screenSize, 5)), 0, ScreenUtils.getProportionalPadding(screenSize, 10)), -- Top right corner (minimal margin)
             Text = "",
             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
             BorderSizePixel = 0,

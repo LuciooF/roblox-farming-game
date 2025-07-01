@@ -209,8 +209,8 @@ function GamepassService.applyGamepassEffects(player, gamepassKey, isNewPurchase
     if isNewPurchase then
         local gamepass = GamepassConfig.getGamepass(gamepassKey)
         if gamepass then
-            local NotificationManager = require(script.Parent.NotificationManager)
-            NotificationManager.sendSuccess(player, "🎉 " .. gamepass.name .. " activated!")
+--             local NotificationManager = require(script.Parent.NotificationManager)
+--             NotificationManager.sendSuccess(player, "🎉 " .. gamepass.name .. " activated!")
         end
     end
 end

@@ -27,7 +27,6 @@ local UI_ARROW_OFFSET = 50 -- Offset from UI elements
 
 -- Create a 2D billboard arrow pointing to a world position
 function TutorialArrowManager.createWorldArrow(targetPosition, color)
-    print("[DEBUG]", "🎯 Creating world arrow at position:", targetPosition, "color:", color or "Lime green")
     
     -- Clean up existing arrow
     TutorialArrowManager.cleanup()
@@ -68,7 +67,6 @@ function TutorialArrowManager.createWorldArrow(targetPosition, color)
     -- Create trail from player to target
     TutorialArrowManager.createTrail(targetPosition, color)
     
-    print("[DEBUG]", "🎯 2D Billboard arrow created successfully!")
     
     -- Animate arrow bounce
     local startY = targetPosition.Y + ARROW_HEIGHT_OFFSET
@@ -81,14 +79,12 @@ function TutorialArrowManager.createWorldArrow(targetPosition, color)
         anchorPart.Position = Vector3.new(targetPosition.X, startY + bounceOffset, targetPosition.Z)
     end)
     
-    print("[DEBUG]", "🎯 Arrow animation started successfully!")
 end
 
 -- Create a trail from player to target position
 function TutorialArrowManager.createTrail(targetPosition, color)
     local character = player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then
-        warn("[WARN]", "🎯 No character for trail creation")
         return
     end
     
@@ -189,12 +185,10 @@ function TutorialArrowManager.createTrail(targetPosition, color)
     -- Store the connections in our global cleanup system
     trailConnections[currentTrail] = dotConnections
     
-    print("[DEBUG]", "🎯 Trail created with dynamic player following")
 end
 
 -- Create a simple UI arrow next to a UI element (like another UI button)
 function TutorialArrowManager.createUIArrow(screenPosition, direction, color)
-    print("[DEBUG]", "🎯 Creating simple UI arrow next to inventory button at:", screenPosition, "direction:", direction)
     
     -- Clean up existing arrow
     TutorialArrowManager.cleanup()
@@ -259,7 +253,6 @@ function TutorialArrowManager.createUIArrow(screenPosition, direction, color)
     arrowTween:Play()
     
     currentArrow = screenGui
-    print("[DEBUG]", "🎯 Simple UI arrow created successfully next to inventory button!")
 end
 
 -- Point to a specific plot
@@ -268,9 +261,28 @@ function TutorialArrowManager.pointToPlot(plotId)
     
     -- Search for the plot in the world
     for _, farmFolder in pairs(Workspace.PlayerFarms:GetChildren()) do
+        -- Look in Plots subfolder for Model plots
+        local plotsFolder = farmFolder:FindFirstChild("Plots")
+        if plotsFolder then
+            for _, plot in pairs(plotsFolder:GetChildren()) do
+                if plot.Name == "Plot" .. plotId then
+                    local PlotUtils = require(script.Parent.PlotUtils)
+                    local interactionPart = PlotUtils.getPlotInteractionPart(plot)
+                    local plotPosition = interactionPart and interactionPart.Position or plot.Position
+                    TutorialArrowManager.createWorldArrow(plotPosition)
+                    plotFound = true
+                    break
+                end
+            end
+        end
+        
+        -- Also check direct children for Part plots
         for _, plot in pairs(farmFolder:GetChildren()) do
             if plot.Name == "Plot_" .. plotId then
-                TutorialArrowManager.createWorldArrow(plot.Position)
+                local PlotUtils = require(script.Parent.PlotUtils)
+                local interactionPart = PlotUtils.getPlotInteractionPart(plot)
+                local plotPosition = interactionPart and interactionPart.Position or plot.Position
+                TutorialArrowManager.createWorldArrow(plotPosition)
                 plotFound = true
                 break
             end
@@ -279,34 +291,34 @@ function TutorialArrowManager.pointToPlot(plotId)
     end
     
     if not plotFound then
-        warn("[WARN]", "Could not find plot", plotId, "to point to")
+        warn("Could not find plot", plotId, "to point to")
     end
 end
 
 -- Point to the closest unowned plot
 function TutorialArrowManager.pointToClosestUnownedPlot()
-    warn("[WARN]", "🎯 Looking for closest unowned plot...")
-    
     local character = player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then 
-        warn("[WARN]", "🎯 No character or HumanoidRootPart found")
         return false
     end
     
+    -- Get player data from the global scope (set by init.client.lua)
+    if not _G.currentPlayerData then
+        return false
+    end
+    
+    local playerData = _G.currentPlayerData
     local playerPos = character.HumanoidRootPart.Position
     
     -- Request farm ID from server instead of trying to find it by text matching
-    warn("[WARN]", "🎯 Requesting farm ID from server...")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local farmingRemotes = ReplicatedStorage:FindFirstChild("FarmingRemotes")
     if not farmingRemotes then
-        warn("[WARN]", "🎯 FarmingRemotes not found")
         return false
     end
     
     local getFarmIdRemote = farmingRemotes:FindFirstChild("GetFarmId")
     if not getFarmIdRemote then
-        warn("[WARN]", "🎯 GetFarmId remote not found")
         return false
     end
     
@@ -330,7 +342,6 @@ function TutorialArrowManager.pointToClosestUnownedPlot()
                 connection = nil
             end
             if not farmIdReceived then
-                warn("[WARN]", "🎯 Timeout waiting for farm ID from server")
                 farmIdReceived = true -- Stop waiting
             end
         end
@@ -338,7 +349,6 @@ function TutorialArrowManager.pointToClosestUnownedPlot()
     
     local startTime = tick()
     connection = getFarmIdRemote.OnClientEvent:Connect(function(farmId)
-        warn("[WARN]", "🎯 Received farm ID from server:", farmId)
         playerFarmId = farmId
         farmIdReceived = true
         
@@ -374,119 +384,112 @@ function TutorialArrowManager.pointToClosestUnownedPlot()
     end
     
     if not farmIdReceived or not playerFarmId then
-        warn("[WARN]", "🎯 Failed to get farm ID from server")
         return false
     end
     
     -- Now find the farm in Workspace using the farm ID
     local playerFarm = Workspace.PlayerFarms:FindFirstChild("Farm_" .. playerFarmId)
     if not playerFarm then
-        warn("[WARN]", "🎯 Could not find farm in Workspace: Farm_" .. playerFarmId)
         return false
     end
-    
-    warn("[WARN]", "🎯 Found player's farm:", playerFarm.Name)
     
     -- Find the Plots folder within the farm
     local plotsFolder = playerFarm:FindFirstChild("Plots")
     if not plotsFolder then
-        warn("[WARN]", "🎯 No Plots folder found in farm!")
         return false
     end
     
-    -- Find closest unowned plot (specifically prioritize Plot_1 for first plot tutorial)
-    warn("[WARN]", "🎯 Searching for unowned plots in Plots folder...")
-    local plotNames = {}
-    for _, plot in pairs(plotsFolder:GetChildren()) do
-        table.insert(plotNames, plot.Name)
-    end
-    warn("[WARN]", "🎯 All plots in farm:", table.concat(plotNames, ", "))
-    
-    local plot1 = nil -- Special handling for first plot
-    local closestPlot = nil
+    local bestUnlockedEmptyPlot = nil
+    local cheapestLockedPlot = nil
     local closestDistance = math.huge
     
+    -- Function to check if plot is owned by player
+    local function isPlotOwned(plotNumber)
+        if not playerData.ownedPlots then return false end
+        return playerData.ownedPlots[tostring(plotNumber)] == true
+    end
+    
+    -- Function to check if plot has crops planted using player data
+    local function isPlotEmpty(plotNumber)
+        if not playerData.plots then return true end
+        local plotData = playerData.plots[tostring(plotNumber)]
+        return not plotData or plotData.state == "empty"
+    end
+    
+    -- Function to get plot position from the model
+    local function getPlotPosition(plotModel)
+        -- Use the PlotUtils helper to get the interaction part
+        local PlotUtils = require(script.Parent.PlotUtils)
+        local interactionPart = PlotUtils.getPlotInteractionPart(plotModel)
+        
+        if interactionPart then
+            return interactionPart.Position
+        end
+        
+        -- Final fallback: use model center if it's a Model
+        if plotModel:IsA("Model") then
+            local cf, size = plotModel:GetBoundingBox()
+            return cf.Position
+        else
+            -- If it's a Part, just use its position
+            return plotModel.Position
+        end
+    end
+    
+    -- Function to get plot number for cost calculation
+    local function getPlotNumber(plotName)
+        local number = plotName:match("Plot(%d+)")
+        return number and tonumber(number) or 999
+    end
+    
     for _, plot in pairs(plotsFolder:GetChildren()) do
-        if plot.Name:match("^Plot") then -- Changed from "^Plot_" to "^Plot" since plots are named "Plot1", "Plot2", etc.
-            warn("[WARN]", "🎯 Found plot:", plot.Name, "color:", plot.BrickColor.Name, "position:", plot.Position)
+        if (plot:IsA("Model") or plot:IsA("BasePart")) and plot.Name:match("^Plot") then
+            local plotPosition = getPlotPosition(plot)
+            local distance = (plotPosition - playerPos).Magnitude
+            local plotNumber = getPlotNumber(plot.Name)
+            local isOwned = isPlotOwned(plotNumber)
+            local isEmpty = isPlotEmpty(plotNumber)
             
-            -- Special case: Always prioritize Plot1 for the first plot tutorial
-            if plot.Name == "Plot1" then -- Changed from "Plot_1" to "Plot1"
-                warn("[WARN]", "🎯 Found Plot1! Color:", plot.BrickColor.Name, "Expected: Bright red")
-                if plot.BrickColor == BrickColor.new("Bright red") then
-                    plot1 = plot
-                    warn("[WARN]", "🎯 Plot1 is red - using as target!")
-                    break
-                else
-                    warn("[WARN]", "🎯 Plot1 is not red, checking if it should get an arrow anyway...")
-                    -- For tutorial, point to Plot1 regardless of color for "first plot" step
-                    plot1 = plot
-                    warn("[WARN]", "🎯 Using Plot1 regardless of color for tutorial!")
-                    break
-                end
-            end
-            
-            -- Check if plot is locked (red)
-            if plot.BrickColor == BrickColor.new("Bright red") then
-                local distance = (plot.Position - playerPos).Magnitude
-                warn("[WARN]", "🎯 Red plot found:", plot.Name, "distance:", distance)
+            -- Priority 1: Owned plots that are empty (closest one)
+            if isOwned and isEmpty then
                 if distance < closestDistance then
                     closestDistance = distance
-                    closestPlot = plot
+                    bestUnlockedEmptyPlot = plot
+                end
+            elseif not isOwned then
+                -- Priority 2: Unowned plots (cheapest = lowest number)
+                if not cheapestLockedPlot or plotNumber < getPlotNumber(cheapestLockedPlot.Name) then
+                    cheapestLockedPlot = plot
                 end
             end
         end
     end
     
-    -- Use Plot_1 if found, otherwise use closest
-    local targetPlot = plot1 or closestPlot
+    -- Priority: 1) Owned empty plot, 2) Cheapest unowned plot
+    local targetPlot = bestUnlockedEmptyPlot or cheapestLockedPlot
     
     if targetPlot then
-        warn("[WARN]", "🎯 Creating arrow for plot:", targetPlot.Name, "at position:", targetPlot.Position)
-        TutorialArrowManager.createWorldArrow(targetPlot.Position, "Bright yellow")
+        local targetPosition = getPlotPosition(targetPlot)
+        TutorialArrowManager.createWorldArrow(targetPosition, "Bright yellow")
         return true
     else
-        warn("[WARN]", "🎯 No unowned (red) plots found!")
         return false
     end
 end
 
 -- Point to a UI element by name
 function TutorialArrowManager.pointToUIElement(elementPath, direction)
-    warn("[WARN]", "🎯 Attempting to point to UI element:", elementPath)
-    
     -- Parse element path (e.g., "MainUI.LeftPanel.SellButton")
     local parts = string.split(elementPath, ".")
     local current = player:WaitForChild("PlayerGui")
     
-    warn("[WARN]", "🎯 Starting search in PlayerGui")
-    warn("[WARN]", "🎯 PlayerGui children:", table.concat((function()
-        local names = {}
-        for _, child in pairs(current:GetChildren()) do
-            table.insert(names, child.Name)
-        end
-        return names
-    end)(), ", "))
-    
     for i, part in ipairs(parts) do
-        warn("[WARN]", "🎯 Looking for part", i, ":", part, "in", current.Name)
         local nextCurrent = current:FindFirstChild(part)
         if not nextCurrent then
-            warn("[WARN]", "🎯 Could not find UI element part:", part, "in", current.Name)
-            warn("[WARN]", "🎯 Available children:", table.concat((function()
-                local names = {}
-                for _, child in pairs(current:GetChildren()) do
-                    table.insert(names, child.Name)
-                end
-                return names
-            end)(), ", "))
             return
         end
         current = nextCurrent
-        warn("[WARN]", "🎯 Found:", current.Name, "- continuing search")
     end
-    
-    warn("[WARN]", "🎯 Successfully found UI element:", current.Name, "at position:", current.AbsolutePosition)
     
     -- Get screen position
     local position = current.AbsolutePosition + (current.AbsoluteSize / 2)
@@ -495,8 +498,6 @@ function TutorialArrowManager.pointToUIElement(elementPath, direction)
         direction or "up",
         Color3.fromRGB(255, 255, 50)
     )
-    
-    warn("[WARN]", "🎯 UI arrow created successfully!")
 end
 
 -- Clean up current arrow
@@ -543,47 +544,32 @@ function TutorialArrowManager.cleanup()
         currentTrail:Destroy()
         currentTrail = nil
     end
-    
-    warn("[WARN]", "🎯 Tutorial arrows and trail cleaned up")
 end
 
 -- Update arrow for current tutorial step
 function TutorialArrowManager.updateForTutorialStep(stepData)
-    warn("[WARN]", "🎯 TutorialArrowManager.updateForTutorialStep called with:", stepData)
-    
     if not stepData or not stepData.arrowTarget then
-        warn("[WARN]", "🎯 No arrow target data, cleaning up arrows")
         TutorialArrowManager.cleanup()
         return
     end
     
     local target = stepData.arrowTarget
-    warn("[WARN]", "🎯 Arrow target:", target.type, "plotId:", target.plotId, "element:", target.element)
     
     if target.type == "plot" then
         if target.plotId then
-            warn("[WARN]", "🎯 Pointing to specific plot:", target.plotId)
             TutorialArrowManager.pointToPlot(target.plotId)
         else
-            warn("[WARN]", "🎯 Pointing to closest unowned plot")
             -- Try immediately first
             local success = TutorialArrowManager.pointToClosestUnownedPlot()
             if not success then
-                warn("[WARN]", "🎯 Immediate attempt failed, starting retry mechanism...")
                 -- Retry mechanism for farm loading
                 TutorialArrowManager.retryPointToUnownedPlot()
-            else
-                warn("[WARN]", "🎯 Immediate attempt succeeded!")
             end
         end
     elseif target.type == "ui" then
-        warn("[WARN]", "🎯 Pointing to UI element:", target.element, "direction:", target.direction)
         TutorialArrowManager.pointToUIElement(target.element, target.direction)
     elseif target.type == "position" then
-        warn("[WARN]", "🎯 Pointing to world position:", target.position)
         TutorialArrowManager.createWorldArrow(target.position)
-    else
-        warn("[WARN]", "🎯 Unknown arrow target type:", target.type)
     end
 end
 
@@ -591,17 +577,14 @@ end
 function TutorialArrowManager.retryPointToUnownedPlot()
     spawn(function()
         -- First, wait for character to spawn
-        warn("[WARN]", "🎯 Waiting for character to spawn before looking for farm...")
         local character = player.Character or player.CharacterAdded:Wait()
         local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
         
         if not humanoidRootPart then
-            warn("[WARN]", "🎯 Failed to get HumanoidRootPart, cannot create arrows")
             return
         end
         
         -- Wait for player data sync (this indicates farm assignment is complete)
-        warn("[WARN]", "🎯 Character spawned, waiting for player data sync to indicate farm assignment...")
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local farmingRemotes = ReplicatedStorage:WaitForChild("FarmingRemotes")
         local syncRemote = farmingRemotes:WaitForChild("SyncPlayerData")
@@ -616,7 +599,6 @@ function TutorialArrowManager.retryPointToUnownedPlot()
         timeoutConnection = game:GetService("RunService").Heartbeat:Connect(function()
             if tick() - startTime > 30 then -- 30 second timeout
                 if not dataSynced then
-                    warn("[WARN]", "🎯 Timeout waiting for player data sync, giving up on arrows")
                     dataSynced = true -- Prevent further processing
                 end
                 
@@ -635,7 +617,6 @@ function TutorialArrowManager.retryPointToUnownedPlot()
         connection = syncRemote.OnClientEvent:Connect(function(playerData)
             if not dataSynced and playerData and not playerData.loading then
                 dataSynced = true
-                warn("[WARN]", "🎯 Player data synced! Farm should now be assigned. Looking for arrows...")
                 
                 -- Clean up connections first
                 if connection then
@@ -655,16 +636,6 @@ function TutorialArrowManager.retryPointToUnownedPlot()
                 
                 local function tryPointing()
                     attempts = attempts + 1
-                    warn("[WARN]", "🎯 Retry attempt", attempts, "of", maxAttempts, "(after data sync)")
-                    
-                    -- First check if farms exist in workspace
-                    local playerFarms = workspace:FindFirstChild("PlayerFarms")
-                    if playerFarms then
-                        local farmCount = #playerFarms:GetChildren()
-                        warn("[WARN]", "🎯 Found", farmCount, "farms in PlayerFarms")
-                    else
-                        warn("[WARN]", "🎯 PlayerFarms folder not found yet")
-                    end
                     
                     local success = TutorialArrowManager.pointToClosestUnownedPlot()
                     if not success and attempts < maxAttempts then
@@ -672,13 +643,9 @@ function TutorialArrowManager.retryPointToUnownedPlot()
                         wait(2)
                         tryPointing()
                     elseif not success then
-                        warn("[WARN]", "🎯 Failed to create arrow after", maxAttempts, "attempts (after data sync)")
                         -- One final attempt after longer delay
                         wait(5)
-                        warn("[WARN]", "🎯 Final attempt after longer delay...")
                         TutorialArrowManager.pointToClosestUnownedPlot()
-                    else
-                        warn("[WARN]", "🎯 Successfully created arrow on attempt", attempts)
                     end
                 end
                 

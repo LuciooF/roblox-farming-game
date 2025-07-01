@@ -181,8 +181,8 @@ local function GamepassPanel(props)
     }, {
         GamepassContainer = e("Frame", {
             Name = "GamepassContainer",
-            Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale + 50), -- Extra space for floating title
-            Position = UDim2.new(0.5, -panelWidth * scale / 2, 0.5, -(panelHeight * scale + 50) / 2),
+            Size = UDim2.new(0, panelWidth, 0, panelHeight + 50), -- Extra space for floating title
+            Position = UDim2.new(0.5, -panelWidth / 2, 0.5, -(panelHeight + 50) / 2),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             ZIndex = 30
@@ -190,7 +190,7 @@ local function GamepassPanel(props)
             
             GamepassPanel = e("Frame", {
                 Name = "GamepassPanel",
-                Size = UDim2.new(0, panelWidth * scale, 0, panelHeight * scale),
+                Size = UDim2.new(0, panelWidth, 0, panelHeight),
                 Position = UDim2.new(0, 0, 0, 50), -- Below floating title
                 BackgroundColor3 = Color3.fromRGB(240, 245, 255),
                 BackgroundTransparency = 0.05,
@@ -200,8 +200,8 @@ local function GamepassPanel(props)
                 -- Floating Title (positioned very close to main panel)
                 FloatingTitle = e("Frame", {
                     Name = "FloatingTitle",
-                    Size = UDim2.new(0, 160, 0, 40),
-                    Position = UDim2.new(0, -10, 0, -25), -- Much closer to main panel
+                    Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 160), 0, ScreenUtils.getProportionalSize(screenSize, 40)),
+                    Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, -10), 0, ScreenUtils.getProportionalSize(screenSize, -25)), -- Much closer to main panel
                     BackgroundColor3 = Color3.fromRGB(255, 140, 0),
                     BorderSizePixel = 0,
                     ZIndex = 32
@@ -223,7 +223,7 @@ local function GamepassPanel(props)
                 }),
                 TitleText = e("TextLabel", {
                     Size = UDim2.new(1, -10, 1, 0),
-                    Position = UDim2.new(0, 5, 0, 0),
+                    Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 5), 0, 0),
                     Text = "🚀 GAMEPASSES",
                     TextColor3 = Color3.fromRGB(255, 255, 255),
                     TextSize = titleTextSize,
@@ -260,8 +260,8 @@ local function GamepassPanel(props)
             -- Close Button (partially outside main panel, square with 3D effect)
             CloseButton = e("ImageButton", {
                 Name = "CloseButton",
-                Size = UDim2.new(0, 32, 0, 32),
-                Position = UDim2.new(1, -16, 0, -16), -- Half outside the panel
+                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 32), 0, ScreenUtils.getProportionalSize(screenSize, 32)),
+                Position = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -16), 0, ScreenUtils.getProportionalSize(screenSize, -16)), -- Half outside the panel
                 Image = assets["X Button/X Button 64.png"],
                 ImageColor3 = Color3.fromRGB(255, 255, 255), -- Pure white text
                 ScaleType = Enum.ScaleType.Fit,
@@ -296,7 +296,7 @@ local function GamepassPanel(props)
                 Shadow = e("Frame", {
                     Name = "Shadow",
                     Size = UDim2.new(1, 2, 1, 2),
-                    Position = UDim2.new(0, 2, 0, 2),
+                    Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 2), 0, ScreenUtils.getProportionalSize(screenSize, 2)),
                     BackgroundColor3 = Color3.fromRGB(0, 0, 0),
                     BackgroundTransparency = 0.7,
                     BorderSizePixel = 0,
@@ -312,7 +312,7 @@ local function GamepassPanel(props)
             Subtitle = e("TextLabel", {
                 Name = "Subtitle",
                 Size = UDim2.new(1, -80, 0, 25),
-                Position = UDim2.new(0, 40, 0, 15),
+                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 40), 0, ScreenUtils.getProportionalSize(screenSize, 15)),
                 Text = "Unlock powerful features and boost your farming experience!",
                 TextColor3 = Color3.fromRGB(60, 80, 140),
                 TextSize = smallTextSize,
@@ -327,7 +327,7 @@ local function GamepassPanel(props)
             CardsContainer = e("ScrollingFrame", {
                 Name = "CardsContainer",
                 Size = UDim2.new(1, -40, 1, -60),
-                Position = UDim2.new(0, 20, 0, 50),
+                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 20), 0, ScreenUtils.getProportionalSize(screenSize, 50)),
                 BackgroundColor3 = Color3.fromRGB(250, 252, 255),
                 BackgroundTransparency = 0.2,
                 BorderSizePixel = 0,
@@ -425,8 +425,8 @@ local function GamepassPanel(props)
                             -- Owned Badge
                             OwnedBadge = isOwned and e("Frame", {
                                 Name = "OwnedBadge",
-                                Size = UDim2.new(0, 60, 0, 25),
-                                Position = UDim2.new(1, -70, 0, 10),
+                                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 60), 0, ScreenUtils.getProportionalSize(screenSize, 25)),
+                                Position = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -70), 0, ScreenUtils.getProportionalSize(screenSize, 10)),
                                 BackgroundColor3 = Color3.fromRGB(50, 150, 50),
                                 BorderSizePixel = 0,
                                 ZIndex = 35
@@ -449,8 +449,8 @@ local function GamepassPanel(props)
                             -- Category Badge
                             CategoryBadge = e("Frame", {
                                 Name = "CategoryBadge",
-                                Size = UDim2.new(0, 100, 0, 20),
-                                Position = UDim2.new(0, 10, 0, 10),
+                                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 100), 0, ScreenUtils.getProportionalSize(screenSize, 20)),
+                                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 10), 0, ScreenUtils.getProportionalSize(screenSize, 10)),
                                 BackgroundColor3 = gamepass.gradientColors[2],
                                 BorderSizePixel = 0,
                                 ZIndex = 34
@@ -473,8 +473,8 @@ local function GamepassPanel(props)
                             -- Gamepass Icon
                             IconContainer = e("Frame", {
                                 Name = "IconContainer",
-                                Size = UDim2.new(0, 60, 0, 60),
-                                Position = UDim2.new(0, 15, 0, 40),
+                                Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 60), 0, ScreenUtils.getProportionalSize(screenSize, 60)),
+                                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 15), 0, ScreenUtils.getProportionalSize(screenSize, 40)),
                                 BackgroundColor3 = Color3.fromRGB(40, 45, 55),
                                 BorderSizePixel = 0,
                                 ZIndex = 33
@@ -515,8 +515,8 @@ local function GamepassPanel(props)
                             -- Gamepass Name
                             GamepassName = e("TextLabel", {
                                 Name = "GamepassName",
-                                Size = UDim2.new(1, -95, 0, 25),
-                                Position = UDim2.new(0, 85, 0, 40),
+                                Size = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -95), 0, ScreenUtils.getProportionalSize(screenSize, 25)),
+                                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 85), 0, ScreenUtils.getProportionalSize(screenSize, 40)),
                                 Text = gamepass.name,
                                 TextColor3 = Color3.fromRGB(40, 50, 80),
                                 TextSize = cardTitleSize,
@@ -530,8 +530,8 @@ local function GamepassPanel(props)
                             -- Gamepass Description
                             Description = e("TextLabel", {
                                 Name = "Description",
-                                Size = UDim2.new(1, -95, 0, 35),
-                                Position = UDim2.new(0, 85, 0, 65),
+                                Size = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -95), 0, ScreenUtils.getProportionalSize(screenSize, 35)),
+                                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 85), 0, ScreenUtils.getProportionalSize(screenSize, 65)),
                                 Text = gamepass.description,
                                 TextColor3 = Color3.fromRGB(70, 80, 120),
                                 TextSize = ScreenUtils.getProportionalTextSize(screenSize, 12),
@@ -546,8 +546,8 @@ local function GamepassPanel(props)
                             -- Purchase Button
                             PurchaseButton = e("TextButton", {
                                 Name = "PurchaseButton",
-                                Size = UDim2.new(1, -20, 0, 35),
-                                Position = UDim2.new(0, 10, 1, -45),
+                                Size = UDim2.new(1, ScreenUtils.getProportionalSize(screenSize, -20), 0, ScreenUtils.getProportionalSize(screenSize, 35)),
+                                Position = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 10), 1, ScreenUtils.getProportionalSize(screenSize, -45)),
                                 Text = isOwned and "✅ OWNED" or "",
                                 TextColor3 = Color3.fromRGB(255, 255, 255),
                                 TextSize = normalTextSize,
@@ -595,13 +595,13 @@ local function GamepassPanel(props)
                                         FillDirection = Enum.FillDirection.Horizontal,
                                         HorizontalAlignment = Enum.HorizontalAlignment.Center,
                                         VerticalAlignment = Enum.VerticalAlignment.Center,
-                                        Padding = UDim.new(0, 5),
+                                        Padding = UDim.new(0, ScreenUtils.getProportionalSize(screenSize, 5)),
                                         SortOrder = Enum.SortOrder.LayoutOrder
                                     }),
                                     
                                     RobuxIcon = e("ImageLabel", {
                                         Name = "RobuxIcon",
-                                        Size = UDim2.new(0, 28, 0, 28),
+                                        Size = UDim2.new(0, ScreenUtils.getProportionalSize(screenSize, 28), 0, ScreenUtils.getProportionalSize(screenSize, 28)),
                                         Image = "rbxasset://textures/ui/common/robux.png", -- Official Robux icon (medium)
                                         BackgroundTransparency = 1,
                                         ImageColor3 = Color3.fromRGB(255, 255, 255),

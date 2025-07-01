@@ -183,7 +183,6 @@ function PlotManager.initializePlot(plotId, ownerId, playerObject)
     -- Schedule production for plots that are already watered (on player join)
     local plotState = plotStates[plotId]
     if plotState.state == "watered" or plotState.state == "ready" then
-        print("🔥 FOUND WATERED PLOT", plotId, "- SCHEDULING PRODUCTION!")
         PlotManager.scheduleCropProduction(plotId, plotState)
     end
 end
@@ -335,7 +334,6 @@ function PlotManager.plantCrop(player, plotId, cropType, quantity)
         plotState.waterNeeded = cropData.waterNeeded
         plotState.lastWateredTime = 0
         plotState.variation = variation
-        plotState.harvestCooldown = 0
         plotState.growthTime = ConfigManager.getGrowthTimeFromRate(cropType)
         plotState.waterTime = cropData.waterCooldown
         
@@ -502,12 +500,7 @@ function PlotManager.harvestCrop(player, plotId)
         return false, "This plot is locked! Purchase more plots to unlock it."
     end
     
-    -- Check harvest cooldown
-    local harvestCooldown = GameConfig.Plants[plotState.seedType].harvestCooldown or 30
-    if tick() - plotState.harvestCooldown < harvestCooldown then
-        local timeLeft = math.ceil(harvestCooldown - (tick() - plotState.harvestCooldown))
-        return false, "Harvest again in " .. timeLeft .. " seconds!"
-    end
+    -- Harvest cooldown check removed - players can harvest immediately
     
     local seedType = plotState.seedType
     local variation = plotState.variation or "normal"
@@ -534,20 +527,19 @@ function PlotManager.harvestCrop(player, plotId)
     
     -- Handle crop limit notification
     if limitHit then
-        local NotificationManager = require(script.Parent.NotificationManager)
+--         local NotificationManager = require(script.Parent.NotificationManager)
         local wastedCrops = totalYield - amountAdded
         if amountAdded > 0 then
-            NotificationManager.sendWarning(player, "🚧 Inventory limit: Only " .. amountAdded .. " " .. cropName .. " added! (" .. wastedCrops .. " lost - 1k max per crop)")
+--             NotificationManager.sendWarning(player, "🚧 Inventory limit: Only " .. amountAdded .. " " .. cropName .. " added! (" .. wastedCrops .. " lost - 1k max per crop)")
         else
-            NotificationManager.sendError(player, "🚫 Inventory full: " .. cropName .. " limit reached (1k max)! Sell some crops first.")
+--             NotificationManager.sendError(player, "🚫 Inventory full: " .. cropName .. " limit reached (1k max)! Sell some crops first.")
         end
     end
     
     -- Reset accumulation after harvesting all ready crops
     plotState.accumulatedCrops = 0
     
-    -- Reset harvest cooldown
-    plotState.harvestCooldown = tick()
+    -- Harvest cooldown removed - no longer tracking cooldown timestamp
     
     -- Plants continue producing - DON'T reset timing, just continue from where they were
     plotState.state = "watered"  -- Back to growing state
@@ -627,12 +619,12 @@ function PlotManager.harvestAllCrops(player, plotId)
     
     -- Handle crop limit notification
     if limitHit then
-        local NotificationManager = require(script.Parent.NotificationManager)
+--         local NotificationManager = require(script.Parent.NotificationManager)
         local wastedCrops = totalYield - amountAdded
         if amountAdded > 0 then
-            NotificationManager.sendWarning(player, "🚧 Inventory limit: Only " .. amountAdded .. " " .. cropName .. " added! (" .. wastedCrops .. " lost - 1k max per crop)")
+--             NotificationManager.sendWarning(player, "🚧 Inventory limit: Only " .. amountAdded .. " " .. cropName .. " added! (" .. wastedCrops .. " lost - 1k max per crop)")
         else
-            NotificationManager.sendError(player, "🚫 Inventory full: " .. cropName .. " limit reached (1k max)! Sell some crops first.")
+--             NotificationManager.sendError(player, "🚫 Inventory full: " .. cropName .. " limit reached (1k max)! Sell some crops first.")
         end
     end
     
@@ -747,7 +739,6 @@ function PlotManager.resetPlot(plotId)
         plotState.maxHarvests = 0
         plotState.needsReplanting = false
         plotState.variation = nil
-        plotState.harvestCooldown = 0
         plotState.growthTime = 0
         plotState.waterTime = 0
         plotState.deathTime = 0
@@ -1283,22 +1274,13 @@ function PlotManager.scheduleCropProduction(plotId, plotState)
     local timeSinceWatered = currentTime - (plotState.lastWateredTime or 0)
     local remainingTime = math.max(0, effectiveProductionInterval - timeSinceWatered)
     
-    print("⏰ SCHEDULING PRODUCTION for plot", plotId)
-    print("   📊 Base interval:", math.floor(baseProductionInterval), "seconds")
-    print("   🚀 Boost multiplier:", boostMultiplier, "x")
-    print("   🌤️ Weather multiplier:", weatherMultiplier, "x")
-    print("   ⚡ Final interval:", math.floor(effectiveProductionInterval), "seconds")
-    print("   ⏱️ Time since watered:", math.floor(timeSinceWatered), "seconds") 
-    print("   ⏳ Remaining time:", math.floor(remainingTime), "seconds")
     
     spawn(function()
         if remainingTime > 0 then
             wait(remainingTime)
         else
-            print("🚀 PRODUCTION READY IMMEDIATELY for plot", plotId, "- offline growth complete!")
         end
         
-        print("🎯 PRODUCTION TIMER COMPLETE for plot", plotId, "- checking plot state")
         -- Check if plot still exists and is in watered state
         local currentState = plotStates[plotId]
         if currentState and (currentState.state == "watered" or currentState.state == "ready") then
@@ -1331,14 +1313,11 @@ function PlotManager.scheduleCropProduction(plotId, plotState)
             
             if cropsToAdd > 0 then
                 currentState.accumulatedCrops = oldCrops + cropsToAdd
-                print("🌾 PRODUCED", cropsToAdd, "crops for plot", plotId, "- total accumulated:", currentState.accumulatedCrops)
                 
                 if cropsToAdd < currentActivePlants then
                     local wastedCrops = currentActivePlants - cropsToAdd
-                    print("⚠️ Plot", plotId, "hit", plotCropLimit, "crop limit -", wastedCrops, "crops not produced")
                 end
             else
-                print("📈 Plot", plotId, "at", plotCropLimit, "crop limit - no additional production")
             end
             
             currentState.state = "ready"
@@ -1347,7 +1326,6 @@ function PlotManager.scheduleCropProduction(plotId, plotState)
             -- CRITICAL: Update lastWateredTime to current time to prevent infinite loops
             currentState.lastWateredTime = currentTime
             
-            print("🌾 PRODUCED", currentActivePlants, "crops for plot", plotId, "- total accumulated:", currentState.accumulatedCrops)
             
             -- Send update to client
             sendPlotUpdate(plotId, {cropProduced = true})

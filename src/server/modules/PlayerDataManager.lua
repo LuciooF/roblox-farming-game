@@ -73,11 +73,124 @@ function PlayerDataManager.initialize()
     if success and profileStoreModule then
         ProfileStore = profileStoreModule.New(PROFILE_STORE_NAME, PROFILE_TEMPLATE)
         log.info("ProfileStore initialized successfully for", PROFILE_STORE_NAME)
+        
+        -- Start periodic auto-save system
+        PlayerDataManager.startAutoSaveSystem()
+        
+        -- Set up server shutdown handler
+        PlayerDataManager.setupShutdownHandler()
     else
         log.warn("ProfileStore not available - falling back to in-memory storage (Studio mode)")
         -- Keep fallback system for Studio testing
         ProfileStore = nil
     end
+end
+
+-- Setup server shutdown handler to properly release all profiles
+function PlayerDataManager.setupShutdownHandler()
+    game:BindToClose(function()
+        log.info("🛑 SERVER SHUTDOWN DETECTED - Force releasing all ProfileStore profiles")
+        
+        local releaseCount = 0
+        local releaseErrors = 0
+        
+        for player, profile in pairs(Profiles) do
+            if profile and profile.Release then
+                log.info("🛑 Force releasing profile for", player.Name)
+                
+                local success, errorMsg = pcall(function()
+                    -- Force save then release
+                    if profile.Save then
+                        profile:Save()
+                    end
+                    profile:Release()
+                end)
+                
+                if success then
+                    releaseCount = releaseCount + 1
+                    log.info("✅ Successfully force released profile for", player.Name)
+                else
+                    releaseErrors = releaseErrors + 1
+                    log.error("❌ Failed to force release profile for", player.Name, "Error:", errorMsg)
+                end
+            end
+        end
+        
+        log.info("🛑 SHUTDOWN COMPLETE:", releaseCount, "profiles released,", releaseErrors, "errors")
+        
+        -- Give ProfileStore time to process releases
+        wait(2)
+    end)
+end
+
+-- Periodic auto-save system to reduce data loss risk
+function PlayerDataManager.startAutoSaveSystem()
+    spawn(function()
+        while true do
+            wait(30) -- Check every 30 seconds for orphaned profiles
+            
+            local savedCount = 0
+            local errorCount = 0
+            local orphanedProfiles = {}
+            
+            for player, profile in pairs(Profiles) do
+                -- Check if player still exists in the game
+                if not player.Parent then
+                    -- Player left but profile wasn't released!
+                    table.insert(orphanedProfiles, player.Name)
+                    log.error("🚨 ORPHANED PROFILE DETECTED for", player.Name, "- Player left but profile still active!")
+                    log.error("🚨 This causes 'already logged in this session' errors on rejoin!")
+                    
+                    -- Force release the orphaned profile immediately
+                    if profile and profile.Release then
+                        local success, errorMsg = pcall(function()
+                            if profile.Save then
+                                profile:Save()
+                            end
+                            profile:Release()
+                        end)
+                        
+                        if success then
+                            log.info("✅ Force released orphaned profile for", player.Name, "- Player can rejoin now")
+                        else
+                            log.error("❌ Failed to force release orphaned profile for", player.Name, "Error:", errorMsg)
+                        end
+                    end
+                    
+                    -- Clear from tracking immediately
+                    Profiles[player] = nil
+                end
+            end
+            
+            -- Separate loop for auto-save (every 5 minutes)
+            local currentTime = tick()
+            for player, profile in pairs(Profiles) do
+                if profile and profile.Save and player.Parent then
+                    if not profile.lastAutoSave or (currentTime - profile.lastAutoSave) >= 300 then
+                        local success, errorMsg = pcall(function()
+                            profile:Save()
+                        end)
+                        
+                        if success then
+                            savedCount = savedCount + 1
+                            profile.lastAutoSave = currentTime
+                        else
+                            errorCount = errorCount + 1
+                            log.warn("Auto-save failed for", player.Name, "error:", errorMsg)
+                        end
+                    end
+                end
+            end
+            
+            if #orphanedProfiles > 0 then
+                log.warn("🧹 FIXED DATASTORE LOCKS: Cleaned up", #orphanedProfiles, "orphaned profiles:", table.concat(orphanedProfiles, ", "))
+            end
+            
+            if savedCount > 0 or errorCount > 0 then
+                log.info("Auto-save completed:", savedCount, "saved,", errorCount, "errors")
+            end
+        end
+    end)
 end
 
 -- Handle player joining
@@ -99,25 +212,56 @@ function PlayerDataManager.onPlayerJoined(player)
     
     log.debug("🔄 Starting ProfileStore session for:", player.Name)
     
-    -- Use pcall with timeout to prevent indefinite hanging
+    -- Use pcall with timeout and retry logic to handle profile locks
     local startTime = tick()
     spawn(function()
-        local success, result = pcall(function()
-            return ProfileStore:StartSessionAsync(userId)
-        end)
+        local maxRetries = 5 -- Increased from 3 to 5 attempts
+        local retryDelay = 2 -- Start with 2 seconds (increased from 1)
         
-        if success then
-            profile = result
-            profileSuccess = true
-            log.info("✅ ProfileStore session completed for:", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms")
-        else
-            log.error("❌ ProfileStore failed for", player.Name, "error:", result)
+        for attempt = 1, maxRetries do
+            local success, result = pcall(function()
+                return ProfileStore:StartSessionAsync(userId)
+            end)
+            
+            if success and result then
+                profile = result
+                profileSuccess = true
+                log.info("✅ ProfileStore session completed for:", player.Name, "in", math.floor((tick() - startTime) * 1000), "ms", "- Attempt:", attempt)
+                break
+            else
+                local errorMsg = tostring(result or "unknown error")
+                log.warn("❌ ProfileStore attempt", attempt, "failed for", player.Name, "error:", errorMsg)
+                
+                -- Check if this is a "profile locked" error (common on quick rejoin)
+                local isLockError = string.find(errorMsg:lower(), "locked") or 
+                                   string.find(errorMsg:lower(), "session") or 
+                                   string.find(errorMsg:lower(), "active") or
+                                   string.find(errorMsg:lower(), "conflict") or
+                                   string.find(errorMsg:lower(), "already loaded")
+                
+                if isLockError then
+                    if string.find(errorMsg:lower(), "already loaded") then
+                        log.warn("🔒 Profile 'already loaded' error for", player.Name, "- Previous session not properly closed. Waiting", retryDelay, "seconds...")
+                    else
+                        log.info("🔒 Profile is locked for", player.Name, "- Quick rejoin detected. Waiting", retryDelay, "seconds for unlock...")
+                    end
+                else
+                    log.warn("❓ Unknown ProfileStore error for", player.Name, "- Will retry in", retryDelay, "seconds")
+                end
+                
+                if attempt < maxRetries then
+                    wait(retryDelay)
+                    retryDelay = math.min(retryDelay * 1.3, 8) -- Gentler exponential backoff, capped at 8 seconds
+                else
+                    log.error("❌ All", maxRetries, "ProfileStore attempts failed for", player.Name, "final error:", errorMsg)
+                end
+            end
         end
     end)
     
     -- Optimized polling: check every 50ms instead of 100ms for faster response
     local RunService = game:GetService("RunService")
-    local timeout = RunService:IsStudio() and 3 or 8 -- Reduced timeout from 10 to 8 seconds
+    local timeout = RunService:IsStudio() and 8 or 20 -- Increased timeout for 5 retry attempts with longer delays
     local elapsed = 0
     while not profileSuccess and elapsed < timeout and player.Parent do
         wait(0.05) -- Check every 50ms instead of 100ms
@@ -139,7 +283,23 @@ function PlayerDataManager.onPlayerJoined(player)
             log.error("   - DataStore API health issues?")
             log.error("   - Too many requests (throttling)?") 
             log.error("   - Network connectivity problems?")
-            player:Kick("Sorry! Our data system is experiencing issues. Please try rejoining in a moment. If this persists, the game may be experiencing server issues.")
+            log.error("   - Profile lock from quick rejoin?")
+            
+            -- Check if we can determine the specific error type for better user messaging
+            local userMessage = "Data loading failed after multiple attempts."
+            
+            -- Note: We can't access the specific error here since it was in the spawn thread
+            -- But the retry logic above should handle most lock scenarios
+            
+            -- Give specific guidance for the most common scenario
+            userMessage = userMessage .. "\n\n🔄 If you just left and rejoined quickly:"
+            userMessage = userMessage .. "\n• Wait 15-30 seconds before rejoining"
+            userMessage = userMessage .. "\n• Your data is safe and will be available shortly"
+            userMessage = userMessage .. "\n\n⚡ For other issues:"
+            userMessage = userMessage .. "\n• Check your internet connection"
+            userMessage = userMessage .. "\n• Try rejoining in a few moments"
+            
+            player:Kick(userMessage)
         end
         return
     end
@@ -155,7 +315,11 @@ function PlayerDataManager.onPlayerJoined(player)
         
         profile.OnRelease = function()
             Profiles[player] = nil
-            player:Kick("Profile released - please rejoin")
+            log.warn("🚨 ProfileStore auto-released profile for", player.Name, "- This usually means server shutdown or force release")
+            -- Don't kick if player already left (they won't be in game anymore)
+            if player.Parent then
+                player:Kick("Profile released - please rejoin")
+            end
         end
         
         if player.Parent then
@@ -231,12 +395,68 @@ function PlayerDataManager.onPlayerLeaving(player)
     if profile then
         -- Only call Release if this is a real ProfileStore profile (not fallback data)
         if profile.Release then
-            profile:Release()
-            log.info("Released ProfileStore profile for", player.Name)
+            log.info("🔄 Preparing to save and release ProfileStore profile for", player.Name)
+            
+            -- Step 1: Force manual save before release (ProfileStore best practice)
+            local saveSuccess = false
+            if profile.Save then
+                local saveStartTime = tick()
+                local success, errorMsg = pcall(function()
+                    profile:Save()
+                end)
+                
+                if success then
+                    saveSuccess = true
+                    log.info("✅ Manual save completed for", player.Name, "in", math.floor((tick() - saveStartTime) * 1000), "ms")
+                else
+                    log.warn("⚠️ Manual save failed for", player.Name, "Error:", errorMsg, "- Release will still attempt auto-save")
+                end
+            else
+                log.debug("Profile:Save() method not available - relying on Release() auto-save")
+                saveSuccess = true -- Continue with release anyway
+            end
+            
+            -- Step 2: Clear from our tracking BEFORE release to prevent race conditions
+            Profiles[player] = nil
+            log.debug("🗑️ Cleared profile from tracking for", player.Name)
+            
+            -- Step 3: Add small delay to ensure save is processed
+            if saveSuccess then
+                wait(0.1) -- Brief delay to ensure save is processed
+            end
+            
+            -- Step 4: Release the profile (this unlocks it for future sessions)
+            local releaseStartTime = tick()
+            local success, errorMsg = pcall(function()
+                profile:Release()
+            end)
+            
+            if success then
+                log.info("✅ Successfully released ProfileStore profile for", player.Name, "in", math.floor((tick() - releaseStartTime) * 1000), "ms")
+            else
+                log.error("❌ Failed to release ProfileStore profile for", player.Name, "Error:", errorMsg)
+                log.error("🚨 CRITICAL: Profile may remain locked for", player.Name, "- they may need to wait before rejoining")
+                
+                -- Try force release as last resort
+                spawn(function()
+                    wait(1)
+                    log.warn("🔄 Attempting force release for", player.Name)
+                    local forceSuccess, forceError = pcall(function()
+                        profile:Release()
+                    end)
+                    if forceSuccess then
+                        log.info("✅ Force release succeeded for", player.Name)
+                    else
+                        log.error("❌ Force release also failed for", player.Name, "Error:", forceError)
+                    end
+                end)
+            end
         else
             log.debug("Cleared fallback data for", player.Name)
+            Profiles[player] = nil
         end
-        Profiles[player] = nil
+    else
+        log.debug("No profile found to release for", player.Name)
     end
 end
 

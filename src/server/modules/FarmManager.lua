@@ -15,7 +15,7 @@ local TOTAL_FARMS = 6 -- Maximum number of farms available
 local BASE_PLOTS_PER_FARM = 9 -- Each farm starts with 9 plots (3x3 grid)  
 local MAX_PLOTS_PER_FARM = 40 -- Maximum plots per farm (from template)
 local FARM_SIZE = Vector3.new(200, 1, 200) -- Increased size for template farms
-local FARM_SPACING = 300 -- Increased spacing for larger template farms
+local FARM_SPACING = 250 -- Moderately reduced spacing to bring farms closer together
 
 -- Storage
 local farmAssignments = {} -- [farmId] = {userId, playerName, joinTime}
@@ -29,6 +29,9 @@ function FarmManager.initialize()
     -- Calculate farm positions in a circle around spawn
     FarmManager.calculateFarmPositions()
     
+    -- Clean up any leftover spawn locations from previous server sessions
+    FarmManager.cleanupAllSpawnLocations()
+    
     -- Initialize empty farm assignments
     for i = 1, TOTAL_FARMS do
         farmAssignments[i] = nil
@@ -40,10 +43,37 @@ function FarmManager.initialize()
     log.info("Farm management system ready!")
 end
 
+-- Clean up all spawn locations at server start
+function FarmManager.cleanupAllSpawnLocations()
+    log.info("🧹 Cleaning up all farm spawn locations...")
+    
+    -- Check if PlayerFarms folder exists
+    local playerFarms = workspace:FindFirstChild("PlayerFarms")
+    if not playerFarms then
+        log.debug("PlayerFarms folder doesn't exist yet - no cleanup needed")
+        return
+    end
+    
+    local cleanedCount = 0
+    for i = 1, TOTAL_FARMS do
+        local farmFolder = playerFarms:FindFirstChild("Farm_" .. i)
+        if farmFolder then
+            local spawnLocation = farmFolder:FindFirstChild("FarmSpawn_" .. i)
+            if spawnLocation then
+                spawnLocation.Enabled = false
+                cleanedCount = cleanedCount + 1
+                log.debug("Cleaned spawn location:", spawnLocation.Name)
+            end
+        end
+    end
+    
+    log.info("🧹 Cleaned", cleanedCount, "spawn locations at server start")
+end
+
 -- Calculate positions for all farms in a circle around spawn
 function FarmManager.calculateFarmPositions()
     local spawnPosition = Vector3.new(0, 0, 0) -- Center spawn
-    local radius = FARM_SPACING * 1.2 -- Reduced distance from spawn to farms (was *2)
+    local radius = FARM_SPACING * 1.06 -- Moderately reduced distance for 26% closer spacing
     
     log.info("Calculating positions for", TOTAL_FARMS, "farms at radius", radius, "from center")
     
@@ -83,6 +113,9 @@ end
 function FarmManager.onPlayerLeaving(player)
     local farmId = playerFarms[player.UserId]
     if farmId then
+        -- Clear player's respawn location first
+        FarmManager.clearPlayerSpawn(player)
+        
         -- Disable the spawn location for this farm
         FarmManager.disableSpawn(farmId)
         
@@ -142,7 +175,6 @@ end
 -- Called when a farm is assigned to a player
 function FarmManager.onFarmAssigned(farmId, player)
     local totalStart = tick()
-    print("🚨 FARM ASSIGNED! Player:", player.Name, "Farm ID:", farmId)
     log.debug("🔄 onFarmAssigned STARTED for:", player.Name, "farm:", farmId)
     
     -- Update farm sign with character display (make async to avoid blocking)
@@ -174,7 +206,6 @@ function FarmManager.onFarmAssigned(farmId, player)
             -- Update the visual state of the plot to match the loaded data
             local plotState = PlotManager.getPlotState(globalPlotId)
             if plotState then
-                print("🌾 RESTORING OWNED PLOT", plotIndex, "for", player.Name, "- state:", plotState.state, "seed:", plotState.seedType)
                 
                 local plot = WorldBuilder.getPlotById(globalPlotId)
                 if plot then
@@ -232,9 +263,9 @@ function FarmManager.onFarmAssigned(farmId, player)
     log.debug("🔄 Visual state updates completed in:", (tick() - visualStart), "seconds")
     log.info("🔄 onFarmAssigned TOTAL TIME:", (tick() - totalStart), "seconds for", player.Name)
     
-    -- Notify player about online boost
-    local NotificationManager = require(script.Parent.NotificationManager)
-    NotificationManager.sendSuccess(player, "⚡ Online Boost Active! Crops grow 2x faster while you're here!")
+    -- Notify player about online boost (REMOVED - NotificationManager deleted)
+--     -- local NotificationManager = require(script.Parent.NotificationManager)
+--     -- NotificationManager.sendSuccess(player, "⚡ Online Boost Active! Crops grow 2x faster while you're here!")
 end
 
 -- Called when a farm is unassigned from a player
@@ -335,14 +366,116 @@ function FarmManager.setPlayerSpawn(player, farmId)
         return false
     end
     
-    -- Enable this spawn location
-    spawnLocation.Enabled = true
+    log.info("🔧 Setting spawn for", player.Name, "to farm", farmId, "spawn:", spawnLocation.Name)
     
-    -- Set player's RespawnLocation
+    -- Log current player assignments for debugging
+    log.info("🔍 Current farm assignments when setting spawn for", player.Name, ":")
+    for fId, assignment in pairs(farmAssignments) do
+        if assignment then
+            log.info("   Farm", fId, "→", assignment.playerName, "(UserID:", assignment.userId, ")")
+        end
+    end
+    
+    -- STEP 1: Disable ALL spawn locations first (aggressive cleanup)
+    local disabledCount = 0
+    local enabledSpawns = {}
+    
+    -- First, audit all current spawn states
+    for i = 1, TOTAL_FARMS do
+        local otherFarmFolder = workspace.PlayerFarms:FindFirstChild("Farm_" .. i)
+        if otherFarmFolder then
+            local otherSpawnLocation = otherFarmFolder:FindFirstChild("FarmSpawn_" .. i)
+            if otherSpawnLocation then
+                if otherSpawnLocation.Enabled then
+                    table.insert(enabledSpawns, "FarmSpawn_" .. i)
+                end
+                -- Disable ALL spawns regardless of current state
+                otherSpawnLocation.Enabled = false
+                disabledCount = disabledCount + 1
+                log.debug("Disabled spawn", otherSpawnLocation.Name, "on farm", i)
+            end
+        end
+    end
+    
+    if #enabledSpawns > 0 then
+        log.warn("🚨 Found", #enabledSpawns, "enabled spawns before cleanup:", table.concat(enabledSpawns, ", "))
+    end
+    log.info("🔧 Disabled", disabledCount, "spawn locations before setting new one")
+    
+    -- STEP 2: Clear player's current respawn location
+    player.RespawnLocation = nil
+    wait(0.2) -- Longer delay to ensure Roblox processes the change
+    
+    -- STEP 3: Enable ONLY the target spawn location
+    spawnLocation.Enabled = true
+    log.info("🔧 Enabled target spawn:", spawnLocation.Name)
+    
+    -- STEP 3.5: Double-check no other spawns got re-enabled
+    wait(0.1)
+    local doubleCheckEnabledSpawns = {}
+    for i = 1, 6 do -- Use hardcoded 6 instead of TOTAL_FARMS
+        local otherFarmFolder = workspace.PlayerFarms:FindFirstChild("Farm_" .. i)
+        if otherFarmFolder then
+            local otherSpawnLocation = otherFarmFolder:FindFirstChild("FarmSpawn_" .. i)
+            if otherSpawnLocation and otherSpawnLocation.Enabled and otherSpawnLocation ~= spawnLocation then
+                table.insert(doubleCheckEnabledSpawns, otherSpawnLocation.Name)
+                -- Force disable it again
+                otherSpawnLocation.Enabled = false
+                log.warn("🔧 Force disabled rogue spawn:", otherSpawnLocation.Name)
+            end
+        end
+    end
+    
+    if #doubleCheckEnabledSpawns > 0 then
+        log.warn("🚨 Had to force disable rogue spawns:", table.concat(doubleCheckEnabledSpawns, ", "))
+    end
+    
+    -- STEP 4: Set player's RespawnLocation
     player.RespawnLocation = spawnLocation
     
-    log.debug("Set spawn location for", player.Name, "to farm", farmId)
-    return true
+    -- STEP 5: Verify the setting worked
+    wait(0.1)
+    if player.RespawnLocation == spawnLocation then
+        log.info("✅ Successfully set spawn location for", player.Name, "to farm", farmId, "- spawn point:", spawnLocation.Name)
+        return true
+    else
+        log.error("❌ Failed to set spawn location for", player.Name, "- RespawnLocation mismatch")
+        return false
+    end
+end
+
+-- Debug function to audit all spawn locations
+function FarmManager.auditSpawnLocations(context)
+    local playerFarms = workspace:FindFirstChild("PlayerFarms")
+    if not playerFarms then
+        log.debug("🔍 SPAWN AUDIT (" .. context .. "): No PlayerFarms folder")
+        return
+    end
+    
+    local enabledSpawns = {}
+    local disabledSpawns = {}
+    
+    for i = 1, TOTAL_FARMS do
+        local farmFolder = playerFarms:FindFirstChild("Farm_" .. i)
+        if farmFolder then
+            local spawnLocation = farmFolder:FindFirstChild("FarmSpawn_" .. i)
+            if spawnLocation then
+                if spawnLocation.Enabled then
+                    table.insert(enabledSpawns, "FarmSpawn_" .. i)
+                else
+                    table.insert(disabledSpawns, "FarmSpawn_" .. i)
+                end
+            end
+        end
+    end
+    
+    log.info("🔍 SPAWN AUDIT (" .. context .. "):")
+    log.info("   ✅ ENABLED (" .. #enabledSpawns .. "):", #enabledSpawns > 0 and table.concat(enabledSpawns, ", ") or "NONE")
+    log.info("   ❌ DISABLED (" .. #disabledSpawns .. "):", #disabledSpawns > 0 and table.concat(disabledSpawns, ", ") or "NONE")
+    
+    if #enabledSpawns > 1 then
+        log.error("🚨 MULTIPLE SPAWNS ENABLED - THIS IS THE PROBLEM!")
+    end
 end
 
 -- Disable spawn location when player leaves
@@ -352,9 +485,15 @@ function FarmManager.disableSpawn(farmId)
         local spawnLocation = farmFolder:FindFirstChild("FarmSpawn_" .. farmId)
         if spawnLocation then
             spawnLocation.Enabled = false
-            log.debug("Disabled spawn location for farm", farmId)
+            log.info("Disabled spawn location for farm", farmId)
         end
     end
+end
+
+-- Clear player's respawn location when they leave
+function FarmManager.clearPlayerSpawn(player)
+    player.RespawnLocation = nil
+    log.info("Cleared respawn location for", player.Name)
 end
 
 -- Teleport player to another player's farm (for visiting)

@@ -37,6 +37,7 @@ local function createRankDisplay(player, character)
     billboardGui.Name = "RankDisplay"
     billboardGui.Size = UDim2.new(0, 150, 0, 25) -- Smaller size
     billboardGui.StudsOffset = Vector3.new(0, 3, 0) -- Position above head
+    billboardGui.MaxDistance = 30 -- Only visible within 30 studs
     billboardGui.LightInfluence = 0
     billboardGui.Parent = character.Head
     

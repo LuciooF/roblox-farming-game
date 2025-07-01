@@ -6,8 +6,6 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 -- Simple logging
-local function logInfo(...) print("[INFO] FlyController:", ...) end
-local function logDebug(...) print("[DEBUG] FlyController:", ...) end
 local function logWarn(...) warn("[WARN] FlyController:", ...) end
 
 local FlyController = {}
@@ -40,7 +38,6 @@ function FlyController.initialize()
         end
     end)
     
-    logInfo("FlyController initialized - Use fly button to toggle flying")
 end
 
 -- Get current flying state

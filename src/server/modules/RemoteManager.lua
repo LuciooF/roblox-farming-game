@@ -9,7 +9,7 @@ local PlayerDataManager = require(script.Parent.PlayerDataManager)
 local PlotManager = require(script.Parent.PlotManager)
 local GamepassManager = require(script.Parent.GamepassManager)
 local AutomationSystem = require(script.Parent.AutomationSystem)
-local NotificationManager = require(script.Parent.NotificationManager)
+-- -- local NotificationManager = require(script.Parent.NotificationManager) -- REMOVED
 local SoundManager = require(script.Parent.SoundManager)
 
 local RemoteManager = {}
@@ -143,6 +143,10 @@ function RemoteManager.initialize()
     debugRemote.Name = "DebugActions"
     debugRemote.Parent = remoteFolder
     
+    local debugAuthFunction = Instance.new("RemoteFunction")
+    debugAuthFunction.Name = "CheckDebugAuth"
+    debugAuthFunction.Parent = remoteFolder
+    
     local musicRemote = Instance.new("RemoteEvent")
     musicRemote.Name = "MusicPreference"
     musicRemote.Parent = remoteFolder
@@ -232,6 +236,7 @@ function RemoteManager.initialize()
     cutPlantRemote.OnServerEvent:Connect(RemoteManager.onCutPlant)
     weatherRemote.OnServerEvent:Connect(RemoteManager.onWeatherRequest)
     debugRemote.OnServerEvent:Connect(RemoteManager.onDebugAction)
+    debugAuthFunction.OnServerInvoke = RemoteManager.checkDebugAuthorization
     gamepassPurchaseRemote.OnServerEvent:Connect(RemoteManager.onGamepassPurchase)
     gamepassDataRemote.OnServerEvent:Connect(RemoteManager.onGamepassDataRequest)
     farmActionRemote.OnServerEvent:Connect(RemoteManager.onFarmAction)
@@ -310,14 +315,14 @@ function RemoteManager.onPlantCrop(player, plotId, cropType)
     if success then
         RemoteManager.syncPlayerData(player)
     end
-    NotificationManager.sendNotification(player, message)
+--     NotificationManager.sendNotification(player, message)
 end
 
 function RemoteManager.onWaterPlant(player, plotId)
     log.info("Water request received from", player.Name, "for plot", plotId)
     local success, message = PlotManager.waterPlant(player, plotId)
     log.info("Water result:", success, message)
-    NotificationManager.sendNotification(player, message)
+--     NotificationManager.sendNotification(player, message)
 end
 
 function RemoteManager.onHarvestCrop(player, plotId)
@@ -325,7 +330,7 @@ function RemoteManager.onHarvestCrop(player, plotId)
     if success then
         RemoteManager.syncPlayerData(player)
     end
-    NotificationManager.sendNotification(player, message)
+--     NotificationManager.sendNotification(player, message)
 end
 
 function RemoteManager.onHarvestAllCrops(player, plotId)
@@ -333,7 +338,7 @@ function RemoteManager.onHarvestAllCrops(player, plotId)
     if success then
         RemoteManager.syncPlayerData(player)
     end
-    NotificationManager.sendNotification(player, message)
+--     NotificationManager.sendNotification(player, message)
 end
 
 function RemoteManager.onPlotAction(player, action, plotId, extraData, quantity)
@@ -357,9 +362,29 @@ function RemoteManager.onPlotAction(player, action, plotId, extraData, quantity)
         end
     elseif action == "clear" then
         -- Cut plants (no more dead plants)
+        print("🔄 FARMACTION CLEAR called for plotId:", plotId, "player:", player.Name)
         success, message = PlotManager.cutPlant(player, plotId)
         if success then
             RemoteManager.syncPlayerData(player)
+            
+            -- Explicitly update the plot visual to ensure icon is removed
+            local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+            local plot = WorldBuilder.getPlotById(plotId)
+            if plot then
+                print("🔄 Updating plot visual for cut plant - plotId:", plotId, "plot:", plot.Name)
+                WorldBuilder.updatePlotState(plot, "empty", "", "normal")
+                
+                -- Double-check that Plant was removed
+                local existingPlant = plot:FindFirstChild("Plant")
+                if existingPlant then
+                    print("⚠️  Plant visual still exists after updatePlotState, manually destroying:", existingPlant.Name)
+                    existingPlant:Destroy()
+                else
+                    print("✅ Plant visual successfully removed")
+                end
+            else
+                print("❌ Could not find plot", plotId, "for visual update")
+            end
         end
     else
         log.warn("Unknown plot action:", action)
@@ -367,7 +392,7 @@ function RemoteManager.onPlotAction(player, action, plotId, extraData, quantity)
     end
     
     if message then
-        NotificationManager.sendNotification(player, message)
+--         NotificationManager.sendNotification(player, message)
     end
 end
 
@@ -383,14 +408,16 @@ function RemoteManager.onCutPlant(player, plotId)
             WorldBuilder.updatePlotState(plot, "empty", "", "normal")
         end
     end
-    NotificationManager.sendNotification(player, message)
+--     NotificationManager.sendNotification(player, message)
 end
 
 function RemoteManager.onBuyItem(player, itemType, itemName, cost)
     local playerData = PlayerDataManager.getPlayerData(player)
     
-    -- Use server-side pricing for validation
-    local actualCost = GameConfig.Plants[itemName] and GameConfig.Plants[itemName].seedCost or cost
+    -- Use server-side pricing for validation with rebirth scaling
+    local baseCost = GameConfig.Plants[itemName] and GameConfig.Plants[itemName].seedCost or cost
+    local rebirthMultiplier = GameConfig.Rebirth.getCropMultiplier(playerData.rebirths or 0)
+    local actualCost = math.floor(baseCost * rebirthMultiplier)
     
     if playerData.money >= actualCost then
         local success = PlayerDataManager.removeMoney(player, actualCost)
@@ -405,10 +432,10 @@ function RemoteManager.onBuyItem(player, itemType, itemName, cost)
             end
             
             local message = "🛒 Bought " .. itemName .. " crop (-$" .. actualCost .. ")"
-            NotificationManager.sendSuccess(player, message)
+--             NotificationManager.sendSuccess(player, message)
         end
     else
-        NotificationManager.sendError(player, "💰 Need $" .. actualCost .. " for " .. itemName .. " crop")
+--         NotificationManager.sendError(player, "💰 Need $" .. actualCost .. " for " .. itemName .. " crop")
     end
 end
 
@@ -465,9 +492,9 @@ function RemoteManager.onSellCrop(player, cropType, amount)
         elseif gamepassMultiplier > 1 then
             multiplierText = " (" .. gamepassMultiplier .. "x gamepass)"
         end
-        NotificationManager.sendMoney(player, message .. multiplierText)
+--         NotificationManager.sendMoney(player, message .. multiplierText)
     else
-        NotificationManager.sendError(player, "❌ Not enough " .. cropType .. " to sell!")
+--         NotificationManager.sendError(player, "❌ Not enough " .. cropType .. " to sell!")
     end
 end
 
@@ -506,7 +533,7 @@ function RemoteManager.onPerformRebirth(player)
         
         -- Play special rebirth sound immediately
         SoundManager.playRebirthSound()
-        NotificationManager.sendRebirthNotification(player, result)
+--         NotificationManager.sendRebirthNotification(player, result)
         
         -- Make potentially slow operations async to prevent lag
         spawn(function()
@@ -535,13 +562,13 @@ function RemoteManager.onPerformRebirth(player)
         end)
     else
         local moneyRequired = GameConfig.Rebirth.getMoneyRequirement(PlayerDataManager.getPlayerData(player).rebirths)
-        NotificationManager.sendError(player, "💰 Need $" .. moneyRequired .. " to rebirth!")
+--         NotificationManager.sendError(player, "💰 Need $" .. moneyRequired .. " to rebirth!")
     end
 end
 
 function RemoteManager.onTogglePremium(player)
     -- This would be updated to handle specific gamepass toggles
-    NotificationManager.sendWarning(player, "👑 Use individual gamepass toggles in Premium panel!")
+--     NotificationManager.sendWarning(player, "👑 Use individual gamepass toggles in Premium panel!")
 end
 
 function RemoteManager.onAutomation(player, actionType)
@@ -573,7 +600,7 @@ function RemoteManager.onAutomation(player, actionType)
         end
     end
     
-    NotificationManager.sendAutomationNotification(player, success, message, details)
+--     NotificationManager.sendAutomationNotification(player, success, message, details)
 end
 
 -- Tutorial action handler
@@ -611,11 +638,11 @@ function RemoteManager.onBuySlot(player)
             RemoteManager.syncPlayerData(player)
             
             local message = "🔓 Bought inventory slot " .. (9 + playerData.extraSlots) .. " (-$" .. slotCost .. ")"
-            NotificationManager.sendSuccess(player, message)
+--             NotificationManager.sendSuccess(player, message)
             log.debug("Player", player.Name, "bought slot", 9 + playerData.extraSlots, "for $" .. slotCost)
         end
     else
-        NotificationManager.sendError(player, "💰 Need $" .. slotCost .. " to buy a new inventory slot")
+--         NotificationManager.sendError(player, "💰 Need $" .. slotCost .. " to buy a new inventory slot")
     end
 end
 
@@ -626,7 +653,7 @@ function RemoteManager.onBuyPlot(player, plotId)
     
     -- Check if player owns this farm
     if not FarmManager.doesPlayerOwnFarm(player.UserId, farmId) then
-        NotificationManager.sendError(player, "❌ You can only buy plots on your own farm!")
+--         NotificationManager.sendError(player, "❌ You can only buy plots on your own farm!")
         return
     end
     
@@ -653,14 +680,14 @@ function RemoteManager.onBuyPlot(player, plotId)
             RemoteManager.sendPlotUpdate(plotId, plotState)
         end
         
-        NotificationManager.sendSuccess(player, "🔓 " .. message)
+--         NotificationManager.sendSuccess(player, "🔓 " .. message)
         log.info("Player", player.Name, "purchased plot", plotIndex)
         
         -- Check tutorial progress
         local TutorialManager = require(script.Parent.TutorialManager)
         TutorialManager.checkGameAction(player, "buy_plot")
     else
-        NotificationManager.sendError(player, "❌ " .. message)
+--         NotificationManager.sendError(player, "❌ " .. message)
         log.debug("Player", player.Name, "failed to purchase plot", plotIndex, ":", message)
     end
 end
@@ -670,9 +697,9 @@ function RemoteManager.onClearDeadPlant(player, plotId)
     -- Redirect to cut plant instead
     local success, message = PlotManager.cutPlant(player, plotId)
     if success then
-        NotificationManager.sendSuccess(player, "🗑️ " .. message)
+--         NotificationManager.sendSuccess(player, "🗑️ " .. message)
     else
-        NotificationManager.sendError(player, "❌ " .. message)
+--         NotificationManager.sendError(player, "❌ " .. message)
     end
 end
 
@@ -827,7 +854,7 @@ function RemoteManager.onPlayerLeft(player)
     TutorialManager.onPlayerLeft(player)
     
     -- Clean up notification system
-    NotificationManager.onPlayerLeft(player)
+--     NotificationManager.onPlayerLeft(player)
     
     -- Clean up selected items
     local playerId = tostring(player.UserId)
@@ -851,9 +878,9 @@ function RemoteManager.onWeatherRequest(player, requestType, weatherName)
         if success then
             -- Broadcast updated weather to all players
             RemoteManager.broadcastWeatherData()
-            NotificationManager.sendSuccess(player, "🌤️ Weather changed to " .. weatherName .. " (debug)")
+--             NotificationManager.sendSuccess(player, "🌤️ Weather changed to " .. weatherName .. " (debug)")
         else
-            NotificationManager.sendError(player, "❌ Failed to change weather to " .. weatherName)
+--             NotificationManager.sendError(player, "❌ Failed to change weather to " .. weatherName)
         end
     else
     end
@@ -888,11 +915,11 @@ function RemoteManager.onGamepassPurchase(player, gamepassKey)
     local success, message = GamepassService.promptGamepassPurchase(player, gamepassKey)
     
     if success then
-        NotificationManager.sendSuccess(player, "🚀 " .. message)
+--         NotificationManager.sendSuccess(player, "🚀 " .. message)
         -- Sync player data to update gamepass status on client
         RemoteManager.syncPlayerData(player)
     else
-        NotificationManager.sendError(player, "❌ " .. message)
+--         NotificationManager.sendError(player, "❌ " .. message)
     end
 end
 
@@ -935,7 +962,7 @@ function RemoteManager.onFarmAction(player, action, plotId, ...)
             local TutorialManager = require(script.Parent.TutorialManager)
             TutorialManager.checkGameAction(player, "plant_seed", {seedType = seedType})
         end
-        NotificationManager.sendNotification(player, message)
+--         NotificationManager.sendNotification(player, message)
         
     elseif action == "water" then
         local success, message = PlotManager.waterPlant(player, plotId)
@@ -944,7 +971,7 @@ function RemoteManager.onFarmAction(player, action, plotId, ...)
             local TutorialManager = require(script.Parent.TutorialManager)
             TutorialManager.checkGameAction(player, "water_plant")
         end
-        NotificationManager.sendNotification(player, message)
+--         NotificationManager.sendNotification(player, message)
         
     elseif action == "harvest" then
         local success, message, totalYield = PlotManager.harvestCrop(player, plotId)
@@ -955,47 +982,86 @@ function RemoteManager.onFarmAction(player, action, plotId, ...)
             local TutorialManager = require(script.Parent.TutorialManager)
             TutorialManager.checkGameAction(player, "harvest_crop")
         end
-        NotificationManager.sendNotification(player, message)
+--         NotificationManager.sendNotification(player, message)
         
     elseif action == "clear" then
         local success, message = PlotManager.cutPlant(player, plotId)
         if success then
             RemoteManager.syncPlayerData(player)
+            
+            -- Update plot visuals to remove the plant icon
+            local WorldBuilder = require(script.Parent.Parent.WorldBuilder)
+            local plot = WorldBuilder.getPlotById(plotId)
+            if plot then
+                WorldBuilder.updatePlotState(plot, "empty", "", "normal")
+            end
         end
-        NotificationManager.sendNotification(player, message)
+--         NotificationManager.sendNotification(player, message)
         
     else
         log.warn("Unknown farm action:", action, "from", player.Name)
-        NotificationManager.sendError(player, "Unknown action: " .. tostring(action))
+--         NotificationManager.sendError(player, "Unknown action: " .. tostring(action))
     end
+end
+
+-- Authorized debug users - add player IDs here
+local AUTHORIZED_DEBUG_USERS = {
+    7273741008, -- Your player ID
+    7804278628,
+    -- Add more authorized user IDs here as needed
+}
+
+-- Check if player is authorized for debug actions
+local function isAuthorizedDebugUser(player)
+    local userId = player.UserId
+    for _, authorizedId in pairs(AUTHORIZED_DEBUG_USERS) do
+        if userId == authorizedId then
+            return true
+        end
+    end
+    return false
+end
+
+-- Check if player is authorized for debug (called by client)
+function RemoteManager.checkDebugAuthorization(player)
+    return isAuthorizedDebugUser(player)
 end
 
 -- Handle debug actions
 function RemoteManager.onDebugAction(player, action, data)
-    log.info("Debug action", action, "requested by", player.Name)
+    log.info("Debug action", action, "requested by", player.Name, "UserID:", player.UserId)
+    
+    -- 🔒 SECURITY CHECK: Only allow authorized users
+    if not isAuthorizedDebugUser(player) then
+        log.warn("🚨 UNAUTHORIZED DEBUG ATTEMPT by", player.Name, "UserID:", player.UserId, "Action:", action)
+        -- Silently ignore - don't give feedback to potential exploiters
+        return
+    end
+    
+    log.info("✅ Authorized debug action", action, "by", player.Name)
     
     if action == "addRebirth" then
         local success = PlayerDataManager.debugAddRebirth(player)
         if success then
-            NotificationManager.sendSuccess(player, "🐛 Debug: +1 Rebirth added!")
+--             NotificationManager.sendSuccess(player, "🐛 Debug: +1 Rebirth added!")
             RemoteManager.syncPlayerData(player)
         else
-            NotificationManager.sendError(player, "❌ Debug: Failed to add rebirth")
+--             NotificationManager.sendError(player, "❌ Debug: Failed to add rebirth")
         end
         
     elseif action == "resetRebirths" then
         local success = PlayerDataManager.debugResetRebirths(player)
         if success then
-            NotificationManager.sendSuccess(player, "🐛 Debug: Rebirths reset to 0!")
+--             NotificationManager.sendSuccess(player, "🐛 Debug: Rebirths reset to 0!")
             RemoteManager.syncPlayerData(player)
         else
-            NotificationManager.sendError(player, "❌ Debug: Failed to reset rebirths")
+--             NotificationManager.sendError(player, "❌ Debug: Failed to reset rebirths")
         end
         
     elseif action == "resetDatastore" then
         local success = PlayerDataManager.debugResetDatastore(player)
         if success then
-            NotificationManager.sendSuccess(player, "🐛 Debug: Datastore completely reset!")
+--             NotificationManager.sendSuccess(player, "🐛 Debug: Datastore completely reset!")
             RemoteManager.syncPlayerData(player)
             
             -- Reinitialize tutorial to show first step
@@ -1030,17 +1096,17 @@ function RemoteManager.onDebugAction(player, action, data)
                 end
             end
         else
-            NotificationManager.sendError(player, "❌ Debug: Failed to reset datastore")
+--             NotificationManager.sendError(player, "❌ Debug: Failed to reset datastore")
         end
         
     elseif action == "addMoney" then
         local amount = data or 1000 -- Default to $1000 if no amount specified
         local success = PlayerDataManager.debugAddMoney(player, amount)
         if success then
-            NotificationManager.sendSuccess(player, "🐛 Debug: +$" .. amount .. " added!")
+--             NotificationManager.sendSuccess(player, "🐛 Debug: +$" .. amount .. " added!")
             RemoteManager.syncPlayerData(player)
         else
-            NotificationManager.sendError(player, "❌ Debug: Failed to add money")
+--             NotificationManager.sendError(player, "❌ Debug: Failed to add money")
         end
         
     elseif action == "checkGamepass" then
@@ -1054,7 +1120,7 @@ function RemoteManager.onDebugAction(player, action, data)
         log.info("- PlayerData.gamepasses:", savedGamepasses)
         log.info("- Stored moneyMultiplier:", savedGamepasses.moneyMultiplier)
         
-        NotificationManager.sendSuccess(player, "🐛 Debug: Check logs for gamepass info")
+--         NotificationManager.sendSuccess(player, "🐛 Debug: Check logs for gamepass info")
         
         -- Force refresh gamepass data
         GamepassService.initializePlayerGamepassOwnership(player)
@@ -1067,9 +1133,9 @@ function RemoteManager.onDebugAction(player, action, data)
             -- Simulate gamepass purchase completion
             GamepassService.onPurchaseFinished(player, 1285355447, true)
             log.info("Debug: Simulated 2x Money gamepass purchase for", player.Name)
-            NotificationManager.sendSuccess(player, "🐛 Debug: Simulated gamepass purchase!")
+--             NotificationManager.sendSuccess(player, "🐛 Debug: Simulated gamepass purchase!")
         else
-            NotificationManager.sendError(player, "❌ Debug commands only work in Studio")
+--             NotificationManager.sendError(player, "❌ Debug commands only work in Studio")
         end
         
     elseif action == "addProductionBoost" then
@@ -1079,11 +1145,11 @@ function RemoteManager.onDebugAction(player, action, data)
             -- Add debug boost to player data
             playerData.debugProductionBoost = (playerData.debugProductionBoost or 0) + boostPercent
             -- Data is automatically saved by ProfileService
-            NotificationManager.sendSuccess(player, "🚀 Debug: +" .. boostPercent .. "% production boost added!")
+--             NotificationManager.sendSuccess(player, "🚀 Debug: +" .. boostPercent .. "% production boost added!")
             RemoteManager.syncPlayerData(player)
             log.info("Added " .. boostPercent .. "% production boost to", player.Name, "Total boost:", playerData.debugProductionBoost)
         else
-            NotificationManager.sendError(player, "❌ Debug: Failed to add production boost")
+--             NotificationManager.sendError(player, "❌ Debug: Failed to add production boost")
         end
         
     elseif action == "removeProductionBoost" then
@@ -1093,16 +1159,16 @@ function RemoteManager.onDebugAction(player, action, data)
             -- Remove debug boost from player data
             playerData.debugProductionBoost = math.max(0, (playerData.debugProductionBoost or 0) - boostPercent)
             -- Data is automatically saved by ProfileService
-            NotificationManager.sendSuccess(player, "🚀 Debug: -" .. boostPercent .. "% production boost removed!")
+--             NotificationManager.sendSuccess(player, "🚀 Debug: -" .. boostPercent .. "% production boost removed!")
             RemoteManager.syncPlayerData(player)
             log.info("Removed " .. boostPercent .. "% production boost from", player.Name, "Total boost:", playerData.debugProductionBoost)
         else
-            NotificationManager.sendError(player, "❌ Debug: Failed to remove production boost")
+--             NotificationManager.sendError(player, "❌ Debug: Failed to remove production boost")
         end
         
     else
         log.warn("Unknown debug action:", action)
-        NotificationManager.sendError(player, "❌ Debug: Unknown action: " .. tostring(action))
+--         NotificationManager.sendError(player, "❌ Debug: Unknown action: " .. tostring(action))
     end
 end
 

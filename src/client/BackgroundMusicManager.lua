@@ -6,8 +6,6 @@ local SoundService = game:GetService("SoundService")
 local BackgroundMusicManager = {}
 
 -- Simple logging functions for BackgroundMusicManager
-local function logInfo(...) print("[INFO] BackgroundMusicManager:", ...) end
-local function logDebug(...) print("[DEBUG] BackgroundMusicManager:", ...) end
 local function logWarn(...) warn("[WARN] BackgroundMusicManager:", ...) end
 
 -- Music configuration
@@ -29,7 +27,6 @@ local function createMusicSound()
     music.Looped = true -- Enable looping
     music.Parent = SoundService
     
-    logInfo("Created background music sound with ID:", MUSIC_ID)
     return music
 end
 
@@ -45,7 +42,6 @@ local function fadeInMusic(music)
     )
     
     fadeIn:Play()
-    logDebug("Fading in background music to volume:", MUSIC_VOLUME)
 end
 
 -- Function to fade out music
@@ -66,7 +62,6 @@ local function fadeOutMusic(music, callback)
         end
     end)
     
-    logDebug("Fading out background music")
 end
 
 -- Function to start background music
@@ -75,7 +70,6 @@ function BackgroundMusicManager.startMusic()
     isMusicEnabled = true
     
     if currentMusic then
-        logDebug("Music already playing")
         return
     end
     
@@ -87,14 +81,11 @@ function BackgroundMusicManager.startMusic()
         if currentMusic and currentMusic.IsLoaded then
             currentMusic:Play()
             fadeInMusic(currentMusic)
-            logInfo("Background music started successfully")
         else
-            logDebug("Music not loaded yet, waiting...")
             if currentMusic then
                 currentMusic.Loaded:Connect(function()
                     currentMusic:Play()
                     fadeInMusic(currentMusic)
-                    logInfo("Background music started after loading")
                 end)
             end
         end
@@ -106,7 +97,6 @@ function BackgroundMusicManager.startMusic()
     -- Handle music ending (shouldn't happen with Looped = true, but just in case)
     if currentMusic then
         currentMusic.Ended:Connect(function()
-            logDebug("Music ended unexpectedly, restarting...")
             if isMusicEnabled then
                 BackgroundMusicManager.startMusic()
             end
@@ -120,7 +110,6 @@ function BackgroundMusicManager.stopMusic()
     isMusicEnabled = false
     
     if not currentMusic then
-        logDebug("No music currently playing")
         return
     end
     
@@ -129,7 +118,6 @@ function BackgroundMusicManager.stopMusic()
             currentMusic:Stop()
             currentMusic:Destroy()
             currentMusic = nil
-            logInfo("Background music stopped")
         end
     end)
 end
@@ -139,10 +127,8 @@ function BackgroundMusicManager.toggleMusic()
     isMusicEnabled = not isMusicEnabled
     
     if isMusicEnabled then
-        logInfo("Music enabled")
         BackgroundMusicManager.startMusic()
     else
-        logInfo("Music disabled")
         BackgroundMusicManager.stopMusic()
     end
     
@@ -163,7 +149,6 @@ function BackgroundMusicManager.setVolume(volume)
         volumeTween:Play()
     end
     
-    logDebug("Music volume set to:", MUSIC_VOLUME)
 end
 
 -- Function to check if music is playing
@@ -179,13 +164,11 @@ end
 -- Function to set initial music state from player data
 function BackgroundMusicManager.setInitialState(enabled)
     if hasInitialized then
-        logDebug("BackgroundMusicManager already initialized, ignoring setInitialState")
         return
     end
     
     hasInitialized = true
     isMusicEnabled = enabled
-    logInfo("Background Music Manager initialized with music enabled:", enabled)
     
     if enabled then
         -- Start music after a short delay
@@ -198,14 +181,12 @@ end
 
 -- Initialize the music manager (no longer starts music automatically)
 function BackgroundMusicManager.initialize()
-    logInfo("Background Music Manager initialized (waiting for player preference)")
     -- No longer starts music automatically - waits for setInitialState to be called
 end
 
 -- Cleanup function
 function BackgroundMusicManager.cleanup()
     BackgroundMusicManager.stopMusic()
-    logInfo("Background Music Manager cleaned up")
 end
 
 return BackgroundMusicManager
